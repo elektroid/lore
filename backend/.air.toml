@@ -1,0 +1,17 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/server ./cmd/server"
+bin = "./tmp/server"
+delay = 1000
+exclude_dir = ["tmp"]
+include_ext = ["go", "toml", "sql"]
+kill_delay = "0.5s"
+args_bin = ["../lore.toml"]
+
+[log]
+time = true
+
+[misc]
+clean_on_exit = true

@@ -1,0 +1,35 @@
+[server]
+host = "localhost"
+port = 8080
+
+[database]
+path = "lore.db"
+
+[uploads]
+dir = "./data/uploads"
+
+[jwt]
+# Obligatoire en production — générer avec : openssl rand -hex 32
+secret = "change-me-in-production"
+# access_expiry  = "24h"
+# refresh_expiry = "168h"
+
+[cors]
+origins     = ["http://localhost:5173"]
+credentials = true
+
+[llm]
+# Toute API compatible OpenAI (Ollama, OpenAI, Anthropic, Mistral…)
+base_url   = "http://localhost:11434/v1"
+api_key    = "ollama"
+model      = "llama3.2:latest"
+max_tokens = 0
+
+[mistral]
+# Optionnel — génération d'images via Mistral AI
+# api_key    = "votre-clé-api-mistral"
+# image_count = 3
+
+[bootstrap]
+# Crée le premier compte superutilisateur au premier lancement (ignoré ensuite)
+# user = "admin@exemple.com:motdepasse:superuser"

@@ -1,0 +1,276 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import AppShell from '@/components/AppShell'
+import { api } from '@/api/client'
+import { useDocTitle } from '@/hooks/useDocTitle'
+import { useUser } from '@/stores/auth'
+import type { Campaign } from '@/types/campaign'
+import type { Game } from '@/types/game'
+import type { PlayerCharacter } from '@/types/character'
+
+interface ListCharactersResponse {
+  characters: PlayerCharacter[]
+}
+
+// ── GM view ───────────────────────────────────────────────────────────────────
+
+interface CampaignForm {
+  name: string
+  genre: string
+  game_id: string
+}
+
+const emptyForm: CampaignForm = { name: '', genre: '', game_id: '' }
+
+function GMView({ campaigns }: { campaigns: Campaign[] }) {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState<CampaignForm>(emptyForm)
+
+  const { data: games = [] } = useQuery({
+    queryKey: ['games'],
+    queryFn: () => api.get<Game[]>('/games'),
+  })
+
+  const create = useMutation({
+    mutationFn: (data: CampaignForm) => api.post<Campaign>('/campaigns', data),
+    onSuccess: (campaign) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      setOpen(false)
+      setForm(emptyForm)
+      navigate(`/campaigns/${campaign.id}`)
+    },
+  })
+
+  function field(key: keyof CampaignForm) {
+    return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setForm(f => ({ ...f, [key]: e.target.value }))
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-lg font-semibold">Campagnes</h2>
+        <Button onClick={() => setOpen(true)}>Nouvelle campagne</Button>
+      </div>
+
+      {campaigns.length === 0 && (
+        <p className="text-muted-foreground text-sm">
+          Aucune campagne pour l'instant. Créez-en une pour commencer.
+        </p>
+      )}
+
+      {campaigns.length > 0 && (
+        <ul className="space-y-2">
+          {campaigns.map(c => (
+            <li
+              key={c.id}
+              onClick={() => navigate(`/campaigns/${c.id}`)}
+              className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
+            >
+              <div>
+                <p className="font-medium">{c.name}</p>
+                {c.genre && <p className="text-sm text-muted-foreground">{c.genre}</p>}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {new Date(c.updated_at).toLocaleDateString('fr-FR')}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nouvelle campagne</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={e => { e.preventDefault(); if (form.name.trim()) create.mutate(form) }}
+            className="space-y-4 mt-2"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="name">Nom *</Label>
+              <Input
+                id="name"
+                placeholder="Ex : Neon Requiem"
+                value={form.name}
+                onChange={field('name')}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="genre">Genre</Label>
+              <Input
+                id="genre"
+                placeholder="Ex : cyberpunk, fantasy, horreur…"
+                value={form.genre}
+                onChange={field('genre')}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="game_id">Jeu</Label>
+              <select
+                id="game_id"
+                value={form.game_id}
+                onChange={field('game_id')}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">— Aucun jeu —</option>
+                {games.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+              {games.length === 0 && (
+                <p className="text-xs text-muted-foreground">Configurez vos jeux dans les Paramètres.</p>
+              )}
+            </div>
+            {create.error && (
+              <p className="text-destructive text-sm">{create.error.message}</p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+              <Button type="submit" disabled={!form.name.trim() || create.isPending}>
+                {create.isPending ? 'Création…' : 'Créer'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+// ── Player view ───────────────────────────────────────────────────────────────
+
+function PlayerView({ memberCampaigns }: { memberCampaigns: Campaign[] }) {
+  const { data: charResp } = useQuery({
+    queryKey: ['characters'],
+    queryFn: () => api.get<ListCharactersResponse>('/characters'),
+  })
+
+  const characters = charResp?.characters ?? []
+
+  // Group characters by game_name
+  const byGame = characters.reduce<Record<string, PlayerCharacter[]>>((acc, c) => {
+    const key = c.game_name || 'Jeu inconnu'
+    if (!acc[key]) acc[key] = []
+    acc[key].push(c)
+    return acc
+  }, {})
+
+  return (
+    <div className="space-y-10">
+      {/* Enrolled campaigns */}
+      <section>
+        <h2 className="text-lg font-semibold mb-4">Mes campagnes</h2>
+        {memberCampaigns.length === 0 ? (
+          <p className="text-muted-foreground text-sm">Vous n'êtes inscrit à aucune campagne.</p>
+        ) : (
+          <ul className="space-y-2">
+            {memberCampaigns.map(c => (
+              <li
+                key={c.id}
+                className="flex items-center justify-between p-4 rounded-lg border bg-card"
+              >
+                <div>
+                  <p className="font-medium">{c.name}</p>
+                  {c.game_name && (
+                    <p className="text-sm text-muted-foreground">{c.game_name}</p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Characters by game */}
+      <section>
+        <h2 className="text-lg font-semibold mb-4">Mes personnages</h2>
+        {characters.length === 0 ? (
+          <p className="text-muted-foreground text-sm">Aucun personnage pour l'instant.</p>
+        ) : (
+          <div className="space-y-6">
+            {Object.entries(byGame).map(([gameName, chars]) => (
+              <div key={gameName}>
+                <p className="text-sm font-medium text-muted-foreground mb-2">{gameName}</p>
+                <ul className="space-y-2">
+                  {chars.map(c => (
+                    <li key={c.id} className="p-4 rounded-lg border bg-card">
+                      <p className="font-medium">{c.name || <span className="italic text-muted-foreground">(sans nom)</span>}</p>
+                      {c.description && (
+                        <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{c.description}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export default function CampaignsPage() {
+  useDocTitle('lore')
+  const user = useUser()
+
+  const { data: campaigns = [], isLoading, error } = useQuery({
+    queryKey: ['campaigns'],
+    queryFn: () => api.get<Campaign[]>('/campaigns'),
+  })
+
+  const owned = campaigns.filter(c => c.access === 'owner' || !c.access)
+  const memberOnly = campaigns.filter(c => c.access === 'member')
+
+  // A user is in "player mode" if they have no owned campaigns
+  const isPlayerOnly = !isLoading && owned.length === 0
+
+  return (
+    <AppShell>
+      <main className="px-6 py-8 max-w-4xl">
+        {isLoading && <p className="text-muted-foreground text-sm">Chargement…</p>}
+
+        {error && (
+          <p className="text-destructive text-sm">Erreur : {error.message}</p>
+        )}
+
+        {!isLoading && !error && (
+          isPlayerOnly
+            ? <PlayerView memberCampaigns={memberOnly} />
+            : (
+              <>
+                <GMView campaigns={owned} />
+                {memberOnly.length > 0 && (
+                  <section className="mt-10 pt-8 border-t">
+                    <h2 className="text-base font-semibold mb-4 text-muted-foreground">Campagnes en tant que joueur</h2>
+                    <ul className="space-y-2">
+                      {memberOnly.map(c => (
+                        <li key={c.id} className="flex items-center p-4 rounded-lg border bg-card">
+                          <div>
+                            <p className="font-medium">{c.name}</p>
+                            {c.game_name && <p className="text-sm text-muted-foreground">{c.game_name}</p>}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+              </>
+            )
+        )}
+      </main>
+    </AppShell>
+  )
+}
