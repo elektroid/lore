@@ -117,7 +117,11 @@ func (h *ImageLLMHandler) GenerateArtefactImages(w http.ResponseWriter, r *http.
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 
-	candidates := h.spawnImages(ctx, agentID, "artefacts", artefactID, pendingDir, prompt, mistralCfg.APIKey, mistralCfg.ImageCount)
+	candidates, err := h.spawnImages(ctx, agentID, "artefacts", artefactID, pendingDir, prompt, mistralCfg.APIKey, mistralCfg.ImageCount)
+	if err != nil {
+		writeError(w, http.StatusTooManyRequests, err.Error())
+		return
+	}
 	if candidates == nil {
 		candidates = []PendingImage{}
 	}

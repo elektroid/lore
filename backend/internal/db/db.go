@@ -48,6 +48,8 @@ func MigrateAlters(database *sql.DB) {
 		`ALTER TABLE campaigns ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE games ADD COLUMN visual_style TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE games ADD COLUMN mistral_agent_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE synopsis_scenes ADD COLUMN playlist_type TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE synopsis_scenes ADD COLUMN playlist_value TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, stmt := range alters {
 		database.Exec(stmt) //nolint:errcheck — duplicate column error is expected on re-run

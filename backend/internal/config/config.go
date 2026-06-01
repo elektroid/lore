@@ -38,8 +38,9 @@ type LLMConfig struct {
 }
 
 type ServerConfig struct {
-	Host string `toml:"host"`
-	Port int    `toml:"port"`
+	Host          string `toml:"host"`
+	Port          int    `toml:"port"`
+	SecureCookies bool   `toml:"secure_cookies"`
 }
 
 type DatabaseConfig struct {

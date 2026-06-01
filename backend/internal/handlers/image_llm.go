@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -17,6 +18,9 @@ import (
 
 	db "lore/internal/db"
 )
+
+// ErrRateLimit is returned when Mistral rejects a request with HTTP 429.
+var ErrRateLimit = errors.New("image generation rate limit reached, please try again later")
 
 type ImageLLMHandler struct {
 	db         *sql.DB
@@ -96,7 +100,7 @@ func (h *ImageLLMHandler) ensureGameAgent(ctx context.Context, game *db.Game, ap
 	return resp.ID, nil
 }
 
-func (h *ImageLLMHandler) spawnImages(ctx context.Context, agentID, entityType, entityID, pendingDir, prompt, apiKey string, count int) []PendingImage {
+func (h *ImageLLMHandler) spawnImages(ctx context.Context, agentID, entityType, entityID, pendingDir, prompt, apiKey string, count int) ([]PendingImage, error) {
 	type genResult struct {
 		img *PendingImage
 		err error
@@ -111,17 +115,24 @@ func (h *ImageLLMHandler) spawnImages(ctx context.Context, agentID, entityType, 
 	}
 
 	var candidates []PendingImage
+	var rateLimited int
 	for i := 0; i < count; i++ {
 		res := <-ch
 		if res.err != nil {
 			log.Printf("%s image gen error: %v", entityType, res.err)
+			if errors.Is(res.err, ErrRateLimit) {
+				rateLimited++
+			}
 			continue
 		}
 		if res.img != nil {
 			candidates = append(candidates, *res.img)
 		}
 	}
-	return candidates
+	if len(candidates) == 0 && rateLimited > 0 {
+		return nil, ErrRateLimit
+	}
+	return candidates, nil
 }
 
 func (h *ImageLLMHandler) generateOne(ctx context.Context, agentID, entityType, entityID, pendingDir, prompt, apiKey string) (*PendingImage, error) {
@@ -181,6 +192,9 @@ func (h *ImageLLMHandler) mistralDo(ctx context.Context, method, path string, bo
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, fmt.Errorf("%w", ErrRateLimit)
 	}
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, data)

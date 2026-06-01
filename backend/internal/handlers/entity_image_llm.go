@@ -60,7 +60,11 @@ func (h *ImageLLMHandler) GenerateNPCImages(w http.ResponseWriter, r *http.Reque
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 
-	candidates := h.spawnImages(ctx, agentID, "npcs", npcID, pendingDir, prompt, mistralCfg.APIKey, mistralCfg.ImageCount)
+	candidates, err := h.spawnImages(ctx, agentID, "npcs", npcID, pendingDir, prompt, mistralCfg.APIKey, mistralCfg.ImageCount)
+	if err != nil {
+		writeError(w, http.StatusTooManyRequests, err.Error())
+		return
+	}
 	if candidates == nil {
 		candidates = []PendingImage{}
 	}
@@ -166,7 +170,11 @@ func (h *ImageLLMHandler) GenerateLocationImages(w http.ResponseWriter, r *http.
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 
-	candidates := h.spawnImages(ctx, agentID, "locations", locationID, pendingDir, prompt, mistralCfg.APIKey, mistralCfg.ImageCount)
+	candidates, err := h.spawnImages(ctx, agentID, "locations", locationID, pendingDir, prompt, mistralCfg.APIKey, mistralCfg.ImageCount)
+	if err != nil {
+		writeError(w, http.StatusTooManyRequests, err.Error())
+		return
+	}
 	if candidates == nil {
 		candidates = []PendingImage{}
 	}
@@ -272,7 +280,11 @@ func (h *ImageLLMHandler) GenerateFactionImages(w http.ResponseWriter, r *http.R
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 
-	candidates := h.spawnImages(ctx, agentID, "factions", factionID, pendingDir, prompt, mistralCfg.APIKey, mistralCfg.ImageCount)
+	candidates, err := h.spawnImages(ctx, agentID, "factions", factionID, pendingDir, prompt, mistralCfg.APIKey, mistralCfg.ImageCount)
+	if err != nil {
+		writeError(w, http.StatusTooManyRequests, err.Error())
+		return
+	}
 	if candidates == nil {
 		candidates = []PendingImage{}
 	}

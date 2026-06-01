@@ -102,8 +102,10 @@ CREATE TABLE IF NOT EXISTS synopsis_scenes (
     title       TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
     outcome     TEXT NOT NULL DEFAULT '',
-    location_id TEXT REFERENCES campaign_locations(id) ON DELETE SET NULL,
-    played      INTEGER NOT NULL DEFAULT 0,
+    location_id    TEXT REFERENCES campaign_locations(id) ON DELETE SET NULL,
+    played         INTEGER NOT NULL DEFAULT 0,
+    playlist_type  TEXT NOT NULL DEFAULT '',
+    playlist_value TEXT NOT NULL DEFAULT '',
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );

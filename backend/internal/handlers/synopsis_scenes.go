@@ -53,15 +53,17 @@ func (h *SynopsisHandler) UpdateScene(w http.ResponseWriter, r *http.Request) {
 	scenarioID := chi.URLParam(r, "id")
 	sceneID := chi.URLParam(r, "sceneId")
 	var body struct {
-		Title       string `json:"title"`
-		Status      string `json:"status"`
-		Description string `json:"description"`
-		Outcome     string `json:"outcome"`
-		Notes       string `json:"notes"`
-		LocationID  string `json:"location_id"`
-		Played      bool   `json:"played"`
-		IsStart     bool   `json:"is_start"`
-		IsEnd       bool   `json:"is_end"`
+		Title         string `json:"title"`
+		Status        string `json:"status"`
+		Description   string `json:"description"`
+		Outcome       string `json:"outcome"`
+		Notes         string `json:"notes"`
+		LocationID    string `json:"location_id"`
+		Played        bool   `json:"played"`
+		IsStart       bool   `json:"is_start"`
+		IsEnd         bool   `json:"is_end"`
+		PlaylistType  string `json:"playlist_type"`
+		PlaylistValue string `json:"playlist_value"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "corps invalide")
@@ -74,15 +76,17 @@ func (h *SynopsisHandler) UpdateScene(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	scene, err := db.UpdateScene(r.Context(), h.db, sceneID, db.UpdateSceneParams{
-		Title:       body.Title,
-		Status:      body.Status,
-		Description: body.Description,
-		Outcome:     body.Outcome,
-		Notes:       body.Notes,
-		LocationID:  body.LocationID,
-		Played:      body.Played,
-		IsStart:     body.IsStart,
-		IsEnd:       body.IsEnd,
+		Title:         body.Title,
+		Status:        body.Status,
+		Description:   body.Description,
+		Outcome:       body.Outcome,
+		Notes:         body.Notes,
+		LocationID:    body.LocationID,
+		Played:        body.Played,
+		IsStart:       body.IsStart,
+		IsEnd:         body.IsEnd,
+		PlaylistType:  body.PlaylistType,
+		PlaylistValue: body.PlaylistValue,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

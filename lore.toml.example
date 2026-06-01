@@ -1,6 +1,8 @@
 [server]
+# "localhost" = loopback uniquement ; "0.0.0.0" = toutes les interfaces réseau
 host = "localhost"
 port = 8080
+# secure_cookies = true  # mettre à true en production (HTTPS)
 
 [database]
 path = "lore.db"

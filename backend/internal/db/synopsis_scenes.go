@@ -17,11 +17,13 @@ type Scene struct {
 	Description  string     `json:"description"`
 	Outcome      string     `json:"outcome"`
 	Notes        string     `json:"notes"`
-	LocationID   string     `json:"location_id"`
-	LocationName string     `json:"location_name"`
-	Played       bool       `json:"played"`
-	IsStart      bool       `json:"is_start"`
-	IsEnd        bool       `json:"is_end"`
+	LocationID    string `json:"location_id"`
+	LocationName  string `json:"location_name"`
+	Played        bool   `json:"played"`
+	IsStart       bool   `json:"is_start"`
+	IsEnd         bool   `json:"is_end"`
+	PlaylistType  string `json:"playlist_type"`
+	PlaylistValue string `json:"playlist_value"`
 	NPCs         []SceneNPC      `json:"npcs"`
 	Artefacts    []SceneArtefact `json:"artefacts"`
 	CreatedAt    string          `json:"created_at"`
@@ -40,7 +42,8 @@ type SceneNPC struct {
 
 const sceneCols = `
 	s.id, s.scenario_id, s.type, s.status, s.sort_order, s.title, s.description, s.outcome, s.notes,
-	COALESCE(s.location_id,''), COALESCE(cl.name,''), s.played, s.is_start, s.is_end, s.created_at, s.updated_at`
+	COALESCE(s.location_id,''), COALESCE(cl.name,''), s.played, s.is_start, s.is_end,
+	COALESCE(s.playlist_type,''), COALESCE(s.playlist_value,''), s.created_at, s.updated_at`
 
 const sceneJoin = `
 	FROM synopsis_scenes s
@@ -50,7 +53,8 @@ func scanScene(row interface{ Scan(...any) error }) (*Scene, error) {
 	var s Scene
 	var played, isStart, isEnd int
 	err := row.Scan(&s.ID, &s.ScenarioID, &s.Type, &s.Status, &s.SortOrder, &s.Title, &s.Description, &s.Outcome, &s.Notes,
-		&s.LocationID, &s.LocationName, &played, &isStart, &isEnd, &s.CreatedAt, &s.UpdatedAt)
+		&s.LocationID, &s.LocationName, &played, &isStart, &isEnd,
+		&s.PlaylistType, &s.PlaylistValue, &s.CreatedAt, &s.UpdatedAt)
 	s.Played = played == 1
 	s.IsStart = isStart == 1
 	s.IsEnd = isEnd == 1
@@ -146,15 +150,17 @@ func CreateScene(ctx context.Context, database *sql.DB, p CreateSceneParams) (*S
 }
 
 type UpdateSceneParams struct {
-	Title       string
-	Status      string
-	Description string
-	Outcome     string
-	Notes       string
-	LocationID  string
-	Played      bool
-	IsStart     bool
-	IsEnd       bool
+	Title         string
+	Status        string
+	Description   string
+	Outcome       string
+	Notes         string
+	LocationID    string
+	Played        bool
+	IsStart       bool
+	IsEnd         bool
+	PlaylistType  string
+	PlaylistValue string
 }
 
 func UpdateScene(ctx context.Context, database *sql.DB, id string, p UpdateSceneParams) (*Scene, error) {
@@ -171,9 +177,11 @@ func UpdateScene(ctx context.Context, database *sql.DB, id string, p UpdateScene
 	}
 	_, err := database.ExecContext(ctx,
 		`UPDATE synopsis_scenes
-		 SET title=?,status=?,description=?,outcome=?,notes=?,location_id=?,played=?,is_start=?,is_end=?,updated_at=CURRENT_TIMESTAMP
+		 SET title=?,status=?,description=?,outcome=?,notes=?,location_id=?,played=?,is_start=?,is_end=?,
+		     playlist_type=?,playlist_value=?,updated_at=CURRENT_TIMESTAMP
 		 WHERE id=?`,
-		p.Title, p.Status, p.Description, p.Outcome, p.Notes, locID, played, isStart, isEnd, id)
+		p.Title, p.Status, p.Description, p.Outcome, p.Notes, locID, played, isStart, isEnd,
+		p.PlaylistType, p.PlaylistValue, id)
 	if err != nil {
 		return nil, err
 	}

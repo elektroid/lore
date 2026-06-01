@@ -16,9 +16,10 @@ import (
 
 // AuthHandler handles authentication-related endpoints
 type AuthHandler struct {
-	 db           *sql.DB
-	 tokenService *auth.TokenService
-	 cfg          *config.Config
+	db            *sql.DB
+	tokenService  *auth.TokenService
+	cfg           *config.Config
+	secureCookies bool
 }
 
 // Register request/response types
@@ -93,9 +94,10 @@ func writeErrorResponse(w http.ResponseWriter, status int, code, message string)
 // NewAuthHandler creates a new AuthHandler
 func NewAuthHandler(database *sql.DB, tokenService *auth.TokenService, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{
-		db:           database,
-		tokenService: tokenService,
-		cfg:          cfg,
+		db:            database,
+		tokenService:  tokenService,
+		cfg:           cfg,
+		secureCookies: cfg.Server.SecureCookies,
 	}
 }
 
@@ -484,25 +486,22 @@ func (h *AuthHandler) Bootstrap(w http.ResponseWriter, r *http.Request) {
 // Helper functions
 
 func (h *AuthHandler) setAuthCookies(w http.ResponseWriter, accessToken, refreshToken string) {
-	// Access token cookie (24h)
 	http.SetCookie(w, &http.Cookie{
 		Name:     "lore_access",
 		Value:    accessToken,
 		Path:     "/",
 		Expires:  time.Now().Add(h.tokenService.AccessExpiry()),
 		HttpOnly: true,
-		Secure:   true, // Set to false for local dev without HTTPS
+		Secure:   h.secureCookies,
 		SameSite: http.SameSiteStrictMode,
 	})
-
-	// Refresh token cookie (7 days)
 	http.SetCookie(w, &http.Cookie{
 		Name:     "lore_refresh",
 		Value:    refreshToken,
 		Path:     "/",
 		Expires:  time.Now().Add(h.tokenService.RefreshExpiry()),
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   h.secureCookies,
 		SameSite: http.SameSiteStrictMode,
 	})
 }
@@ -513,8 +512,8 @@ func (h *AuthHandler) setCSRFCookie(w http.ResponseWriter, csrfToken string) {
 		Value:    csrfToken,
 		Path:     "/",
 		Expires:  time.Now().Add(24 * time.Hour),
-		HttpOnly: false, // Needs to be readable by JavaScript
-		Secure:   true,
+		HttpOnly: false, // must be JS-readable for CSRF double-submit pattern
+		Secure:   h.secureCookies,
 		SameSite: http.SameSiteStrictMode,
 	})
 }
@@ -526,7 +525,7 @@ func (h *AuthHandler) clearCookie(w http.ResponseWriter, name string) {
 		Path:     "/",
 		Expires:  time.Unix(0, 0),
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   h.secureCookies,
 		SameSite: http.SameSiteStrictMode,
 	})
 }

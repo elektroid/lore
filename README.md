@@ -25,7 +25,7 @@ Le MJ reste auteur — le LLM est un sparring partner rapide. L'IA complète, en
 ## Prérequis
 
 - Go 1.22+
-- Node.js 22+
+- Node.js 22+ (voir `frontend/.nvmrc` — `nvm use` ou `fnm use` dans le dossier `frontend/`)
 - [`air`](https://github.com/air-verse/air) pour le hot-reload Go
 - [`sqlc`](https://sqlc.dev) pour regénérer les requêtes SQL typées
 
@@ -36,10 +36,13 @@ make install-tools
 ## Démarrage rapide
 
 ```bash
-# 1. Copier et adapter la configuration
+# 1. Installer les outils Go (air, sqlc) — à faire une seule fois
+make install-tools
+
+# 2. Copier et adapter la configuration
 cp lore.toml.example lore.toml
 
-# 2. Lancer les deux serveurs en dev
+# 3. Lancer les deux serveurs en dev
 make dev-backend   # Terminal 1 — backend Go sur :8080
 make dev-frontend  # Terminal 2 — frontend Vite sur :5173
 ```
