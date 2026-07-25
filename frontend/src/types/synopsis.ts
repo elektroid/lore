@@ -107,9 +107,10 @@ function tryParse(json: string): unknown {
 }
 
 export function parseSynopsis(s: Synopsis): SynopsisData {
-  const hook = tryParse(s.hook)
+  const parsed = tryParse(s.hook)
+  const hook = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed as Partial<HookData> : {}
   return {
-    hook: (hook && typeof hook === 'object' && !Array.isArray(hook)) ? hook as HookData : defaultHook,
+    hook: { content: hook.content ?? defaultHook.content, status: hook.status ?? defaultHook.status },
   }
 }
 

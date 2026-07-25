@@ -26,6 +26,34 @@ interface MistralConfig {
 const defaultLLM: LLMConfig = { base_url: '', api_key: '', model: '', max_tokens: 2000 }
 const defaultMistral: MistralConfig = { api_key: '', image_count: 3 }
 
+// Masked placeholder returned by the API in place of a stored key (see backend crypto.MaskedKey).
+const MASKED_KEY = '••••••••'
+// Sentinel telling the backend to reuse the already-saved Mistral (image) key (see backend mistralKeySentinel).
+const MISTRAL_KEY_SENTINEL = '__use_mistral_key__'
+
+const MISTRAL_BASE_URL = 'https://api.mistral.ai/v1'
+// Generous enough for synopsis/NPC/artefact generation without running into the 8000 cap.
+const MISTRAL_DEFAULT_MAX_TOKENS = 4096
+
+const MISTRAL_MODELS = [
+  { value: 'mistral-large-latest', label: 'Mistral Large — le plus capable' },
+  { value: 'mistral-medium-latest', label: 'Mistral Medium — équilibré' },
+  { value: 'mistral-small-latest', label: 'Mistral Small — rapide et économique' },
+]
+
+function MistralLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <rect x="2" y="2" width="20" height="4.4" fill="#FFD800" />
+      <rect x="2" y="7.2" width="10" height="4.4" fill="#FFAF00" />
+      <rect x="14.6" y="7.2" width="7.4" height="4.4" fill="#FF8205" />
+      <rect x="2" y="12.4" width="20" height="4.4" fill="#FA500F" />
+      <rect x="2" y="17.6" width="7.4" height="4.4" fill="#E10500" />
+      <rect x="14.6" y="17.6" width="7.4" height="4.4" fill="#E10500" />
+    </svg>
+  )
+}
+
 // ── Games section ─────────────────────────────────────────────────────────────
 
 function slugify(s: string) {
@@ -355,6 +383,21 @@ export default function SettingsPage() {
     }
   }
 
+  const isMistral = llm.base_url.trim() === MISTRAL_BASE_URL
+  const hasMistralKey = mistral.api_key.trim() !== ''
+  const usingSharedMistralKey = llm.api_key === MISTRAL_KEY_SENTINEL
+
+  function useMistral() {
+    setLlmSaved(false)
+    setLlm(c => ({
+      ...c,
+      base_url: MISTRAL_BASE_URL,
+      model: MISTRAL_MODELS.some(m => m.value === c.model) ? c.model : MISTRAL_MODELS[0].value,
+      api_key: !hasMistralKey ? c.api_key : mistral.api_key === MASKED_KEY ? MISTRAL_KEY_SENTINEL : mistral.api_key,
+      max_tokens: c.max_tokens >= 100 ? c.max_tokens : MISTRAL_DEFAULT_MAX_TOKENS,
+    }))
+  }
+
   return (
     <AppShell crumbs={[{ label: 'Paramètres' }]}>
       <main className="max-w-xl mx-auto px-6 py-8 space-y-10">
@@ -374,6 +417,19 @@ export default function SettingsPage() {
               <p className="text-sm text-muted-foreground">Chargement…</p>
             ) : (
               <div className="space-y-4">
+                <button
+                  type="button"
+                  onClick={useMistral}
+                  className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent transition-colors"
+                  title="Pré-remplir avec l'API Mistral"
+                >
+                  <MistralLogo className="h-5 w-5 rounded-sm shrink-0" />
+                  Utiliser Mistral
+                  {hasMistralKey && (
+                    <span className="text-xs text-muted-foreground">(clé des images réutilisée)</span>
+                  )}
+                </button>
+
                 <div className="space-y-2">
                   <Label htmlFor="base_url">Base URL</Label>
                   <Input
@@ -392,16 +448,37 @@ export default function SettingsPage() {
                     value={llm.api_key}
                     onChange={llmField('api_key')}
                   />
+                  {usingSharedMistralKey && (
+                    <p className="text-xs text-muted-foreground">
+                      Réutilise la clé API Mistral de la section « Configuration Mistral » ci-dessous.
+                    </p>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="model">Modèle</Label>
-                    <Input
-                      id="model"
-                      placeholder="claude-opus-4-20250514"
-                      value={llm.model}
-                      onChange={llmField('model')}
-                    />
+                    {isMistral ? (
+                      <select
+                        id="model"
+                        value={llm.model}
+                        onChange={e => { setLlmSaved(false); setLlm(c => ({ ...c, model: e.target.value })) }}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        {!MISTRAL_MODELS.some(m => m.value === llm.model) && llm.model && (
+                          <option value={llm.model}>{llm.model}</option>
+                        )}
+                        {MISTRAL_MODELS.map(m => (
+                          <option key={m.value} value={m.value}>{m.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Input
+                        id="model"
+                        placeholder="claude-opus-4-20250514"
+                        value={llm.model}
+                        onChange={llmField('model')}
+                      />
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="max_tokens">Max tokens</Label>

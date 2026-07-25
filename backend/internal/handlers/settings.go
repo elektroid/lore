@@ -15,6 +15,11 @@ type SettingsHandler struct {
 	encKey string
 }
 
+// mistralKeySentinel lets the frontend ask the LLM config to reuse the
+// already-configured Mistral (image generation) API key, without ever
+// having to see its plaintext value.
+const mistralKeySentinel = "__use_mistral_key__"
+
 func (h *SettingsHandler) GetLLM(w http.ResponseWriter, r *http.Request) {
 	raw, err := db.GetSetting(r.Context(), h.db, "llm_config")
 	if err != nil {
@@ -42,7 +47,23 @@ func (h *SettingsHandler) PutLLM(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "corps de requête invalide")
 		return
 	}
-	if crypto.IsMasked(cfg.APIKey) {
+	if cfg.APIKey == mistralKeySentinel {
+		mistralCfg, err := loadMistralConfig(r.Context(), h.db, h.encKey)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if mistralCfg.APIKey == "" {
+			writeError(w, http.StatusBadRequest, "aucune clé Mistral enregistrée à réutiliser")
+			return
+		}
+		enc, err := crypto.Encrypt(h.encKey, mistralCfg.APIKey)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "échec du chiffrement")
+			return
+		}
+		cfg.APIKey = enc
+	} else if crypto.IsMasked(cfg.APIKey) {
 		// Keep the existing encrypted value.
 		raw, _ := db.GetSetting(r.Context(), h.db, "llm_config")
 		var existing llm.Config
