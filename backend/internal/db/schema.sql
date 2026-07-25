@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS games (
     id                TEXT PRIMARY KEY,
     name              TEXT NOT NULL,
     slug              TEXT NOT NULL UNIQUE,
+    genre             TEXT NOT NULL DEFAULT '',
     visual_style      TEXT NOT NULL DEFAULT '',
     mistral_agent_id  TEXT NOT NULL DEFAULT '',
     created_at        DATETIME DEFAULT CURRENT_TIMESTAMP

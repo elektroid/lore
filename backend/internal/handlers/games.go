@@ -42,8 +42,9 @@ func (h *GameHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 type gameBody struct {
-	Name string `json:"name"`
-	Slug string `json:"slug"`
+	Name  string `json:"name"`
+	Slug  string `json:"slug"`
+	Genre string `json:"genre"`
 }
 
 func (h *GameHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +57,7 @@ func (h *GameHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name and slug are required")
 		return
 	}
-	game, err := db.CreateGame(r.Context(), h.db, body.Name, body.Slug)
+	game, err := db.CreateGame(r.Context(), h.db, body.Name, body.Slug, body.Genre)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -75,7 +76,7 @@ func (h *GameHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name and slug are required")
 		return
 	}
-	game, err := db.UpdateGame(r.Context(), h.db, id, body.Name, body.Slug)
+	game, err := db.UpdateGame(r.Context(), h.db, id, body.Name, body.Slug, body.Genre)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

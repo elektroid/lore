@@ -32,6 +32,7 @@ function GMView({ campaigns }: { campaigns: Campaign[] }) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<CampaignForm>(emptyForm)
+  const [genreTouched, setGenreTouched] = useState(false)
 
   const { data: games = [] } = useQuery({
     queryKey: ['games'],
@@ -44,6 +45,7 @@ function GMView({ campaigns }: { campaigns: Campaign[] }) {
       queryClient.invalidateQueries({ queryKey: ['campaigns'] })
       setOpen(false)
       setForm(emptyForm)
+      setGenreTouched(false)
       navigate(`/campaigns/${campaign.id}`)
     },
   })
@@ -51,6 +53,21 @@ function GMView({ campaigns }: { campaigns: Campaign[] }) {
   function field(key: keyof CampaignForm) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm(f => ({ ...f, [key]: e.target.value }))
+  }
+
+  function handleGenreChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setGenreTouched(true)
+    setForm(f => ({ ...f, genre: e.target.value }))
+  }
+
+  function handleGameChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const gameId = e.target.value
+    const game = games.find(g => g.id === gameId)
+    setForm(f => ({
+      ...f,
+      game_id: gameId,
+      genre: !genreTouched && game ? game.genre : f.genre,
+    }))
   }
 
   return (
@@ -106,23 +123,14 @@ function GMView({ campaigns }: { campaigns: Campaign[] }) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="genre">Genre</Label>
-              <Input
-                id="genre"
-                placeholder="Ex : cyberpunk, fantasy, horreur…"
-                value={form.genre}
-                onChange={field('genre')}
-              />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="game_id">Jeu</Label>
               <select
                 id="game_id"
                 value={form.game_id}
-                onChange={field('game_id')}
+                onChange={handleGameChange}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               >
-                <option value="">— Aucun jeu —</option>
+                <option value="">— Aucun jeu / autre —</option>
                 {games.map(g => (
                   <option key={g.id} value={g.id}>{g.name}</option>
                 ))}
@@ -130,6 +138,18 @@ function GMView({ campaigns }: { campaigns: Campaign[] }) {
               {games.length === 0 && (
                 <p className="text-xs text-muted-foreground">Configurez vos jeux dans les Paramètres.</p>
               )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="genre">Genre</Label>
+              <Input
+                id="genre"
+                placeholder="Ex : cyberpunk, fantasy, horreur…"
+                value={form.genre}
+                onChange={handleGenreChange}
+              />
+              <p className="text-xs text-muted-foreground">
+                Rempli automatiquement d'après le jeu choisi — modifiez-le si l'histoire s'en écarte.
+              </p>
             </div>
             {create.error && (
               <p className="text-destructive text-sm">{create.error.message}</p>
@@ -234,8 +254,7 @@ export default function CampaignsPage() {
   const owned = campaigns.filter(c => c.access === 'owner' || !c.access)
   const memberOnly = campaigns.filter(c => c.access === 'member')
 
-  // A user is in "player mode" if they have no owned campaigns
-  const isPlayerOnly = !isLoading && owned.length === 0
+  const isPlayerOnly = user?.role === 'player'
 
   return (
     <AppShell>

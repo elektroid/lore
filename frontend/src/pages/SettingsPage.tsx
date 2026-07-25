@@ -99,26 +99,29 @@ function GamesSection() {
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
   const [newSlug, setNewSlug] = useState('')
+  const [newGenre, setNewGenre] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editSlug, setEditSlug] = useState('')
+  const [editGenre, setEditGenre] = useState('')
   const [editVisualStyle, setEditVisualStyle] = useState('')
   const [origVisualStyle, setOrigVisualStyle] = useState('')
   const [docsGame, setDocsGame] = useState<Game | null>(null)
 
   const createGame = useMutation({
-    mutationFn: (data: { name: string; slug: string }) => api.post<Game>('/games', data),
+    mutationFn: (data: { name: string; slug: string; genre: string }) => api.post<Game>('/games', data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['games'] })
       setAdding(false)
       setNewName('')
       setNewSlug('')
+      setNewGenre('')
     },
   })
 
   const updateGame = useMutation({
-    mutationFn: async ({ id, name, slug }: { id: string; name: string; slug: string }) => {
-      await api.put<Game>(`/games/${id}`, { name, slug })
+    mutationFn: async ({ id, name, slug, genre }: { id: string; name: string; slug: string; genre: string }) => {
+      await api.put<Game>(`/games/${id}`, { name, slug, genre })
       if (editVisualStyle !== origVisualStyle) {
         return api.put<Game>(`/games/${id}/visual-style`, { visual_style: editVisualStyle })
       }
@@ -181,7 +184,7 @@ function GamesSection() {
                     size="sm"
                     className="h-8 px-2 text-xs"
                     disabled={!editName.trim() || !editSlug.trim() || updateGame.isPending}
-                    onClick={() => updateGame.mutate({ id: g.id, name: editName.trim(), slug: editSlug.trim() })}
+                    onClick={() => updateGame.mutate({ id: g.id, name: editName.trim(), slug: editSlug.trim(), genre: editGenre.trim() })}
                   >
                     OK
                   </Button>
@@ -189,6 +192,12 @@ function GamesSection() {
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
+                <Input
+                  value={editGenre}
+                  onChange={e => setEditGenre(e.target.value)}
+                  className="h-8 text-xs"
+                  placeholder="Genre (ex : cyberpunk, fantasy, horreur…)"
+                />
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-muted-foreground">Style visuel</p>
@@ -216,6 +225,7 @@ function GamesSection() {
             ) : (
               <div className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/40 group">
                 <span className="flex-1 text-sm">{g.name}</span>
+                {g.genre && <span className="text-xs text-muted-foreground">{g.genre}</span>}
                 <span className="text-xs text-muted-foreground font-mono">{g.slug}</span>
                 <button
                   onClick={() => setDocsGame(g)}
@@ -225,7 +235,7 @@ function GamesSection() {
                   <FolderOpen className="h-3.5 w-3.5" />
                 </button>
                 <button
-                  onClick={() => { setEditingId(g.id); setEditName(g.name); setEditSlug(g.slug); setEditVisualStyle(g.visual_style ?? ''); setOrigVisualStyle(g.visual_style ?? '') }}
+                  onClick={() => { setEditingId(g.id); setEditName(g.name); setEditSlug(g.slug); setEditGenre(g.genre ?? ''); setEditVisualStyle(g.visual_style ?? ''); setOrigVisualStyle(g.visual_style ?? '') }}
                   className="opacity-0 group-hover:opacity-100 text-muted-foreground/60 hover:text-muted-foreground transition-opacity"
                 >
                   <Pencil className="h-3.5 w-3.5" />
@@ -243,34 +253,42 @@ function GamesSection() {
       </ul>
 
       {adding && (
-        <div className="flex items-center gap-2">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Input
+              value={newName}
+              onChange={e => { setNewName(e.target.value); setNewSlug(slugify(e.target.value)) }}
+              className="h-8 text-xs"
+              placeholder="Nom (ex: Cyberpunk Red)"
+              autoFocus
+            />
+            <Input
+              value={newSlug}
+              onChange={e => setNewSlug(e.target.value)}
+              className="h-8 text-xs font-mono"
+              placeholder="slug"
+            />
+            <Button
+              size="sm"
+              className="h-8 px-2 text-xs"
+              disabled={!newName.trim() || !newSlug.trim() || createGame.isPending}
+              onClick={() => createGame.mutate({ name: newName.trim(), slug: newSlug.trim(), genre: newGenre.trim() })}
+            >
+              Ajouter
+            </Button>
+            <button
+              onClick={() => { setAdding(false); setNewName(''); setNewSlug(''); setNewGenre('') }}
+              className="text-muted-foreground/50 hover:text-muted-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <Input
-            value={newName}
-            onChange={e => { setNewName(e.target.value); setNewSlug(slugify(e.target.value)) }}
+            value={newGenre}
+            onChange={e => setNewGenre(e.target.value)}
             className="h-8 text-xs"
-            placeholder="Nom (ex: Cyberpunk Red)"
-            autoFocus
+            placeholder="Genre (ex : cyberpunk, fantasy, horreur…)"
           />
-          <Input
-            value={newSlug}
-            onChange={e => setNewSlug(e.target.value)}
-            className="h-8 text-xs font-mono"
-            placeholder="slug"
-          />
-          <Button
-            size="sm"
-            className="h-8 px-2 text-xs"
-            disabled={!newName.trim() || !newSlug.trim() || createGame.isPending}
-            onClick={() => createGame.mutate({ name: newName.trim(), slug: newSlug.trim() })}
-          >
-            Ajouter
-          </Button>
-          <button
-            onClick={() => { setAdding(false); setNewName(''); setNewSlug('') }}
-            className="text-muted-foreground/50 hover:text-muted-foreground"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
         </div>
       )}
     </div>

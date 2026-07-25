@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
-	"strings"
 
 	"lore/internal/db"
 )
@@ -36,12 +35,9 @@ type CSRFContext struct {
 
 // isPublicEndpoint checks if the request path is for a public endpoint
 func isPublicEndpoint(path string) bool {
-	// Auth endpoints are public
-	if strings.HasPrefix(path, "/api/auth") {
-		return true
-	}
-	// GET /api/games is public
-	if path == "/api/games" || strings.HasPrefix(path, "/api/games/") {
+	switch path {
+	case "/api/auth/register", "/api/auth/login", "/api/auth/logout",
+		"/api/auth/refresh", "/api/auth/csrf", "/api/auth/bootstrap":
 		return true
 	}
 	return false
