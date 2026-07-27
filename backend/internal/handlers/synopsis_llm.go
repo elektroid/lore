@@ -301,7 +301,16 @@ func (h *SynopsisHandler) DevelopNPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	npcJSON, _ := json.Marshal(target)
+	devReq := decodeDevelopRequest(r)
+	current := map[string]string{
+		"name":        target.Name,
+		"role":        target.Role,
+		"description": target.Description,
+		"quote":       target.Quote,
+	}
+	applyCurrentOverrides(current, devReq.Current, "name", "role", "description", "quote", "motivation")
+
+	npcJSON, _ := json.Marshal(current)
 	prompt := fmt.Sprintf(
 		"Voici le synopsis d'un scénario JdR :\n%s\n\n"+
 			"Développe ce PNJ. Toutes les valeurs sont des chaînes simples (pas d'objets, pas de listes).\n"+
@@ -309,6 +318,7 @@ func (h *SynopsisHandler) DevelopNPC(w http.ResponseWriter, r *http.Request) {
 			"- description : 2 phrases (physique marquant + psychologie) (30 mots max)\n"+
 			"- motivation : une phrase courte sur ce qui le fait agir (15 mots max)\n"+
 			"- quote : réplique type mémorable (15 mots max)\n"+
+			"Si un champ a déjà une valeur, prolonge et affine l'idée plutôt que de la remplacer par une idée sans rapport.\n"+
 			"PNJ à développer :\n%s\n\n"+
 			"Réponds UNIQUEMENT avec ce JSON : {\"role\":\"...\",\"description\":\"...\",\"motivation\":\"...\",\"quote\":\"...\"}",
 		marshalCtx(sc), string(npcJSON))
@@ -316,6 +326,7 @@ func (h *SynopsisHandler) DevelopNPC(w http.ResponseWriter, r *http.Request) {
 	cfg, _ := loadLLMConfig(r.Context(), h.db, h.encKey)
 	cfg.MaxTokens = 300
 	client := llm.NewClient(cfg)
+	sysPrompt += steeringSuffix(devReq)
 
 	type npcResult struct {
 		Role        string `json:"role"`
@@ -422,13 +433,17 @@ func (h *SynopsisHandler) DevelopScene(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sceneJSON, _ := json.Marshal(map[string]string{
+	devReq := decodeDevelopRequest(r)
+	current := map[string]string{
 		"title":       scene.Title,
 		"description": scene.Description,
 		"outcome":     scene.Outcome,
 		"notes":       scene.Notes,
 		"location":    scene.LocationName,
-	})
+	}
+	applyCurrentOverrides(current, devReq.Current, "title", "description", "outcome", "notes", "location")
+
+	sceneJSON, _ := json.Marshal(current)
 
 	prompt := fmt.Sprintf(
 		"Voici le synopsis complet du scénario :\n%s\n\n"+
@@ -437,12 +452,14 @@ func (h *SynopsisHandler) DevelopScene(w http.ResponseWriter, r *http.Request) {
 			"- description : 2 paragraphes courts et immersifs, lisibles à voix haute (100 mots max)\n"+
 			"- outcome : une phrase résumant le dénouement probable (30 mots max)\n"+
 			"- notes : 2-3 détails utiles pour le MJ séparés par des virgules (ambiance, météo, accessoires)\n"+
+			"Si un champ a déjà une valeur, prolonge et affine l'idée plutôt que de la remplacer par une idée sans rapport.\n"+
 			"Réponds UNIQUEMENT avec ce JSON (valeurs = chaînes) : {\"description\":\"...\",\"outcome\":\"...\",\"notes\":\"...\"}",
 		marshalCtx(sc), string(sceneJSON))
 
 	cfg, _ := loadLLMConfig(r.Context(), h.db, h.encKey)
 	cfg.MaxTokens = 500
 	client := llm.NewClient(cfg)
+	sysPrompt += steeringSuffix(devReq)
 
 	type developResult struct {
 		Description string `json:"description"`

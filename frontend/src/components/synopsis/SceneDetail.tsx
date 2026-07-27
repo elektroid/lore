@@ -8,17 +8,24 @@ import MentionEditor from './MentionEditor'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { Scene, SceneStatus } from '@/types/synopsis'
 import { SCENE_STATUS_LABELS } from '@/types/synopsis'
 import type { CampaignNPC, CampaignLocation, LocationImage, CampaignArtefact } from '@/types/entities'
 import { api } from '@/api/client'
+import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
 
 interface Props {
   scenarioId: string
   campaignId: string
   scene: Scene
 }
+
+const SCENE_SUGGESTION_FIELDS: SuggestionField[] = [
+  { key: 'description', label: 'Ce qui se passe', multiline: true },
+  { key: 'outcome', label: 'Dénouement', multiline: true },
+  { key: 'notes', label: 'Notes', multiline: true },
+]
 
 // ── Auto-grow textarea ────────────────────────────────────────────────────────
 
@@ -222,59 +229,6 @@ function ArtefactPicker({
   )
 }
 
-// ── Develop review dialog ─────────────────────────────────────────────────────
-
-type SceneSuggestion = { description: string; outcome: string; notes: string }
-
-function DevelopReviewDialog({
-  current, suggestion, open, onApply, onClose,
-}: {
-  current: SceneSuggestion
-  suggestion: SceneSuggestion
-  open: boolean
-  onApply: () => void
-  onClose: () => void
-}) {
-  const fields: { key: keyof SceneSuggestion; label: string }[] = [
-    { key: 'description', label: 'Ce qui se passe' },
-    { key: 'outcome', label: 'Dénouement' },
-    { key: 'notes', label: 'Notes' },
-  ]
-  return (
-    <Dialog open={open} onOpenChange={o => !o && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Proposition du LLM — relisez avant d'appliquer</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 text-sm">
-          {fields.map(({ key, label }) => (
-            <div key={key} className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                {key === 'description' && <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actuel</p>}
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="rounded border bg-muted/50 px-3 py-2 text-xs whitespace-pre-wrap select-all min-h-[60px]">
-                  {current[key] || <span className="italic text-muted-foreground">(vide)</span>}
-                </p>
-              </div>
-              <div className="space-y-1">
-                {key === 'description' && <p className="text-xs font-semibold text-primary uppercase tracking-wide">Nouveau</p>}
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="rounded border border-primary/30 bg-primary/5 px-3 py-2 text-xs whitespace-pre-wrap select-all min-h-[60px]">
-                  {suggestion[key] || <span className="italic text-muted-foreground">(vide)</span>}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={onApply}>Appliquer</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 // ── Scene detail panel ────────────────────────────────────────────────────────
 
 export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
@@ -289,14 +243,28 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
   const [editArtefactId, setEditArtefactId] = useState<string | null>(null)
   const [lightboxImg, setLightboxImg] = useState<LocationImage | null>(null)
   const [editNpcId, setEditNpcId] = useState<string | null>(null)
-  const [llmSuggestion, setLlmSuggestion] = useState<SceneSuggestion | null>(null)
+  const [suggestion, setSuggestion] = useState<Record<string, string> | null>(null)
 
   const develop = useMutation({
-    mutationFn: () => api.post<SceneSuggestion>(
-      `/scenarios/${scenarioId}/synopsis/scenes/${scene.id}/llm/develop`, {}
+    mutationFn: () => api.post<Record<string, string>>(
+      `/scenarios/${scenarioId}/synopsis/scenes/${scene.id}/llm/develop`, { current: local }
     ),
-    onSuccess: (data) => setLlmSuggestion(data),
+    onSuccess: (data) => setSuggestion(data),
   })
+
+  async function regenerateFields(keys: string[], instruction: string) {
+    return api.post<Record<string, string>>(
+      `/scenarios/${scenarioId}/synopsis/scenes/${scene.id}/llm/develop`,
+      { current: local, fields: keys, instruction },
+    )
+  }
+
+  function acceptField(key: string, value: string) {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    draftRef.current = {}
+    setLocal(l => ({ ...l, [key]: value }))
+    update.mutate({ [key]: value })
+  }
 
   const { data: locationData } = useQuery({
     queryKey: ['location', scene.location_id],
@@ -501,10 +469,12 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
       <div className="space-y-1">
         <div className="flex items-center justify-between">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ce qui se passe</p>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={develop.isPending} onClick={() => develop.mutate()}>
-            <Sparkles className="h-3 w-3 mr-1" />
-            {develop.isPending ? 'Génération…' : 'Développer'}
-          </Button>
+          {!suggestion && (
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={develop.isPending} onClick={() => develop.mutate()}>
+              <Sparkles className="h-3 w-3 mr-1" />
+              {develop.isPending ? 'Génération…' : 'Développer'}
+            </Button>
+          )}
         </div>
         {develop.isError && <p className="text-xs text-destructive">{(develop.error as Error).message}</p>}
         <MentionEditor
@@ -534,6 +504,16 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
           placeholder="Ambiance, météo, détails de décor, fun facts…"
         />
       </div>
+
+      {suggestion && (
+        <LLMSuggestionReview
+          fields={SCENE_SUGGESTION_FIELDS}
+          suggestion={suggestion}
+          onAcceptField={acceptField}
+          onRegenerate={regenerateFields}
+          onDone={() => setSuggestion(null)}
+        />
+      )}
 
       {/* NPCs */}
       <div className="space-y-2">
@@ -645,22 +625,6 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
         />
       )}
 
-      {llmSuggestion && (
-        <DevelopReviewDialog
-          current={{ description: scene.description, outcome: scene.outcome, notes: scene.notes }}
-          suggestion={llmSuggestion}
-          open={!!llmSuggestion}
-          onApply={() => {
-            if (!llmSuggestion) return
-            if (timerRef.current) clearTimeout(timerRef.current)
-            draftRef.current = {}
-            setLocal(l => ({ ...l, ...llmSuggestion }))
-            update.mutate(llmSuggestion)
-            setLlmSuggestion(null)
-          }}
-          onClose={() => setLlmSuggestion(null)}
-        />
-      )}
     </div>
   )
 }

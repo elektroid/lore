@@ -153,6 +153,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 							r.Get("/", entities.GetFaction)
 							r.Put("/", entities.UpdateFaction)
 							r.Delete("/", entities.DeleteFaction)
+							r.Post("/llm/develop", entities.DevelopFaction)
 							r.Post("/llm/generate-images", imageLLM.GenerateFactionImages)
 							r.Post("/llm/confirm-images", imageLLM.ConfirmFactionImages)
 							r.Post("/images", uploads.UploadFactionImage)

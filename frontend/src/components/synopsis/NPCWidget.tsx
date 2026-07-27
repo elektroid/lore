@@ -8,6 +8,8 @@ import StatusBadge from './StatusBadge'
 import type { SynopsisNPC } from '@/types/synopsis'
 import type { CampaignNPC } from '@/types/entities'
 import { api } from '@/api/client'
+import LLMSuggestionReview from '@/components/LLMSuggestionReview'
+import { NPC_SUGGESTION_FIELDS } from '@/components/NPCEditorModal'
 
 interface Props {
   scenarioId: string
@@ -131,8 +133,6 @@ function NPCPickerDialog({
 
 // ── NPC row ───────────────────────────────────────────────────────────────
 
-type NPCSuggestion = { role: string; description: string; motivation: string; quote: string }
-
 function NPCRow({ npc, scenarioId }: { npc: SynopsisNPC; scenarioId: string }) {
   const qc = useQueryClient()
   const locked = npc.status === 'confirmed'
@@ -145,7 +145,7 @@ function NPCRow({ npc, scenarioId }: { npc: SynopsisNPC; scenarioId: string }) {
   const localRef = useRef({ name: npc.name, role: npc.role, description: npc.description, quote: npc.quote, motivation: npc.motivation ?? '' })
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const descRef = useRef<HTMLTextAreaElement>(null)
-  const [suggestion, setSuggestion] = useState<NPCSuggestion | null>(null)
+  const [suggestion, setSuggestion] = useState<Record<string, string> | null>(null)
 
   useEffect(() => {
     const changed: Partial<typeof local> = {}
@@ -190,9 +190,17 @@ function NPCRow({ npc, scenarioId }: { npc: SynopsisNPC; scenarioId: string }) {
   })
 
   const develop = useMutation({
-    mutationFn: () => api.post<NPCSuggestion>(`/scenarios/${scenarioId}/synopsis/llm/develop-npc/${npc.id}`, {}),
+    mutationFn: () => api.post<Record<string, string>>(`/scenarios/${scenarioId}/synopsis/llm/develop-npc/${npc.id}`, {
+      current: localRef.current,
+    }),
     onSuccess: (data) => setSuggestion(data),
   })
+
+  async function regenerateFields(keys: string[], instruction: string) {
+    return api.post<Record<string, string>>(`/scenarios/${scenarioId}/synopsis/llm/develop-npc/${npc.id}`, {
+      current: localRef.current, fields: keys, instruction,
+    })
+  }
 
   function handle(field: keyof typeof local, value: string) {
     localRef.current = { ...localRef.current, [field]: value }
@@ -202,15 +210,13 @@ function NPCRow({ npc, scenarioId }: { npc: SynopsisNPC; scenarioId: string }) {
     timerRef.current = setTimeout(() => save.mutate(localRef.current), 800)
   }
 
-  function applySuggestion() {
-    if (!suggestion) return
-    const merged = { ...localRef.current, ...suggestion }
+  function acceptField(key: string, value: string) {
+    const merged = { ...localRef.current, [key]: value }
     localRef.current = merged
     prevRef.current = merged
     setLocal(merged)
     if (timerRef.current) clearTimeout(timerRef.current)
     save.mutate(merged)
-    setSuggestion(null)
     qc.invalidateQueries({ queryKey: ['synopsis-npcs', scenarioId] })
     qc.invalidateQueries({ queryKey: ['campaign-npcs', npc.campaign_id] })
   }
@@ -281,32 +287,28 @@ function NPCRow({ npc, scenarioId }: { npc: SynopsisNPC; scenarioId: string }) {
       />
 
       <div className="flex items-center gap-2 pt-0.5">
-        <Button
-          size="sm" variant="ghost" className="h-6 px-1.5 text-xs"
-          disabled={locked || develop.isPending}
-          onClick={() => develop.mutate()}
-        >
-          <Sparkles className="h-3 w-3 mr-0.5" />
-          {develop.isPending ? 'Développement…' : 'Développer'}
-        </Button>
+        {!suggestion && (
+          <Button
+            size="sm" variant="ghost" className="h-6 px-1.5 text-xs"
+            disabled={locked || develop.isPending}
+            onClick={() => develop.mutate()}
+          >
+            <Sparkles className="h-3 w-3 mr-0.5" />
+            {develop.isPending ? 'Développement…' : 'Développer'}
+          </Button>
+        )}
         {develop.isError && <p className="text-xs text-destructive">{(develop.error as Error).message}</p>}
         {save.isPending && <span className="text-xs text-muted-foreground ml-auto">Sauvegarde…</span>}
       </div>
 
       {suggestion && !locked && (
-        <div className="rounded border border-primary/30 bg-primary/5 p-2.5 space-y-1.5">
-          <p className="text-xs font-semibold text-primary">Suggestion LLM</p>
-          <div className="space-y-1 text-xs text-muted-foreground">
-            {suggestion.role && <p><span className="font-medium text-foreground">Rôle :</span> {suggestion.role}</p>}
-            {suggestion.description && <p><span className="font-medium text-foreground">Description :</span> {suggestion.description}</p>}
-            {suggestion.motivation && <p><span className="font-medium text-foreground">Motivation :</span> {suggestion.motivation}</p>}
-            {suggestion.quote && <p><span className="font-medium text-foreground">Réplique :</span> <em>{suggestion.quote}</em></p>}
-          </div>
-          <div className="flex gap-2 pt-1">
-            <Button size="sm" className="h-6 px-2 text-xs" onClick={applySuggestion}>Appliquer</Button>
-            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setSuggestion(null)}>Ignorer</Button>
-          </div>
-        </div>
+        <LLMSuggestionReview
+          fields={NPC_SUGGESTION_FIELDS}
+          suggestion={suggestion}
+          onAcceptField={acceptField}
+          onRegenerate={regenerateFields}
+          onDone={() => setSuggestion(null)}
+        />
       )}
     </li>
   )

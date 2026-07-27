@@ -3,10 +3,11 @@ import { Sparkles, Trash2, Map, ImageIcon, X, Images } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { CampaignLocation, LocationImage, PendingImage } from '@/types/entities'
 import { api } from '@/api/client'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
+import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
 
 interface Props {
   locationId: string
@@ -14,6 +15,11 @@ interface Props {
   open: boolean
   onClose: () => void
 }
+
+const LOCATION_SUGGESTION_FIELDS: SuggestionField[] = [
+  { key: 'atmosphere', label: 'Atmosphère' },
+  { key: 'description', label: 'Description', multiline: true },
+]
 
 // ── Auto-grow textarea ─────────────────────────────────────────────────────────
 
@@ -32,67 +38,6 @@ function AutoTextarea({ value, onChange, placeholder, className = '', disabled }
       onChange={e => onChange(e.target.value)}
       className={`w-full resize-none overflow-hidden rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 ${className}`}
     />
-  )
-}
-
-// ── LLM develop review dialog ─────────────────────────────────────────────────
-
-function DevelopReviewDialog({
-  current, suggestion, open, onApply, onClose,
-}: {
-  current: { description: string; atmosphere: string }
-  suggestion: { description: string; atmosphere: string }
-  open: boolean
-  onApply: () => void
-  onClose: () => void
-}) {
-  return (
-    <Dialog open={open} onOpenChange={o => !o && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Proposition du LLM — relisez avant d'appliquer</DialogTitle>
-        </DialogHeader>
-
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div className="space-y-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actuel</p>
-            {current.atmosphere && (
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">Atmosphère</p>
-                <p className="rounded border bg-muted/50 px-3 py-2 text-xs select-all">{current.atmosphere}</p>
-              </div>
-            )}
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Description</p>
-              <p className="rounded border bg-muted/50 px-3 py-2 text-xs whitespace-pre-wrap select-all min-h-[80px]">
-                {current.description || <span className="italic text-muted-foreground">(vide)</span>}
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <p className="text-xs font-semibold text-primary uppercase tracking-wide">Nouveau</p>
-            {suggestion.atmosphere && (
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">Atmosphère</p>
-                <p className="rounded border border-primary/30 bg-primary/5 px-3 py-2 text-xs select-all">{suggestion.atmosphere}</p>
-              </div>
-            )}
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Description</p>
-              <p className="rounded border border-primary/30 bg-primary/5 px-3 py-2 text-xs whitespace-pre-wrap select-all min-h-[80px]">
-                {suggestion.description}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={onApply}>Appliquer</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   )
 }
 
@@ -281,7 +226,7 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
     }
   }, [loc])
 
-  const [llmSuggestion, setLlmSuggestion] = useState<{ description: string; atmosphere: string } | null>(null)
+  const [suggestion, setSuggestion] = useState<Record<string, string> | null>(null)
 
   const save = useMutation({
     mutationFn: (patch: Partial<typeof local>) =>
@@ -301,11 +246,23 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
   })
 
   const develop = useMutation({
-    mutationFn: () => api.post<{ description: string; atmosphere: string }>(
-      `/campaigns/${campaignId}/locations/${locationId}/llm/develop`, {}
+    mutationFn: () => api.post<Record<string, string>>(
+      `/campaigns/${campaignId}/locations/${locationId}/llm/develop`, { current: local }
     ),
-    onSuccess: (data) => setLlmSuggestion(data),
+    onSuccess: (data) => setSuggestion(data),
   })
+
+  async function regenerateFields(keys: string[], instruction: string) {
+    return api.post<Record<string, string>>(
+      `/campaigns/${campaignId}/locations/${locationId}/llm/develop`,
+      { current: local, fields: keys, instruction },
+    )
+  }
+
+  function acceptField(key: string, value: string) {
+    setLocal(l => ({ ...l, [key]: value }))
+    save.mutate({ [key]: value })
+  }
 
   function scheduleUpdate(patch: Partial<typeof draftRef.current>) {
     draftRef.current = { ...draftRef.current, ...patch }
@@ -321,14 +278,6 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
     scheduleUpdate({ [field]: value })
   }
 
-  function applyLlmSuggestion() {
-    if (!llmSuggestion) return
-    const patch = { description: llmSuggestion.description, atmosphere: llmSuggestion.atmosphere }
-    setLocal(l => ({ ...l, ...patch }))
-    save.mutate(patch)
-    setLlmSuggestion(null)
-  }
-
   function handleLocationUpdated(updated: CampaignLocation) {
     qc.setQueryData(['location', locationId], updated)
     qc.invalidateQueries({ queryKey: ['campaign-locations', campaignId] })
@@ -339,7 +288,6 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
   })()
 
   return (
-    <>
       <Dialog open={open} onOpenChange={o => !o && onClose()}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -384,14 +332,16 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</p>
-                  <Button
-                    size="sm" variant="ghost" className="h-6 px-2 text-xs"
-                    disabled={develop.isPending}
-                    onClick={() => develop.mutate()}
-                  >
-                    <Sparkles className="h-3 w-3 mr-1" />
-                    {develop.isPending ? 'Génération…' : 'Développer avec le LLM'}
-                  </Button>
+                  {!suggestion && (
+                    <Button
+                      size="sm" variant="ghost" className="h-6 px-2 text-xs"
+                      disabled={develop.isPending}
+                      onClick={() => develop.mutate()}
+                    >
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      {develop.isPending ? 'Génération…' : 'Développer avec le LLM'}
+                    </Button>
+                  )}
                 </div>
                 {develop.isError && (
                   <p className="text-xs text-destructive">{(develop.error as Error).message}</p>
@@ -403,6 +353,16 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
                   className="min-h-[120px]"
                 />
               </div>
+
+              {suggestion && (
+                <LLMSuggestionReview
+                  fields={LOCATION_SUGGESTION_FIELDS}
+                  suggestion={suggestion}
+                  onAcceptField={acceptField}
+                  onRegenerate={regenerateFields}
+                  onDone={() => setSuggestion(null)}
+                />
+              )}
 
               {/* Images */}
               <ImageGrid
@@ -419,16 +379,5 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
           )}
         </DialogContent>
       </Dialog>
-
-      {llmSuggestion && loc && (
-        <DevelopReviewDialog
-          current={{ description: loc.description, atmosphere: loc.atmosphere }}
-          suggestion={llmSuggestion}
-          open={!!llmSuggestion}
-          onApply={applyLlmSuggestion}
-          onClose={() => setLlmSuggestion(null)}
-        />
-      )}
-    </>
   )
 }

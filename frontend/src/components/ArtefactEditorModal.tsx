@@ -9,6 +9,7 @@ import type { CampaignArtefact, ArtefactImage, NPCArtefactLink, PendingImage } f
 import type { CampaignNPC } from '@/types/entities'
 import { api } from '@/api/client'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
+import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
 
 interface Props {
   artefactId: string
@@ -16,6 +17,10 @@ interface Props {
   open: boolean
   onClose: () => void
 }
+
+const ARTEFACT_SUGGESTION_FIELDS: SuggestionField[] = [
+  { key: 'description', label: 'Description', multiline: true },
+]
 
 // ── Auto-grow textarea ────────────────────────────────────────────────────────
 
@@ -37,55 +42,17 @@ function AutoTextarea({ value, onChange, placeholder, className = '', disabled }
   )
 }
 
-// ── LLM develop review dialog ─────────────────────────────────────────────────
-
-function DevelopReviewDialog({
-  current, suggestion, open, onApply, onClose,
-}: {
-  current: string
-  suggestion: string
-  open: boolean
-  onApply: () => void
-  onClose: () => void
-}) {
-  return (
-    <Dialog open={open} onOpenChange={o => !o && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Proposition du LLM — relisez avant d'appliquer</DialogTitle>
-        </DialogHeader>
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div className="space-y-1">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actuel</p>
-            <p className="rounded border bg-muted/50 px-3 py-2 text-xs whitespace-pre-wrap select-all min-h-[80px]">
-              {current || <span className="italic text-muted-foreground">(vide)</span>}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs font-semibold text-primary uppercase tracking-wide">Nouveau</p>
-            <p className="rounded border border-primary/30 bg-primary/5 px-3 py-2 text-xs whitespace-pre-wrap select-all min-h-[80px]">
-              {suggestion}
-            </p>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={onApply}>Appliquer</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 // ── Main modal ────────────────────────────────────────────────────────────────
 
 export default function ArtefactEditorModal({ artefactId, campaignId, open, onClose }: Props) {
   const qc = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const draftRef = useRef<Partial<{ name: string; description: string }>>({})
+  const prevIdRef = useRef('')
 
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [llmSuggestion, setLlmSuggestion] = useState<string | null>(null)
+  const [local, setLocal] = useState({ name: '', description: '' })
+  const [suggestion, setSuggestion] = useState<Record<string, string> | null>(null)
   const [candidates, setCandidates] = useState<PendingImage[]>([])
   const [candidatePickerOpen, setCandidatePickerOpen] = useState(false)
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
@@ -109,9 +76,10 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
   })
 
   useEffect(() => {
-    if (artefact) {
-      setName(artefact.name)
-      setDescription(artefact.description)
+    if (artefact && artefact.id !== prevIdRef.current) {
+      prevIdRef.current = artefact.id
+      setLocal({ name: artefact.name, description: artefact.description })
+      draftRef.current = {}
     }
   }, [artefact])
 
@@ -125,18 +93,44 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
   }
 
   const save = useMutation({
-    mutationFn: () => api.put<CampaignArtefact>(`/campaigns/${campaignId}/artefacts/${artefactId}`, {
-      name, description, images: artefact?.images ?? '[]',
+    mutationFn: (patch: Partial<typeof local>) => api.put<CampaignArtefact>(`/campaigns/${campaignId}/artefacts/${artefactId}`, {
+      name: local.name, description: local.description, images: artefact?.images ?? '[]', ...patch,
     }),
     onSuccess: invalidateArtefact,
   })
 
+  function scheduleUpdate(patch: Partial<typeof draftRef.current>) {
+    draftRef.current = { ...draftRef.current, ...patch }
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      save.mutate(draftRef.current)
+      draftRef.current = {}
+    }, 800)
+  }
+
+  function handle(field: keyof typeof local, value: string) {
+    setLocal(l => ({ ...l, [field]: value }))
+    scheduleUpdate({ [field]: value })
+  }
+
   const develop = useMutation({
-    mutationFn: () => api.post<{ description: string }>(
-      `/campaigns/${campaignId}/artefacts/${artefactId}/llm/develop`, {}
+    mutationFn: () => api.post<Record<string, string>>(
+      `/campaigns/${campaignId}/artefacts/${artefactId}/llm/develop`, { current: local }
     ),
-    onSuccess: (data) => setLlmSuggestion(data.description),
+    onSuccess: (data) => setSuggestion(data),
   })
+
+  async function regenerateFields(keys: string[], instruction: string) {
+    return api.post<Record<string, string>>(
+      `/campaigns/${campaignId}/artefacts/${artefactId}/llm/develop`,
+      { current: local, fields: keys, instruction },
+    )
+  }
+
+  function acceptField(key: string, value: string) {
+    setLocal(l => ({ ...l, [key]: value }))
+    save.mutate({ [key]: value })
+  }
 
   const generateImages = useMutation({
     mutationFn: () => api.post<PendingImage[]>(
@@ -184,8 +178,6 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
     onSuccess: invalidateLinks,
   })
 
-  const isDirty = artefact && (name !== artefact.name || description !== artefact.description)
-
   const linkedNpcIds = new Set(links.map(l => l.npc_id))
   const availableNpcs = npcs.filter(n => !linkedNpcIds.has(n.id))
 
@@ -206,29 +198,41 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
               {/* Name */}
               <div className="space-y-1">
                 <Label className="text-xs">Nom</Label>
-                <Input value={name} onChange={e => setName(e.target.value)} placeholder="Nom de l'artefact" className="h-8 text-sm" />
+                <Input value={local.name} onChange={e => handle('name', e.target.value)} placeholder="Nom de l'artefact" className="h-8 text-sm" />
               </div>
 
               {/* Description */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs">Description</Label>
-                  <Button
-                    size="sm" variant="ghost" className="h-6 px-2 text-xs"
-                    disabled={develop.isPending || !name.trim()}
-                    onClick={() => develop.mutate()}
-                  >
-                    <Sparkles className="h-3 w-3 mr-1" />
-                    {develop.isPending ? 'Génération…' : 'Développer'}
-                  </Button>
+                  {!suggestion && (
+                    <Button
+                      size="sm" variant="ghost" className="h-6 px-2 text-xs"
+                      disabled={develop.isPending || !local.name.trim()}
+                      onClick={() => develop.mutate()}
+                    >
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      {develop.isPending ? 'Génération…' : 'Développer'}
+                    </Button>
+                  )}
                 </div>
                 {develop.isError && <p className="text-xs text-destructive">{(develop.error as Error).message}</p>}
                 <AutoTextarea
-                  value={description}
-                  onChange={setDescription}
+                  value={local.description}
+                  onChange={v => handle('description', v)}
                   placeholder="Description mystérieuse de l'artefact…"
                 />
               </div>
+
+              {suggestion && (
+                <LLMSuggestionReview
+                  fields={ARTEFACT_SUGGESTION_FIELDS}
+                  suggestion={suggestion}
+                  onAcceptField={acceptField}
+                  onRegenerate={regenerateFields}
+                  onDone={() => setSuggestion(null)}
+                />
+              )}
 
               {/* Images */}
               <div className="space-y-2">
@@ -237,7 +241,7 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
                   <div className="flex gap-1.5">
                     <Button
                       size="sm" variant="ghost" className="h-6 px-2 text-xs"
-                      disabled={generateImages.isPending || !name.trim()}
+                      disabled={generateImages.isPending || !local.name.trim()}
                       onClick={() => generateImages.mutate()}
                     >
                       <Images className="h-3 w-3 mr-1" />
@@ -316,25 +320,12 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="items-center sm:justify-between">
+            {save.isPending ? <p className="text-xs text-muted-foreground">Sauvegarde…</p> : <span />}
             <Button variant="outline" onClick={onClose}>Fermer</Button>
-            <Button disabled={!isDirty || save.isPending} onClick={() => save.mutate()}>
-              {save.isPending ? 'Sauvegarde…' : 'Sauvegarder'}
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* LLM develop review */}
-      {llmSuggestion !== null && (
-        <DevelopReviewDialog
-          current={description}
-          suggestion={llmSuggestion}
-          open={true}
-          onApply={() => { setDescription(llmSuggestion); setLlmSuggestion(null) }}
-          onClose={() => setLlmSuggestion(null)}
-        />
-      )}
 
       {/* Image candidate picker */}
       <ImageCandidatePicker

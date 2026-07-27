@@ -259,6 +259,15 @@ export default function CampaignsPage() {
   return (
     <AppShell>
       <main className="px-6 py-8 max-w-4xl">
+        <div className="mb-6 rounded-lg overflow-hidden border">
+          <img
+            src="/dice.jpg"
+            alt="Lore Engine"
+            className="w-full h-40 object-cover"
+            style={{ objectPosition: '50% 20%' }}
+          />
+        </div>
+
         {isLoading && <p className="text-muted-foreground text-sm">Chargement…</p>}
 
         {error && (

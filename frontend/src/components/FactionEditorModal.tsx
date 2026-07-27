@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Trash2, X, Images } from 'lucide-react'
+import { Trash2, X, Images, Sparkles } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,6 +7,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import type { CampaignFaction, FactionImage, PendingImage } from '@/types/entities'
 import { api } from '@/api/client'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
+import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
+
+const FACTION_SUGGESTION_FIELDS: SuggestionField[] = [
+  { key: 'description', label: 'Description', multiline: true },
+  { key: 'motivation', label: 'Motivation' },
+]
 
 function AutoTextarea({ value, onChange, placeholder, className = '' }: {
   value: string; onChange: (v: string) => void
@@ -164,6 +170,8 @@ export default function FactionEditorModal({ factionId, campaignId, open, onClos
     }
   }, [faction])
 
+  const [suggestion, setSuggestion] = useState<Record<string, string> | null>(null)
+
   const save = useMutation({
     mutationFn: (patch: Partial<typeof local>) => {
       const current = qc.getQueryData<CampaignFaction>(['faction', factionId])
@@ -177,6 +185,25 @@ export default function FactionEditorModal({ factionId, campaignId, open, onClos
       qc.invalidateQueries({ queryKey: ['campaign-factions', campaignId] })
     },
   })
+
+  const develop = useMutation({
+    mutationFn: () => api.post<Record<string, string>>(
+      `/campaigns/${campaignId}/factions/${factionId}/llm/develop`, { current: local }
+    ),
+    onSuccess: (data) => setSuggestion(data),
+  })
+
+  async function regenerateFields(keys: string[], instruction: string) {
+    return api.post<Record<string, string>>(
+      `/campaigns/${campaignId}/factions/${factionId}/llm/develop`,
+      { current: local, fields: keys, instruction },
+    )
+  }
+
+  function acceptField(key: string, value: string) {
+    setLocal(l => ({ ...l, [key]: value }))
+    save.mutate({ [key]: value })
+  }
 
   function scheduleUpdate(patch: Partial<typeof draftRef.current>) {
     draftRef.current = { ...draftRef.current, ...patch }
@@ -223,13 +250,31 @@ export default function FactionEditorModal({ factionId, campaignId, open, onClos
               <Input value={local.type} onChange={e => handle('type', e.target.value)} placeholder="Corporation, gang, culte…" className="h-8 text-sm" />
             </div>
             <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</p>
+                {!suggestion && (
+                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={develop.isPending} onClick={() => develop.mutate()}>
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    {develop.isPending ? 'Génération…' : 'Développer avec le LLM'}
+                  </Button>
+                )}
+              </div>
+              {develop.isError && <p className="text-xs text-destructive">{(develop.error as Error).message}</p>}
               <AutoTextarea value={local.description} onChange={v => handle('description', v)} placeholder="Présentation, structure, histoire…" className="min-h-[100px]" />
             </div>
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Motivation</p>
               <Input value={local.motivation} onChange={e => handle('motivation', e.target.value)} placeholder="Ce qui fait agir la faction…" className="h-8 text-sm" />
             </div>
+            {suggestion && (
+              <LLMSuggestionReview
+                fields={FACTION_SUGGESTION_FIELDS}
+                suggestion={suggestion}
+                onAcceptField={acceptField}
+                onRegenerate={regenerateFields}
+                onDone={() => setSuggestion(null)}
+              />
+            )}
             <ImageGrid images={images} factionId={factionId} campaignId={campaignId} onUpdated={handleFactionUpdated} />
             {save.isPending && <p className="text-xs text-muted-foreground text-right">Sauvegarde…</p>}
           </div>

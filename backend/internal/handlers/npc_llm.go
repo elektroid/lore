@@ -36,24 +36,30 @@ func (h *EntityHandler) DevelopNPCSuggestion(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	var sb strings.Builder
-	sb.WriteString("Tu es un assistant spécialisé dans l'écriture de scénarios de jeux de rôle (JdR).\n")
-	sb.WriteString("Tu réponds UNIQUEMENT avec du JSON valide, sans markdown, sans explication.\n")
-	sb.WriteString("Réponds toujours en français.\n")
-	appendCampaignContext(&sb, campaign)
-
-	npcJSON, _ := json.Marshal(map[string]string{
+	req := decodeDevelopRequest(r)
+	current := map[string]string{
 		"name":        npc.Name,
 		"role":        npc.Role,
 		"description": npc.Description,
 		"motivation":  npc.Motivation,
 		"quote":       npc.Quote,
-	})
+	}
+	applyCurrentOverrides(current, req.Current, "name", "role", "description", "motivation", "quote")
+
+	var sb strings.Builder
+	sb.WriteString("Tu es un assistant spécialisé dans l'écriture de scénarios de jeux de rôle (JdR).\n")
+	sb.WriteString("Tu réponds UNIQUEMENT avec du JSON valide, sans markdown, sans explication.\n")
+	sb.WriteString("Réponds toujours en français.\n")
+	appendCampaignContext(&sb, campaign)
+	appendSteering(&sb, req)
+
+	npcJSON, _ := json.Marshal(current)
 
 	prompt := fmt.Sprintf(
 		"Voici un PNJ dans une campagne JdR :\n%s\n\n"+
 			"Décris ce personnage en 2 phrases max (physique + psychologie marquants), "+
-			"affine sa motivation profonde en une phrase courte, et propose une réplique type mémorable.\n"+
+			"affine sa motivation profonde en une phrase courte, et propose une réplique type mémorable. "+
+			"Si une description, motivation ou réplique existe déjà pour ce PNJ, prolonge et affine son intention plutôt que de la remplacer par une idée sans rapport.\n"+
 			"Réponds avec : {\"role\":\"...\",\"description\":\"...\",\"motivation\":\"...\",\"quote\":\"...\"}",
 		string(npcJSON))
 

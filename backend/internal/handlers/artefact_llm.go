@@ -40,21 +40,27 @@ func (h *ImageLLMHandler) DevelopArtefact(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	req := decodeDevelopRequest(r)
+	current := map[string]string{
+		"name":        artefact.Name,
+		"description": artefact.Description,
+	}
+	applyCurrentOverrides(current, req.Current, "name", "description")
+
 	var sb strings.Builder
 	sb.WriteString("You are an assistant specialized in writing tabletop RPG scenarios.\n")
 	sb.WriteString("Respond ONLY with valid JSON, no markdown, no explanation.\n")
 	sb.WriteString("Always respond in French.\n")
 	appendCampaignContext(&sb, campaign)
+	appendSteering(&sb, req)
 
-	artefactJSON, _ := json.Marshal(map[string]string{
-		"name":        artefact.Name,
-		"description": artefact.Description,
-	})
+	artefactJSON, _ := json.Marshal(current)
 
 	prompt := fmt.Sprintf(
 		"Voici un artefact dans une campagne JdR :\n%s\n\n"+
 			"Écris une description évocatrice de cet artefact en 2 paragraphes maximum (150 mots max). "+
 			"Elle doit être utilisable à voix haute pendant une session — mystérieuse et immersive. "+
+			"Si une description existe déjà, prolonge et affine l'idée plutôt que de la remplacer par une idée sans rapport.\n"+
 			"Réponds avec : {\"description\":\"...\"}",
 		string(artefactJSON))
 
