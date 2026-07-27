@@ -47,6 +47,15 @@ func isPublicEndpoint(path string) bool {
 	if strings.HasPrefix(path, "/api/table/") {
 		return true
 	}
+	// Uploaded images must be readable by the same unauthenticated surfaces.
+	// The GM projects a location onto the TV; if this needed a session the
+	// players would stare at a broken image. Paths are
+	// /uploads/<kind>/<uuid>/<uuid>.<ext> — unguessable, and nothing is served
+	// there that the GM has not already put on the wall. Note this covers
+	// /uploads only: /external-material (game PDFs) stays behind auth.
+	if strings.HasPrefix(path, "/uploads/") {
+		return true
+	}
 	return false
 }
 

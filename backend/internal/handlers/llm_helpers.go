@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 
-	db "lore/internal/db"
 	"lore/internal/crypto"
+	db "lore/internal/db"
 	"lore/internal/llm"
 )
 

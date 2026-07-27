@@ -165,7 +165,6 @@ func (h *EntityHandler) DeleteLocation(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-
 // ── Campaign Artefacts ────────────────────────────────────────────────────────
 
 func (h *EntityHandler) ListArtefacts(w http.ResponseWriter, r *http.Request) {
@@ -264,6 +263,10 @@ func (h *EntityHandler) CreateArtefactLink(w http.ResponseWriter, r *http.Reques
 	}
 	if b.NPCId == "" {
 		writeError(w, http.StatusBadRequest, "npc_id required")
+		return
+	}
+	if !db.EntityInCampaign(r.Context(), h.db, db.TableNPCs, b.NPCId, chi.URLParam(r, "id")) {
+		writeError(w, http.StatusNotFound, "PNJ introuvable dans cette campagne")
 		return
 	}
 	link, err := db.CreateNPCArtefactLink(r.Context(), h.db, b.NPCId, chi.URLParam(r, "artefactId"), b.Nature)
@@ -373,4 +376,3 @@ func (h *EntityHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, results)
 }
-

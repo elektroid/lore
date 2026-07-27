@@ -74,6 +74,13 @@ func (h *SynopsisHandler) RestoreSnapshot(w http.ResponseWriter, r *http.Request
 	scenarioID := chi.URLParam(r, "id")
 	snapshotID := chi.URLParam(r, "snapshotID")
 
+	// The snapshot's content is about to be written into this scenario, so it
+	// had better be this scenario's snapshot.
+	belongs, err := db.SnapshotInScenario(r.Context(), h.db, snapshotID, scenarioID)
+	if err != nil || !belongs {
+		writeError(w, http.StatusNotFound, "snapshot introuvable")
+		return
+	}
 	snapshot, err := db.GetSnapshot(r.Context(), h.db, snapshotID)
 	if err != nil || snapshot == nil {
 		writeError(w, http.StatusNotFound, "snapshot introuvable")
@@ -124,6 +131,10 @@ func (h *SynopsisHandler) AddNPC(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.NPCID == "" {
 		writeError(w, http.StatusBadRequest, "npc_id requis")
+		return
+	}
+	if !h.entityInScenarioCampaign(r, db.TableNPCs, body.NPCID) {
+		writeError(w, http.StatusNotFound, "PNJ introuvable dans cette campagne")
 		return
 	}
 	if err := db.AddSynopsisNPC(r.Context(), h.db, scenarioID, body.NPCID, "draft", 0); err != nil {
@@ -186,6 +197,10 @@ func (h *SynopsisHandler) AddFaction(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.FactionID == "" {
 		writeError(w, http.StatusBadRequest, "faction_id requis")
+		return
+	}
+	if !h.entityInScenarioCampaign(r, db.TableFactions, body.FactionID) {
+		writeError(w, http.StatusNotFound, "faction introuvable dans cette campagne")
 		return
 	}
 	if err := db.AddSynopsisFaction(r.Context(), h.db, scenarioID, body.FactionID); err != nil {

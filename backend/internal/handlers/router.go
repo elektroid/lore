@@ -11,6 +11,7 @@ import (
 
 	"lore/internal/auth"
 	"lore/internal/config"
+	db "lore/internal/db"
 	"lore/internal/table"
 )
 
@@ -80,24 +81,30 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 
 		settings := &SettingsHandler{db: database, encKey: cfg.JWT.Secret}
 		r.Route("/settings", func(r chi.Router) {
+			// Reads are open: the app shows whether an LLM is configured, and
+			// the key is masked on the way out. Writes are instance-wide.
 			r.Get("/llm", settings.GetLLM)
-			r.Put("/llm", settings.PutLLM)
 			r.Get("/mistral", settings.GetMistral)
-			r.Put("/mistral", settings.PutMistral)
+			r.With(requireSuperuser).Put("/llm", settings.PutLLM)
+			r.With(requireSuperuser).Put("/mistral", settings.PutMistral)
 		})
 
 		games := &GameHandler{db: database, externalMaterialDir: externalMaterialDir}
 		gameLLM := &GameLLMHandler{db: database, encKey: cfg.JWT.Secret}
 		r.Route("/games", func(r chi.Router) {
+			// The game catalogue is shared by every campaign in the instance, so
+			// reading is open to all and editing is the administrator's.
+			// One Route("/{id}") only — chi panics on a duplicate pattern, so the
+			// guard goes on the individual verbs rather than a nested group.
 			r.Get("/", games.List)
-			r.Post("/", games.Create)
+			r.With(requireSuperuser).Post("/", games.Create)
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", games.Get)
-				r.Put("/", games.Update)
-				r.Delete("/", games.Delete)
 				r.Get("/documents", games.ListDocuments)
-				r.Put("/visual-style", games.UpdateVisualStyle)
-				r.Post("/llm/generate-visual-style", gameLLM.GenerateVisualStyle)
+				r.With(requireSuperuser).Put("/", games.Update)
+				r.With(requireSuperuser).Delete("/", games.Delete)
+				r.With(requireSuperuser).Put("/visual-style", games.UpdateVisualStyle)
+				r.With(requireSuperuser).Post("/llm/generate-visual-style", gameLLM.GenerateVisualStyle)
 			})
 		})
 
@@ -120,12 +127,12 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 				r.Get("/export", campaigns.Export)
 
 				// Campaign membership endpoints
-					r.Route("/members", func(r chi.Router) {
-						r.Get("/", campaigns.ListMembers)
-						r.Post("/", campaigns.AddMember)
-						r.Delete("/{userId}", campaigns.RemoveMember)
-						r.Get("/characters", campaigns.ListMemberCharacters)
-					})
+				r.Route("/members", func(r chi.Router) {
+					r.Get("/", campaigns.ListMembers)
+					r.Post("/", campaigns.AddMember)
+					r.Delete("/{userId}", campaigns.RemoveMember)
+					r.Get("/characters", campaigns.ListMemberCharacters)
+				})
 
 				// All entity and content routes require campaign ownership
 				r.Group(func(r chi.Router) {
@@ -141,6 +148,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 						r.Get("/", entities.ListNPCs)
 						r.Post("/", entities.CreateNPC)
 						r.Route("/{npcId}", func(r chi.Router) {
+							r.Use(requireChild(database, "id", "npcId", db.TableNPCs, db.ColCampaignID))
 							r.Get("/", entities.GetNPC)
 							r.Put("/", entities.UpdateNPC)
 							r.Delete("/", entities.DeleteNPC)
@@ -155,6 +163,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 						r.Get("/", entities.ListLocations)
 						r.Post("/", entities.CreateLocation)
 						r.Route("/{locationId}", func(r chi.Router) {
+							r.Use(requireChild(database, "id", "locationId", db.TableLocations, db.ColCampaignID))
 							r.Get("/", entities.GetLocation)
 							r.Put("/", entities.UpdateLocation)
 							r.Delete("/", entities.DeleteLocation)
@@ -170,6 +179,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 						r.Get("/", entities.ListFactions)
 						r.Post("/", entities.CreateFaction)
 						r.Route("/{factionId}", func(r chi.Router) {
+							r.Use(requireChild(database, "id", "factionId", db.TableFactions, db.ColCampaignID))
 							r.Get("/", entities.GetFaction)
 							r.Put("/", entities.UpdateFaction)
 							r.Delete("/", entities.DeleteFaction)
@@ -184,6 +194,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 						r.Get("/", entities.ListArtefacts)
 						r.Post("/", entities.CreateArtefact)
 						r.Route("/{artefactId}", func(r chi.Router) {
+							r.Use(requireChild(database, "id", "artefactId", db.TableArtefacts, db.ColCampaignID))
 							r.Get("/", entities.GetArtefact)
 							r.Put("/", entities.UpdateArtefact)
 							r.Delete("/", entities.DeleteArtefact)
@@ -247,13 +258,16 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 					r.Get("/", synopsis.ListScenes)
 					r.Post("/", synopsis.CreateScene)
 					r.Post("/reorder", synopsis.ReorderScenes)
-					r.Put("/{sceneId}", synopsis.UpdateScene)
-					r.Delete("/{sceneId}", synopsis.DeleteScene)
-					r.Post("/{sceneId}/npcs", synopsis.AddSceneNPC)
-					r.Delete("/{sceneId}/npcs/{npcId}", synopsis.RemoveSceneNPC)
-					r.Post("/{sceneId}/artefacts", synopsis.AddSceneArtefact)
-					r.Delete("/{sceneId}/artefacts/{artefactId}", synopsis.RemoveSceneArtefact)
-					r.Post("/{sceneId}/llm/develop", synopsis.DevelopScene)
+					r.Route("/{sceneId}", func(r chi.Router) {
+						r.Use(requireChild(database, "id", "sceneId", db.TableScenes, db.ColScenarioID))
+						r.Put("/", synopsis.UpdateScene)
+						r.Delete("/", synopsis.DeleteScene)
+						r.Post("/npcs", synopsis.AddSceneNPC)
+						r.Delete("/npcs/{npcId}", synopsis.RemoveSceneNPC)
+						r.Post("/artefacts", synopsis.AddSceneArtefact)
+						r.Delete("/artefacts/{artefactId}", synopsis.RemoveSceneArtefact)
+						r.Post("/llm/develop", synopsis.DevelopScene)
+					})
 				})
 				r.Route("/llm", func(r chi.Router) {
 					r.Post("/complete-hook", synopsis.CompleteHook)
@@ -268,6 +282,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 				r.Get("/", synopsis.ListSessions)
 				r.Post("/", synopsis.CreateSession)
 				r.Route("/{sessionId}", func(r chi.Router) {
+					r.Use(requireChild(database, "id", "sessionId", db.TableSessions, db.ColScenarioID))
 					r.Put("/", synopsis.UpdateSession)
 					r.Delete("/", synopsis.DeleteSession)
 					r.Get("/scenes", synopsis.GetSessionScenes)
@@ -292,6 +307,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 				r.Get("/", synopsis.ListBeats)
 				r.Post("/", synopsis.CreateBeat)
 				r.Route("/{beatId}", func(r chi.Router) {
+					r.Use(requireChild(database, "id", "beatId", db.TableBeats, db.ColScenarioID))
 					r.Put("/", synopsis.UpdateBeat)
 					r.Delete("/", synopsis.DeleteBeat)
 					r.Post("/develop", synopsis.DevelopBeat)
@@ -303,6 +319,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 				r.Get("/", brainstorm.ListThreads)
 				r.Post("/", brainstorm.CreateThread)
 				r.Route("/{threadId}", func(r chi.Router) {
+					r.Use(requireChild(database, "id", "threadId", db.TableThreads, db.ColScenarioID))
 					r.Put("/", brainstorm.RenameThread)
 					r.Delete("/", brainstorm.DeleteThread)
 					r.Get("/messages", brainstorm.GetMessages)

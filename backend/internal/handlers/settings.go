@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	db "lore/internal/db"
 	"lore/internal/crypto"
+	db "lore/internal/db"
 	"lore/internal/llm"
 )
 

@@ -64,13 +64,15 @@ export default function AppShell({ crumbs = [], children }: AppShellProps) {
               <Users className="h-3.5 w-3.5" />
             </Link>
           )}
-          <Link
-            to="/settings"
-            title="Paramètres"
-            className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
-          >
-            <Settings className="h-3.5 w-3.5" />
-          </Link>
+          {user?.role === 'superuser' && (
+            <Link
+              to="/settings"
+              title="Paramètres"
+              className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </Link>
+          )}
           <div className="w-px h-4 bg-border mx-1" />
           {themes.map((t) => (
             <button

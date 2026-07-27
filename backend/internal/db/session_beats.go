@@ -161,6 +161,20 @@ func DeleteSessionBeat(ctx context.Context, database *sql.DB, id string) error {
 	return err
 }
 
+// ReorderScenesIn renumbers scenes, ignoring any id that is not in this
+// scenario. The unscoped variant let a caller renumber another campaign's
+// scenes by sending their ids in the body.
+func ReorderScenesIn(ctx context.Context, database *sql.DB, scenarioID string, ids []string) error {
+	for i, id := range ids {
+		if _, err := database.ExecContext(ctx,
+			`UPDATE synopsis_scenes SET sort_order=? WHERE id=? AND scenario_id=?`,
+			i, id, scenarioID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ShiftScenesFrom makes room at sortOrder by pushing every scene at or after it
 // one step down, so an adopted beat can land immediately after its anchor
 // rather than at the end of the list.

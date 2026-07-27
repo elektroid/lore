@@ -69,6 +69,10 @@ func (h *SynopsisHandler) UpdateScene(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "corps invalide")
 		return
 	}
+	if body.LocationID != "" && !h.entityInScenarioCampaign(r, db.TableLocations, body.LocationID) {
+		writeError(w, http.StatusNotFound, "lieu introuvable dans cette campagne")
+		return
+	}
 	if body.IsStart {
 		if err := db.ClearSceneStart(r.Context(), h.db, scenarioID); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -112,7 +116,7 @@ func (h *SynopsisHandler) ReorderScenes(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "ids requis")
 		return
 	}
-	if err := db.ReorderScenes(r.Context(), h.db, body.IDs); err != nil {
+	if err := db.ReorderScenesIn(r.Context(), h.db, scenarioID, body.IDs); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -131,6 +135,10 @@ func (h *SynopsisHandler) AddSceneNPC(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.NPCID == "" {
 		writeError(w, http.StatusBadRequest, "npc_id requis")
+		return
+	}
+	if !h.entityInScenarioCampaign(r, db.TableNPCs, body.NPCID) {
+		writeError(w, http.StatusNotFound, "PNJ introuvable dans cette campagne")
 		return
 	}
 	if err := db.AddSceneNPC(r.Context(), h.db, sceneID, body.NPCID); err != nil {
@@ -162,6 +170,10 @@ func (h *SynopsisHandler) AddSceneArtefact(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "artefact_id required")
 		return
 	}
+	if !h.entityInScenarioCampaign(r, db.TableArtefacts, body.ArtefactID) {
+		writeError(w, http.StatusNotFound, "artefact introuvable dans cette campagne")
+		return
+	}
 	if err := db.AddSceneArtefact(r.Context(), h.db, sceneID, body.ArtefactID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -180,4 +192,15 @@ func (h *SynopsisHandler) RemoveSceneArtefact(w http.ResponseWriter, r *http.Req
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// entityInScenarioCampaign checks an id that arrived in a request body against
+// the campaign behind the scenario in the URL. The route guards cover path
+// params; ids in JSON need the same check or they become the way in.
+func (h *SynopsisHandler) entityInScenarioCampaign(r *http.Request, table, entityID string) bool {
+	campaignID, err := db.CampaignIDForScenario(r.Context(), h.db, chi.URLParam(r, "id"))
+	if err != nil || campaignID == "" {
+		return false
+	}
+	return db.EntityInCampaign(r.Context(), h.db, table, entityID, campaignID)
 }

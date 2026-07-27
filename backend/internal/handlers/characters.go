@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	db "lore/internal/db"
 	"lore/internal/auth"
+	db "lore/internal/db"
 )
 
 // CharacterHandler handles player character endpoints
@@ -39,9 +39,9 @@ func (h *CharacterHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Create creates a new player character
 type createCharacterRequest struct {
-	GameID      string `json:"game_id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	GameID        string `json:"game_id"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
 	PersonalStory string `json:"personal_story"`
 }
 
@@ -64,10 +64,10 @@ func (h *CharacterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	char, err := db.CreatePlayerCharacter(r.Context(), h.db, db.CreatePlayerCharacterParams{
-		UserID:      user.ID,
-		GameID:      req.GameID,
-		Name:        req.Name,
-		Description: req.Description,
+		UserID:        user.ID,
+		GameID:        req.GameID,
+		Name:          req.Name,
+		Description:   req.Description,
 		PersonalStory: req.PersonalStory,
 	})
 	if err != nil {
@@ -106,7 +106,7 @@ func (h *CharacterHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 // Update updates a player character
 type updateCharacterRequest struct {
-	Name           string `json:"name"`
+	Name          string `json:"name"`
 	Description   string `json:"description"`
 	PersonalStory string `json:"personal_story"`
 }
@@ -127,7 +127,7 @@ func (h *CharacterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	char, err := db.UpdatePlayerCharacter(r.Context(), h.db, id, user.ID, db.UpdatePlayerCharacterParams{
-		Name:           req.Name,
+		Name:          req.Name,
 		Description:   req.Description,
 		PersonalStory: req.PersonalStory,
 	})

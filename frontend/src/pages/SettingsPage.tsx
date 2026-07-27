@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import AppShell from '@/components/AppShell'
 import { api } from '@/api/client'
+import { useUser } from '@/stores/auth'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import type { Game, GameDocument } from '@/types/game'
 
@@ -332,6 +333,7 @@ function GamesSection() {
 
 export default function SettingsPage() {
   useDocTitle('lore — paramètres')
+  const currentUser = useUser()
 
   const { data: llmData, isLoading: llmLoading } = useQuery({
     queryKey: ['settings', 'llm'],
@@ -396,6 +398,22 @@ export default function SettingsPage() {
       api_key: !hasMistralKey ? c.api_key : mistral.api_key === MASKED_KEY ? MISTRAL_KEY_SENTINEL : mistral.api_key,
       max_tokens: c.max_tokens >= 100 ? c.max_tokens : MISTRAL_DEFAULT_MAX_TOKENS,
     }))
+  }
+
+  // Everything on this page is instance-wide: the LLM endpoint and key every
+  // campaign runs through, and the shared game catalogue. The backend refuses
+  // these writes for anyone else, so don't show forms that would 403 on save.
+  if (currentUser && currentUser.role !== 'superuser') {
+    return (
+      <AppShell crumbs={[{ label: 'Paramètres' }]}>
+        <main className="max-w-2xl mx-auto px-6 py-16 text-center space-y-2">
+          <p className="text-sm font-medium">Paramètres réservés aux administrateurs</p>
+          <p className="text-sm text-muted-foreground">
+            La configuration du LLM et la liste des jeux sont communes à toute l'instance.
+          </p>
+        </main>
+      </AppShell>
+    )
   }
 
   return (

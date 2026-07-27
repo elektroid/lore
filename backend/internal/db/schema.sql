@@ -13,10 +13,20 @@ CREATE TABLE IF NOT EXISTS campaigns (
     name        TEXT NOT NULL,
     genre       TEXT NOT NULL DEFAULT '',
     game        TEXT NOT NULL DEFAULT '',
-    game_id     TEXT NOT NULL DEFAULT '' REFERENCES games(id) ON DELETE SET DEFAULT,
+    -- No REFERENCES here on purpose. The column is NOT NULL DEFAULT '', and ''
+    -- is not a games.id, so a foreign key would reject the perfectly ordinary
+    -- "campaign with no game system" — and would also reject its own
+    -- ON DELETE SET DEFAULT when a game in use is deleted. Integrity is
+    -- enforced in the handler, which can say "jeu introuvable" instead of
+    -- surfacing a raw SQLite error. See MigrateAlters for existing databases.
+    game_id     TEXT NOT NULL DEFAULT '',
     lore        TEXT NOT NULL DEFAULT '',
     llm_config  TEXT NOT NULL DEFAULT '{}',
-    owner_id    TEXT NOT NULL DEFAULT '' REFERENCES users(id) ON DELETE SET DEFAULT,
+    -- Same reasoning as game_id above, and the same shape the rebuild in
+    -- MigrateAlters produces — a fresh database must not end up with
+    -- constraints an upgraded one lacks. That divergence is what let the
+    -- game_id bug hide on the developer's own long-lived database.
+    owner_id    TEXT NOT NULL DEFAULT '',
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );

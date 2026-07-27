@@ -19,23 +19,23 @@ import (
 // ── Export types ──────────────────────────────────────────────────────────────
 
 type campaignExportDoc struct {
-	ExportedAt string              `json:"exported_at"`
-	Version    int                 `json:"version"`
-	Campaign   campaignExportMeta  `json:"campaign"`
-	NPCs       []db.CampaignNPC    `json:"npcs"`
+	ExportedAt string                `json:"exported_at"`
+	Version    int                   `json:"version"`
+	Campaign   campaignExportMeta    `json:"campaign"`
+	NPCs       []db.CampaignNPC      `json:"npcs"`
 	Locations  []db.CampaignLocation `json:"locations"`
 	Artefacts  []db.CampaignArtefact `json:"artefacts"`
-	Links      exportLinks         `json:"links"`
-	Scenarios  []scenarioExport    `json:"scenarios"`
+	Links      exportLinks           `json:"links"`
+	Scenarios  []scenarioExport      `json:"scenarios"`
 }
 
 type campaignExportMeta struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Genre    string `json:"genre"`
-	GameID   string `json:"game_id"`
-	GameName string `json:"game_name"`
-	Lore     string `json:"lore"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Genre     string `json:"genre"`
+	GameID    string `json:"game_id"`
+	GameName  string `json:"game_name"`
+	Lore      string `json:"lore"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -150,6 +150,11 @@ func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.validGameID(r, body.GameID) {
+		writeError(w, http.StatusBadRequest, "jeu introuvable")
+		return
+	}
+
 	campaign, err := db.CreateCampaign(r.Context(), h.db, db.CreateCampaignParams{
 		Name:      body.Name,
 		Genre:     body.Genre,
@@ -196,6 +201,11 @@ func (h *CampaignHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Name == "" {
 		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	if !h.validGameID(r, body.GameID) {
+		writeError(w, http.StatusBadRequest, "jeu introuvable")
 		return
 	}
 
@@ -326,7 +336,7 @@ func (h *CampaignHandler) ListMemberCharacters(w http.ResponseWriter, r *http.Re
 // ListMembers returns all members of a campaign
 func (h *CampaignHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	
+
 	// Check if user has permission to view campaign members
 	// For now, require campaign membership or superuser
 	user, ok := auth.GetUserFromContext(r)
@@ -373,7 +383,7 @@ type addMemberRequest struct {
 
 func (h *CampaignHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	
+
 	user, ok := auth.GetUserFromContext(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "authentication required")
@@ -435,7 +445,7 @@ func (h *CampaignHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 func (h *CampaignHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	userID := chi.URLParam(r, "userId")
-	
+
 	user, ok := auth.GetUserFromContext(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "authentication required")
@@ -471,4 +481,15 @@ func (h *CampaignHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// validGameID accepts an empty game (a campaign may have none) and otherwise
+// requires a game that exists. Without this the insert fails on the foreign key
+// and the client gets a 500 carrying a raw SQLite message.
+func (h *CampaignHandler) validGameID(r *http.Request, gameID string) bool {
+	if gameID == "" {
+		return true
+	}
+	game, err := db.GetGame(r.Context(), h.db, gameID)
+	return err == nil && game != nil
 }

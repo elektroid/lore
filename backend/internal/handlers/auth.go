@@ -9,9 +9,9 @@ import (
 
 	"github.com/google/uuid"
 
-	db "lore/internal/db"
 	"lore/internal/auth"
 	"lore/internal/config"
+	db "lore/internal/db"
 )
 
 // AuthHandler handles authentication-related endpoints
@@ -30,7 +30,7 @@ type registerRequest struct {
 }
 
 type registerResponse struct {
-	User  userResponse `json:"user"`
+	User  userResponse  `json:"user"`
 	Token tokenResponse `json:"token"`
 }
 
@@ -41,7 +41,7 @@ type loginRequest struct {
 }
 
 type loginResponse struct {
-	User  userResponse `json:"user"`
+	User  userResponse  `json:"user"`
 	Token tokenResponse `json:"token"`
 }
 

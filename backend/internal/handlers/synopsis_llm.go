@@ -162,7 +162,6 @@ func (h *SynopsisHandler) commitSynopsis(r *http.Request, scenarioID string, sc 
 	})
 }
 
-
 func marshalCtx(sc synopsisCtx) string {
 	b, _ := json.Marshal(sc)
 	return string(b)

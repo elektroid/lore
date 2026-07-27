@@ -72,10 +72,10 @@ func (h *ImageLLMHandler) ensureGameAgent(ctx context.Context, game *db.Game, ap
 	}
 
 	body, _ := json.Marshal(map[string]any{
-		"model":        "mistral-medium-latest",
-		"name":         agentName,
-		"instructions": instructions,
-		"tools":        []map[string]string{{"type": "image_generation"}},
+		"model":           "mistral-medium-latest",
+		"name":            agentName,
+		"instructions":    instructions,
+		"tools":           []map[string]string{{"type": "image_generation"}},
 		"completion_args": map[string]any{"temperature": 0.7, "top_p": 0.95},
 	})
 
