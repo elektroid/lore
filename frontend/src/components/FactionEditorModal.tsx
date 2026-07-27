@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { CampaignFaction, FactionImage, PendingImage } from '@/types/entities'
 import { api } from '@/api/client'
+import { patchCachedItem, patchCachedListItem } from '@/api/cache'
+import { useDebouncedSave } from '@/hooks/useDebouncedSave'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
 import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
 
@@ -150,8 +152,7 @@ interface Props {
 
 export default function FactionEditorModal({ factionId, campaignId, open, onClose }: Props) {
   const qc = useQueryClient()
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const draftRef = useRef<Partial<{ name: string; type: string; description: string; motivation: string }>>({})
+  const draft = useDebouncedSave<Partial<{ name: string; type: string; description: string; motivation: string }>>()
 
   const { data: faction, isLoading } = useQuery({
     queryKey: ['faction', factionId],
@@ -165,26 +166,40 @@ export default function FactionEditorModal({ factionId, campaignId, open, onClos
   useEffect(() => {
     if (faction && faction.id !== prevIdRef.current) {
       prevIdRef.current = faction.id
+      // Anything still pending belongs to the faction we are leaving.
+      draft.flush()
       setLocal({ name: faction.name, type: faction.type, description: faction.description, motivation: faction.motivation })
-      draftRef.current = {}
     }
-  }, [faction])
+  }, [faction, draft])
 
   const [suggestion, setSuggestion] = useState<Record<string, string> | null>(null)
 
   const save = useMutation({
-    mutationFn: (patch: Partial<typeof local>) => {
-      const current = qc.getQueryData<CampaignFaction>(['faction', factionId])
-      return api.put<CampaignFaction>(`/campaigns/${campaignId}/factions/${factionId}`, {
-        name: local.name, type: local.type, description: local.description,
-        motivation: local.motivation, images: current?.images ?? '[]', ...patch,
+    // Body built from the cached faction (kept current by the optimistic patch
+    // below), so a draft flushed after the modal moved on still saves against
+    // the faction it was typed into.
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<typeof local> }) => {
+      const base = qc.getQueryData<CampaignFaction>(['faction', id])
+      return api.put<CampaignFaction>(`/campaigns/${campaignId}/factions/${id}`, {
+        name: base?.name ?? local.name,
+        type: base?.type ?? local.type,
+        description: base?.description ?? local.description,
+        motivation: base?.motivation ?? local.motivation,
+        images: base?.images ?? '[]',
+        ...patch,
       })
     },
     onSuccess: (updated) => {
-      qc.setQueryData(['faction', factionId], updated)
+      qc.setQueryData(['faction', updated.id], updated)
       qc.invalidateQueries({ queryKey: ['campaign-factions', campaignId] })
     },
   })
+
+  // Show the edit in the faction list while the user types.
+  function patchFaction(id: string, patch: Partial<typeof local>) {
+    patchCachedItem<CampaignFaction>(qc, ['faction', id], patch)
+    patchCachedListItem<CampaignFaction>(qc, ['campaign-factions', campaignId], id, patch)
+  }
 
   const develop = useMutation({
     mutationFn: () => api.post<Record<string, string>>(
@@ -201,22 +216,17 @@ export default function FactionEditorModal({ factionId, campaignId, open, onClos
   }
 
   function acceptField(key: string, value: string) {
+    const id = factionId
     setLocal(l => ({ ...l, [key]: value }))
-    save.mutate({ [key]: value })
-  }
-
-  function scheduleUpdate(patch: Partial<typeof draftRef.current>) {
-    draftRef.current = { ...draftRef.current, ...patch }
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => {
-      save.mutate(draftRef.current)
-      draftRef.current = {}
-    }, 800)
+    patchFaction(id, { [key]: value })
+    draft.saveNow({ [key]: value }, patch => save.mutate({ id, patch }))
   }
 
   function handle(field: keyof typeof local, value: string) {
+    const id = factionId
     setLocal(l => ({ ...l, [field]: value }))
-    scheduleUpdate({ [field]: value })
+    patchFaction(id, { [field]: value })
+    draft.schedule({ [field]: value }, patch => save.mutate({ id, patch }))
   }
 
   function handleFactionUpdated(updated: CampaignFaction) {

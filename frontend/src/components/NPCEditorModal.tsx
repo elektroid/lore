@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { CampaignNPC, NPCImage, PendingImage } from '@/types/entities'
 import { api } from '@/api/client'
+import { patchCachedItem, patchCachedListItem } from '@/api/cache'
+import { useDebouncedSave } from '@/hooks/useDebouncedSave'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
 import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
 
@@ -171,8 +173,7 @@ function ImageGrid({
 
 export default function NPCEditorModal({ npcId, campaignId, open, onClose }: Props) {
   const qc = useQueryClient()
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const draftRef = useRef<Partial<{ name: string; role: string; description: string; motivation: string; quote: string }>>({})
+  const draft = useDebouncedSave<Partial<{ name: string; role: string; description: string; motivation: string; quote: string }>>()
 
   const { data: npc, isLoading } = useQuery({
     queryKey: ['npc', npcId],
@@ -186,25 +187,42 @@ export default function NPCEditorModal({ npcId, campaignId, open, onClose }: Pro
   useEffect(() => {
     if (npc && npc.id !== prevIdRef.current) {
       prevIdRef.current = npc.id
+      // Anything still pending belongs to the NPC we are leaving — save it.
+      draft.flush()
       setLocal({ name: npc.name, role: npc.role, description: npc.description, motivation: npc.motivation, quote: npc.quote })
-      draftRef.current = {}
     }
-  }, [npc])
+  }, [npc, draft])
 
   const [suggestion, setSuggestion] = useState<Record<string, string> | null>(null)
 
   const save = useMutation({
-    mutationFn: (patch: Partial<typeof local>) =>
-      api.put<CampaignNPC>(`/campaigns/${campaignId}/npcs/${npcId}`, {
-        name: local.name, role: local.role, description: local.description,
-        motivation: local.motivation, quote: local.quote, ...patch,
-      }),
+    // Body built from the cached NPC (kept current by the optimistic patch
+    // below), so a draft flushed after the modal moved on still saves against
+    // the NPC it was typed into.
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<typeof local> }) => {
+      const base = qc.getQueryData<CampaignNPC>(['npc', id])
+      return api.put<CampaignNPC>(`/campaigns/${campaignId}/npcs/${id}`, {
+        name: base?.name ?? local.name,
+        role: base?.role ?? local.role,
+        description: base?.description ?? local.description,
+        motivation: base?.motivation ?? local.motivation,
+        quote: base?.quote ?? local.quote,
+        ...patch,
+      })
+    },
     onSuccess: (updated) => {
-      qc.setQueryData(['npc', npcId], updated)
+      qc.setQueryData(['npc', updated.id], updated)
       qc.invalidateQueries({ queryKey: ['campaign-npcs', campaignId] })
       qc.invalidateQueries({ queryKey: ['synopsis-npcs'] })
     },
   })
+
+  // Show the edit in the entity lists while the user types, instead of one
+  // debounce later.
+  function patchNPC(id: string, patch: Partial<typeof local>) {
+    patchCachedItem<CampaignNPC>(qc, ['npc', id], patch)
+    patchCachedListItem<CampaignNPC>(qc, ['campaign-npcs', campaignId], id, patch)
+  }
 
   const develop = useMutation({
     mutationFn: () => api.post<Record<string, string>>(`/campaigns/${campaignId}/npcs/${npcId}/llm/develop`, {
@@ -220,22 +238,17 @@ export default function NPCEditorModal({ npcId, campaignId, open, onClose }: Pro
   }
 
   function acceptField(key: string, value: string) {
+    const id = npcId
     setLocal(l => ({ ...l, [key]: value }))
-    save.mutate({ [key]: value })
-  }
-
-  function scheduleUpdate(patch: Partial<typeof draftRef.current>) {
-    draftRef.current = { ...draftRef.current, ...patch }
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => {
-      save.mutate(draftRef.current)
-      draftRef.current = {}
-    }, 800)
+    patchNPC(id, { [key]: value })
+    draft.saveNow({ [key]: value }, patch => save.mutate({ id, patch }))
   }
 
   function handle(field: keyof typeof local, value: string) {
+    const id = npcId
     setLocal(l => ({ ...l, [field]: value }))
-    scheduleUpdate({ [field]: value })
+    patchNPC(id, { [field]: value })
+    draft.schedule({ [field]: value }, patch => save.mutate({ id, patch }))
   }
 
   function handleNPCUpdated(updated: CampaignNPC) {

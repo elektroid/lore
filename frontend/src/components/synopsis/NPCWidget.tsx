@@ -8,6 +8,8 @@ import StatusBadge from './StatusBadge'
 import type { SynopsisNPC } from '@/types/synopsis'
 import type { CampaignNPC } from '@/types/entities'
 import { api } from '@/api/client'
+import { patchCachedListItem } from '@/api/cache'
+import { useDebouncedSave } from '@/hooks/useDebouncedSave'
 import LLMSuggestionReview from '@/components/LLMSuggestionReview'
 import { NPC_SUGGESTION_FIELDS } from '@/components/NPCEditorModal'
 
@@ -143,7 +145,7 @@ function NPCRow({ npc, scenarioId }: { npc: SynopsisNPC; scenarioId: string }) {
   const prevRef = useRef({ name: npc.name, role: npc.role, description: npc.description, quote: npc.quote, motivation: npc.motivation ?? '' })
   // localRef mirrors local state without closure staleness — timer always reads latest values
   const localRef = useRef({ name: npc.name, role: npc.role, description: npc.description, quote: npc.quote, motivation: npc.motivation ?? '' })
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const draft = useDebouncedSave<typeof local>()
   const descRef = useRef<HTMLTextAreaElement>(null)
   const [suggestion, setSuggestion] = useState<Record<string, string> | null>(null)
 
@@ -202,12 +204,19 @@ function NPCRow({ npc, scenarioId }: { npc: SynopsisNPC; scenarioId: string }) {
     })
   }
 
+  // Everywhere else this NPC is shown reads one of these caches — patch them
+  // as the user types instead of waiting for the debounced PUT.
+  function patchCaches(patch: Partial<typeof local>) {
+    patchCachedListItem<SynopsisNPC>(qc, ['synopsis-npcs', scenarioId], npc.id, patch)
+    patchCachedListItem<CampaignNPC>(qc, ['campaign-npcs', npc.campaign_id], npc.id, patch)
+  }
+
   function handle(field: keyof typeof local, value: string) {
     localRef.current = { ...localRef.current, [field]: value }
     setLocal({ ...localRef.current })
     prevRef.current = { ...prevRef.current, [field]: value }
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => save.mutate(localRef.current), 800)
+    patchCaches({ [field]: value })
+    draft.schedule(localRef.current, data => save.mutate(data))
   }
 
   function acceptField(key: string, value: string) {
@@ -215,10 +224,8 @@ function NPCRow({ npc, scenarioId }: { npc: SynopsisNPC; scenarioId: string }) {
     localRef.current = merged
     prevRef.current = merged
     setLocal(merged)
-    if (timerRef.current) clearTimeout(timerRef.current)
-    save.mutate(merged)
-    qc.invalidateQueries({ queryKey: ['synopsis-npcs', scenarioId] })
-    qc.invalidateQueries({ queryKey: ['campaign-npcs', npc.campaign_id] })
+    patchCaches(merged)
+    draft.saveNow(merged, data => save.mutate(data))
   }
 
   const images: { url: string }[] = (() => { try { return JSON.parse(npc.images || '[]') } catch { return [] } })()

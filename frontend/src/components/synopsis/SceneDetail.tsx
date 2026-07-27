@@ -13,6 +13,8 @@ import type { Scene, SceneStatus } from '@/types/synopsis'
 import { SCENE_STATUS_LABELS } from '@/types/synopsis'
 import type { CampaignNPC, CampaignLocation, LocationImage, CampaignArtefact } from '@/types/entities'
 import { api } from '@/api/client'
+import { patchCachedListItem } from '@/api/cache'
+import { useDebouncedSave } from '@/hooks/useDebouncedSave'
 import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
 
 interface Props {
@@ -20,6 +22,11 @@ interface Props {
   campaignId: string
   scene: Scene
 }
+
+type ScenePatch = Partial<{
+  title: string; status: SceneStatus; description: string; outcome: string; notes: string
+  location_id: string; played: boolean; is_start: boolean; is_end: boolean
+}>
 
 const SCENE_SUGGESTION_FIELDS: SuggestionField[] = [
   { key: 'description', label: 'Ce qui se passe', multiline: true },
@@ -233,8 +240,7 @@ function ArtefactPicker({
 
 export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
   const qc = useQueryClient()
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const draftRef = useRef<Partial<{ title: string; description: string; outcome: string; location_id: string }>>({})
+  const draft = useDebouncedSave<ScenePatch>()
   const [local, setLocal] = useState({ title: scene.title, description: scene.description, outcome: scene.outcome, notes: scene.notes })
   const [locationPickerOpen, setLocationPickerOpen] = useState(false)
   const [locationEditorOpen, setLocationEditorOpen] = useState(false)
@@ -260,10 +266,8 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
   }
 
   function acceptField(key: string, value: string) {
-    if (timerRef.current) clearTimeout(timerRef.current)
-    draftRef.current = {}
     setLocal(l => ({ ...l, [key]: value }))
-    update.mutate({ [key]: value })
+    saveNow({ [key]: value })
   }
 
   const { data: locationData } = useQuery({
@@ -275,57 +279,70 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
     try { return JSON.parse(locationData?.images ?? '[]') } catch { return [] }
   })()
 
-  // Sync when scene changes (different scene selected)
+  // Sync when scene changes (different scene selected). The pending draft
+  // belongs to the previous scene — save it instead of dropping it.
   useEffect(() => {
+    draft.flush()
     setLocal({ title: scene.title, description: scene.description, outcome: scene.outcome, notes: scene.notes })
-    draftRef.current = {}
-    if (timerRef.current) clearTimeout(timerRef.current)
-  }, [scene.id])
+  }, [scene.id, draft])
 
   const update = useMutation({
-    mutationFn: (patch: Partial<{ title: string; status: SceneStatus; description: string; outcome: string; notes: string; location_id: string; played: boolean; is_start: boolean; is_end: boolean }>) =>
-      api.put<Scene>(`/scenarios/${scenarioId}/synopsis/scenes/${scene.id}`, {
-        title: scene.title,
-        status: scene.status,
-        description: scene.description,
-        outcome: scene.outcome,
-        notes: scene.notes,
-        location_id: scene.location_id,
-        played: scene.played,
-        is_start: scene.is_start,
-        is_end: scene.is_end,
+    // The full-record PUT is built from the cached scene rather than the prop,
+    // so a draft flushed after the panel switched scenes still saves against
+    // the scene it was typed into.
+    mutationFn: ({ sceneId, patch }: { sceneId: string; patch: ScenePatch }) => {
+      const base = qc.getQueryData<Scene[]>(['scenes', scenarioId])?.find(s => s.id === sceneId) ?? scene
+      return api.put<Scene>(`/scenarios/${scenarioId}/synopsis/scenes/${sceneId}`, {
+        title: base.title,
+        status: base.status,
+        description: base.description,
+        outcome: base.outcome,
+        notes: base.notes,
+        location_id: base.location_id,
+        played: base.played,
+        is_start: base.is_start,
+        is_end: base.is_end,
         ...patch,
-      }),
+      })
+    },
     onSuccess: (data) => {
       qc.setQueryData(['scenes', scenarioId], (old: Scene[] = []) =>
-        old.map(s => s.id === data.id ? data : s),
+        // The server clears is_start on every other scene — mirror that here.
+        old.map(s => s.id === data.id ? data : (data.is_start ? { ...s, is_start: false } : s)),
       )
     },
   })
 
-  function scheduleUpdate(patch: Partial<typeof draftRef.current>) {
-    draftRef.current = { ...draftRef.current, ...patch }
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => {
-      update.mutate(draftRef.current)
-      draftRef.current = {}
-    }, 800)
+  // Reflect the edit in the scene list (and the breadcrumb) right away; both
+  // read the same cache entry, which otherwise only catches up once the
+  // debounced PUT comes back.
+  function patchScene(sceneId: string, patch: Partial<Scene>) {
+    patchCachedListItem<Scene>(qc, ['scenes', scenarioId], sceneId, patch)
   }
 
   function handle(field: 'title' | 'description' | 'outcome' | 'notes', value: string) {
+    const sceneId = scene.id
     setLocal(l => ({ ...l, [field]: value }))
-    scheduleUpdate({ [field]: value })
+    patchScene(sceneId, { [field]: value })
+    draft.schedule({ [field]: value }, patch => update.mutate({ sceneId, patch }))
+  }
+
+  /** Write that must land now — flushes any pending draft with it. */
+  function saveNow(patch: ScenePatch) {
+    const sceneId = scene.id
+    patchScene(sceneId, patch)
+    draft.saveNow(patch, merged => update.mutate({ sceneId, patch: merged }))
   }
 
   function pickLocation(loc: CampaignLocation) {
-    if (timerRef.current) clearTimeout(timerRef.current)
-    draftRef.current = {}
-    update.mutate({ location_id: loc.id })
+    patchScene(scene.id, { location_name: loc.name })
+    saveNow({ location_id: loc.id })
     setLocationPickerOpen(false)
   }
 
   function clearLocation() {
-    update.mutate({ location_id: '' })
+    patchScene(scene.id, { location_name: '' })
+    saveNow({ location_id: '' })
   }
 
   const addNPC = useMutation({
@@ -372,7 +389,7 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
         />
         <select
           value={scene.status}
-          onChange={e => update.mutate({ status: e.target.value as SceneStatus })}
+          onChange={e => saveNow({ status: e.target.value as SceneStatus })}
           className="text-xs rounded border border-input bg-background px-2 py-1 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring shrink-0"
         >
           {(Object.entries(SCENE_STATUS_LABELS) as [SceneStatus, string][]).map(([val, label]) => (
@@ -386,7 +403,7 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
         <button
           type="button"
           title={scene.is_start ? 'Retirer le tag Départ' : 'Marquer comme scène de départ'}
-          onClick={() => update.mutate({ is_start: !scene.is_start })}
+          onClick={() => saveNow({ is_start: !scene.is_start })}
           className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded border transition-colors ${
             scene.is_start
               ? 'bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-950 dark:border-emerald-700 dark:text-emerald-400'
@@ -399,7 +416,7 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
         <button
           type="button"
           title={scene.is_end ? 'Retirer le tag Fin' : 'Marquer comme scène de fin'}
-          onClick={() => update.mutate({ is_end: !scene.is_end })}
+          onClick={() => saveNow({ is_end: !scene.is_end })}
           className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded border transition-colors ${
             scene.is_end
               ? 'bg-rose-50 border-rose-300 text-rose-700 dark:bg-rose-950 dark:border-rose-700 dark:text-rose-400'

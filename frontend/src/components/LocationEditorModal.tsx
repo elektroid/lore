@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { CampaignLocation, LocationImage, PendingImage } from '@/types/entities'
 import { api } from '@/api/client'
+import { patchCachedItem, patchCachedListItem } from '@/api/cache'
+import { useDebouncedSave } from '@/hooks/useDebouncedSave'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
 import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
 
@@ -206,8 +208,7 @@ function ImageGrid({
 
 export default function LocationEditorModal({ locationId, campaignId, open, onClose }: Props) {
   const qc = useQueryClient()
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const draftRef = useRef<Partial<{ name: string; city: string; district: string; description: string; atmosphere: string }>>({})
+  const draft = useDebouncedSave<Partial<{ name: string; city: string; district: string; description: string; atmosphere: string }>>()
 
   const { data: loc, isLoading } = useQuery({
     queryKey: ['location', locationId],
@@ -221,29 +222,41 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
   useEffect(() => {
     if (loc && loc.id !== prevIdRef.current) {
       prevIdRef.current = loc.id
+      // Anything still pending belongs to the location we are leaving.
+      draft.flush()
       setLocal({ name: loc.name, city: loc.city, district: loc.district, description: loc.description, atmosphere: loc.atmosphere })
-      draftRef.current = {}
     }
-  }, [loc])
+  }, [loc, draft])
 
   const [suggestion, setSuggestion] = useState<Record<string, string> | null>(null)
 
   const save = useMutation({
-    mutationFn: (patch: Partial<typeof local>) =>
-      api.put<CampaignLocation>(`/campaigns/${campaignId}/locations/${locationId}`, {
-        name: local.name,
-        city: local.city,
-        district: local.district,
-        description: local.description,
-        atmosphere: local.atmosphere,
-        images: loc?.images ?? '[]',
+    // Body built from the cached location (kept current by the optimistic
+    // patch below), so a draft flushed after the modal moved on still saves
+    // against the location it was typed into.
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<typeof local> }) => {
+      const base = qc.getQueryData<CampaignLocation>(['location', id])
+      return api.put<CampaignLocation>(`/campaigns/${campaignId}/locations/${id}`, {
+        name: base?.name ?? local.name,
+        city: base?.city ?? local.city,
+        district: base?.district ?? local.district,
+        description: base?.description ?? local.description,
+        atmosphere: base?.atmosphere ?? local.atmosphere,
+        images: base?.images ?? '[]',
         ...patch,
-      }),
+      })
+    },
     onSuccess: (updated) => {
-      qc.setQueryData(['location', locationId], updated)
+      qc.setQueryData(['location', updated.id], updated)
       qc.invalidateQueries({ queryKey: ['campaign-locations', campaignId] })
     },
   })
+
+  // Show the edit in the location list while the user types.
+  function patchLocation(id: string, patch: Partial<typeof local>) {
+    patchCachedItem<CampaignLocation>(qc, ['location', id], patch)
+    patchCachedListItem<CampaignLocation>(qc, ['campaign-locations', campaignId], id, patch)
+  }
 
   const develop = useMutation({
     mutationFn: () => api.post<Record<string, string>>(
@@ -260,22 +273,17 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
   }
 
   function acceptField(key: string, value: string) {
+    const id = locationId
     setLocal(l => ({ ...l, [key]: value }))
-    save.mutate({ [key]: value })
-  }
-
-  function scheduleUpdate(patch: Partial<typeof draftRef.current>) {
-    draftRef.current = { ...draftRef.current, ...patch }
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => {
-      save.mutate(draftRef.current)
-      draftRef.current = {}
-    }, 800)
+    patchLocation(id, { [key]: value })
+    draft.saveNow({ [key]: value }, patch => save.mutate({ id, patch }))
   }
 
   function handle(field: keyof typeof local, value: string) {
+    const id = locationId
     setLocal(l => ({ ...l, [field]: value }))
-    scheduleUpdate({ [field]: value })
+    patchLocation(id, { [field]: value })
+    draft.schedule({ [field]: value }, patch => save.mutate({ id, patch }))
   }
 
   function handleLocationUpdated(updated: CampaignLocation) {

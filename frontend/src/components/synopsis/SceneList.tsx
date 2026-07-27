@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { useSynopsisLLM } from '@/hooks/useSynopsisLLM'
 import type { Scene, SceneStatus } from '@/types/synopsis'
 import { api } from '@/api/client'
+import { patchCachedListItem } from '@/api/cache'
 
 interface Props {
   scenarioId: string
@@ -173,8 +174,14 @@ export default function SceneList({ scenarioId, selectedId, onSelect }: Props) {
         notes: scene.notes,
         location_id: scene.location_id,
         played: !scene.played,
+        is_start: scene.is_start,
+        is_end: scene.is_end,
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['scenes', scenarioId] }),
+    // Optimistic — the checkbox must not wait a round trip to flip.
+    onMutate: (scene: Scene) => {
+      patchCachedListItem<Scene>(qc, ['scenes', scenarioId], scene.id, { played: !scene.played })
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['scenes', scenarioId] }),
   })
 
   const reorder = useMutation({

@@ -8,6 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import type { CampaignArtefact, ArtefactImage, NPCArtefactLink, PendingImage } from '@/types/entities'
 import type { CampaignNPC } from '@/types/entities'
 import { api } from '@/api/client'
+import { patchCachedItem, patchCachedListItem } from '@/api/cache'
+import { useDebouncedSave } from '@/hooks/useDebouncedSave'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
 import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
 
@@ -47,8 +49,7 @@ function AutoTextarea({ value, onChange, placeholder, className = '', disabled }
 export default function ArtefactEditorModal({ artefactId, campaignId, open, onClose }: Props) {
   const qc = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const draftRef = useRef<Partial<{ name: string; description: string }>>({})
+  const draft = useDebouncedSave<Partial<{ name: string; description: string }>>()
   const prevIdRef = useRef('')
 
   const [local, setLocal] = useState({ name: '', description: '' })
@@ -78,10 +79,11 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
   useEffect(() => {
     if (artefact && artefact.id !== prevIdRef.current) {
       prevIdRef.current = artefact.id
+      // Anything still pending belongs to the artefact we are leaving.
+      draft.flush()
       setLocal({ name: artefact.name, description: artefact.description })
-      draftRef.current = {}
     }
-  }, [artefact])
+  }, [artefact, draft])
 
   const images: ArtefactImage[] = (() => {
     try { return JSON.parse(artefact?.images ?? '[]') } catch { return [] }
@@ -93,24 +95,32 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
   }
 
   const save = useMutation({
-    mutationFn: (patch: Partial<typeof local>) => api.put<CampaignArtefact>(`/campaigns/${campaignId}/artefacts/${artefactId}`, {
-      name: local.name, description: local.description, images: artefact?.images ?? '[]', ...patch,
-    }),
+    // Body built from the cached artefact (kept current by the optimistic
+    // patch below), so a draft flushed after the modal moved on still saves
+    // against the artefact it was typed into.
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<typeof local> }) => {
+      const base = qc.getQueryData<CampaignArtefact>(['artefact', id])
+      return api.put<CampaignArtefact>(`/campaigns/${campaignId}/artefacts/${id}`, {
+        name: base?.name ?? local.name,
+        description: base?.description ?? local.description,
+        images: base?.images ?? '[]',
+        ...patch,
+      })
+    },
     onSuccess: invalidateArtefact,
   })
 
-  function scheduleUpdate(patch: Partial<typeof draftRef.current>) {
-    draftRef.current = { ...draftRef.current, ...patch }
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => {
-      save.mutate(draftRef.current)
-      draftRef.current = {}
-    }, 800)
+  // Show the edit in the artefact list while the user types.
+  function patchArtefact(id: string, patch: Partial<typeof local>) {
+    patchCachedItem<CampaignArtefact>(qc, ['artefact', id], patch)
+    patchCachedListItem<CampaignArtefact>(qc, ['campaign-artefacts', campaignId], id, patch)
   }
 
   function handle(field: keyof typeof local, value: string) {
+    const id = artefactId
     setLocal(l => ({ ...l, [field]: value }))
-    scheduleUpdate({ [field]: value })
+    patchArtefact(id, { [field]: value })
+    draft.schedule({ [field]: value }, patch => save.mutate({ id, patch }))
   }
 
   const develop = useMutation({
@@ -128,8 +138,10 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
   }
 
   function acceptField(key: string, value: string) {
+    const id = artefactId
     setLocal(l => ({ ...l, [key]: value }))
-    save.mutate({ [key]: value })
+    patchArtefact(id, { [key]: value })
+    draft.saveNow({ [key]: value }, patch => save.mutate({ id, patch }))
   }
 
   const generateImages = useMutation({
