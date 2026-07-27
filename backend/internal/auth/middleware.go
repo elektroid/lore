@@ -34,29 +34,34 @@ type CSRFContext struct {
 	Token string
 }
 
-// isPublicEndpoint checks if the request path is for a public endpoint
+// isPublicEndpoint reports whether a request may proceed without a session.
+//
+// The rule is stated as "what is protected", not "what is open", because the
+// opposite phrasing gets this wrong every time something new is served. Two
+// things need a session — the API, and the game PDFs. Everything else is the
+// static application: the HTML shell, its hashed assets, and the uploaded
+// images. Those must be readable by a browser that has not logged in yet —
+// otherwise the login page itself 401s and nobody can ever get in — and by the
+// projection screen, which is a TV nobody logs in on at all.
+// See docs/play-table.md and docs/authorization.md.
 func isPublicEndpoint(path string) bool {
+	// Game PDFs are not part of the projection contract.
+	if strings.HasPrefix(path, "/external-material/") {
+		return false
+	}
+
+	if !strings.HasPrefix(path, "/api/") {
+		return true // app shell, /assets/*, /uploads/*, favicon…
+	}
+
 	switch path {
 	case "/api/auth/register", "/api/auth/login", "/api/auth/logout",
 		"/api/auth/refresh", "/api/auth/csrf", "/api/auth/bootstrap":
 		return true
 	}
 	// The table surface (projection screen, player seats) authenticates with the
-	// share token in the path — the screen is often a TV nobody logs in on.
-	// See docs/play-table.md.
-	if strings.HasPrefix(path, "/api/table/") {
-		return true
-	}
-	// Uploaded images must be readable by the same unauthenticated surfaces.
-	// The GM projects a location onto the TV; if this needed a session the
-	// players would stare at a broken image. Paths are
-	// /uploads/<kind>/<uuid>/<uuid>.<ext> — unguessable, and nothing is served
-	// there that the GM has not already put on the wall. Note this covers
-	// /uploads only: /external-material (game PDFs) stays behind auth.
-	if strings.HasPrefix(path, "/uploads/") {
-		return true
-	}
-	return false
+	// share token in the path.
+	return strings.HasPrefix(path, "/api/table/")
 }
 
 // AuthMiddleware creates a middleware that validates JWT tokens

@@ -18,3 +18,8 @@ frontend/dist/
 
 .DS_Store
 .claude/
+
+# The frontend is copied here by `make build` and embedded in the binary.
+# Only the placeholder is tracked, so a source checkout still compiles.
+backend/internal/web/dist/*
+!backend/internal/web/dist/.gitkeep

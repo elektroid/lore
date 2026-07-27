@@ -1,0 +1,2 @@
+The production frontend is copied here by `make build` and embedded
+into the binary. Only this placeholder is tracked — see .gitignore.

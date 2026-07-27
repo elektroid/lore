@@ -13,6 +13,7 @@ import (
 	"lore/internal/config"
 	"lore/internal/db"
 	"lore/internal/handlers"
+	"lore/internal/web"
 )
 
 func mustMkdir(path string) {
@@ -30,6 +31,16 @@ func main() {
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		log.Fatalf("config: %v", err)
+	}
+
+	// Refuse to start an instance that is both reachable and insecure. On
+	// localhost the same problems are warnings, so development is unaffected.
+	warnings, err := cfg.Validate()
+	for _, w := range warnings {
+		log.Printf("WARNING: %s", w)
+	}
+	if err != nil {
+		log.Fatalf("refus de démarrer : %v", err)
 	}
 
 	database, err := db.Open(cfg.Database.Path)
@@ -105,5 +116,13 @@ func main() {
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	fmt.Printf("Lore Engine → http://%s\n", addr)
+	if _, embedded := web.Assets(); embedded {
+		fmt.Println("  frontend  : servi depuis le binaire")
+	} else {
+		fmt.Println("  frontend  : non embarqué (API seule) — lancez `make build` pour un binaire complet")
+	}
+	if !cfg.RegistrationOpen() {
+		fmt.Println("  inscriptions : fermées")
+	}
 	log.Fatal(http.ListenAndServe(addr, router))
 }

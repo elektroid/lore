@@ -103,6 +103,16 @@ func NewAuthHandler(database *sql.DB, tokenService *auth.TokenService, cfg *conf
 
 // Register creates a new user account
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+	// An instance reachable from the internet usually wants exactly the players
+	// its owner invited, not everyone who finds the URL. Open by default,
+	// because there is no admin-side "create user" screen yet — see
+	// [auth] registration in lore.toml.example.
+	if !h.cfg.RegistrationOpen() {
+		writeErrorResponse(w, http.StatusForbidden, "REGISTRATION_CLOSED",
+			"les inscriptions sont fermées — demandez un compte à l'administrateur")
+		return
+	}
+
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")

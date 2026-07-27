@@ -3,8 +3,11 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -12,7 +15,9 @@ import (
 	"lore/internal/auth"
 	"lore/internal/config"
 	db "lore/internal/db"
+	"lore/internal/ratelimit"
 	"lore/internal/table"
+	"lore/internal/web"
 )
 
 func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenService *auth.TokenService, cfg *config.Config) *chi.Mux {
@@ -79,7 +84,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 			})
 		})
 
-		settings := &SettingsHandler{db: database, encKey: cfg.JWT.Secret}
+		settings := &SettingsHandler{db: database, encKey: cfg.EncryptionKey()}
 		r.Route("/settings", func(r chi.Router) {
 			// Reads are open: the app shows whether an LLM is configured, and
 			// the key is masked on the way out. Writes are instance-wide.
@@ -90,7 +95,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 		})
 
 		games := &GameHandler{db: database, externalMaterialDir: externalMaterialDir}
-		gameLLM := &GameLLMHandler{db: database, encKey: cfg.JWT.Secret}
+		gameLLM := &GameLLMHandler{db: database, encKey: cfg.EncryptionKey()}
 		r.Route("/games", func(r chi.Router) {
 			// The game catalogue is shared by every campaign in the instance, so
 			// reading is open to all and editing is the administrator's.
@@ -109,14 +114,14 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 		})
 
 		campaigns := &CampaignHandler{db: database}
-		entities := &EntityHandler{db: database, encKey: cfg.JWT.Secret}
+		entities := &EntityHandler{db: database, encKey: cfg.EncryptionKey()}
 		uploads := &UploadsHandler{db: database, uploadsDir: uploadsDir}
 		imageLLM := &ImageLLMHandler{
 			db:         database,
 			uploadsDir: uploadsDir,
-			encKey:     cfg.JWT.Secret,
+			encKey:     cfg.EncryptionKey(),
 		}
-		scenarioFactory := &ScenarioFactoryHandler{db: database, encKey: cfg.JWT.Secret}
+		scenarioFactory := &ScenarioFactoryHandler{db: database, encKey: cfg.EncryptionKey()}
 		r.Route("/campaigns", func(r chi.Router) {
 			r.Get("/", campaigns.List)
 			r.Post("/", campaigns.Create)
@@ -233,8 +238,8 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 		})
 
 		scenarios := &ScenarioHandler{db: database}
-		synopsis := &SynopsisHandler{db: database, encKey: cfg.JWT.Secret}
-		brainstorm := &BrainstormHandler{db: database, encKey: cfg.JWT.Secret}
+		synopsis := &SynopsisHandler{db: database, encKey: cfg.EncryptionKey()}
+		brainstorm := &BrainstormHandler{db: database, encKey: cfg.EncryptionKey()}
 		r.Route("/scenarios/{id}", func(r chi.Router) {
 			r.Use(requireScenarioOwner(database))
 			r.Get("/", scenarios.Get)
@@ -329,6 +334,13 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 		})
 	})
 
+	// The built frontend, when one is embedded. Registered last and only as a
+	// catch-all: /api, /uploads and /external-material are matched first, so a
+	// bad API path still returns JSON rather than the app shell.
+	if assets, ok := web.Assets(); ok {
+		r.Handle("/*", web.Handler(assets))
+	}
+
 	return r
 }
 
@@ -355,13 +367,82 @@ func corsMiddleware(cfg *config.Config) func(http.Handler) http.Handler {
 	}
 }
 
+// Rate limits, per client IP.
+//
+// The strict bucket exists for the login and registration forms: an exposed
+// instance would otherwise accept unlimited password guesses. The general
+// bucket is deliberately roomy — a GM with the console, a projection screen and
+// two player seats open is a normal amount of traffic, and locking them out
+// mid-session would be a worse bug than the one being prevented.
+//
+// Note the IP comes from middleware.RealIP, which trusts X-Forwarded-For.
+// That is correct behind a reverse proxy and spoofable without one; see
+// docs/deployment.md.
+const (
+	authRateMax    = 10
+	authRateWindow = 15 * time.Minute
+
+	generalRateMax    = 600
+	generalRateWindow = time.Minute
+)
+
 func rateLimitMiddleware() func(http.Handler) http.Handler {
+	auth := ratelimit.New(authRateMax, authRateWindow)
+	general := ratelimit.New(generalRateMax, generalRateWindow)
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Rate limiting stub - implement properly later
+			// The table stream is one long-lived connection, and uploads of a
+			// large image should not count against a per-minute budget.
+			if r.Method == http.MethodOptions || strings.HasSuffix(r.URL.Path, "/stream") {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			limiter, bucket := general, "requêtes"
+			if isCredentialEndpoint(r) {
+				limiter, bucket = auth, "tentatives de connexion"
+			}
+
+			ip := clientIP(r)
+			if !limiter.Allow(ip) {
+				retry := limiter.Retry(ip)
+				w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
+				writeError(w, http.StatusTooManyRequests,
+					"trop de "+bucket+" — réessayez dans "+humanDuration(retry))
+				return
+			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// isCredentialEndpoint marks the routes worth guessing at: anything that takes
+// a password.
+func isCredentialEndpoint(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	switch r.URL.Path {
+	case "/api/auth/login", "/api/auth/register", "/api/auth/bootstrap":
+		return true
+	}
+	return false
+}
+
+func clientIP(r *http.Request) string {
+	// RealIP has already normalised this when a proxy is present.
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+func humanDuration(d time.Duration) string {
+	if d < time.Minute {
+		return strconv.Itoa(int(d.Seconds())+1) + " s"
+	}
+	return strconv.Itoa(int(d.Minutes())+1) + " min"
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

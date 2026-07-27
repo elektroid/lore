@@ -1,4 +1,4 @@
-.PHONY: dev dev-backend dev-frontend build generate install-tools check-config
+.PHONY: dev dev-backend dev-frontend build clean-embed generate install-tools check-config
 
 BINARY = lore-engine
 AIR    = $(shell go env GOPATH)/bin/air
@@ -23,8 +23,21 @@ dev-frontend:
 build:
 	@echo "→ build frontend"
 	cd frontend && npm run build
+	@echo "→ embed frontend"
+	rm -rf backend/internal/web/dist
+	mkdir -p backend/internal/web/dist
+	cp -r frontend/dist/. backend/internal/web/dist/
 	@echo "→ build backend"
 	cd backend && go build -o ../$(BINARY) ./cmd/server
+	@echo "✓ $(BINARY) — binaire autonome, frontend inclus"
+
+# Restores the placeholder-only dist so `go build` in the backend keeps working
+# without a frontend build. `make build` overwrites it again.
+clean-embed:
+	rm -rf backend/internal/web/dist
+	mkdir -p backend/internal/web/dist
+	printf 'The production frontend is copied here by `make build` and embedded\ninto the binary. Only this placeholder is tracked — see .gitignore.\n' \
+		> backend/internal/web/dist/.gitkeep
 
 generate:
 	cd backend && sqlc generate

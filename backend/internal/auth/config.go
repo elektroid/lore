@@ -2,6 +2,8 @@ package auth
 
 import (
 	"fmt"
+	"strings"
+
 	"lore/internal/config"
 )
 
@@ -16,12 +18,14 @@ func ConfigToTokenService(cfg *config.Config) (*TokenService, error) {
 		return nil, fmt.Errorf("invalid refresh expiry: %w", err)
 	}
 
-	secret := cfg.JWT.Secret
-	if secret == "" {
-		// Generate a default secret if none provided (for dev only)
-		// In production, this should be set in config
-		secret = "default-dev-secret-change-in-production"
+	// No fallback secret. There used to be a hardcoded one here, which meant an
+	// instance with no jwt.secret signed its tokens with a string published in
+	// this repository — anyone could mint themselves an administrator session.
+	// config.Validate decides how strict to be about a *weak* secret; an absent
+	// one is never acceptable.
+	if strings.TrimSpace(cfg.JWT.Secret) == "" {
+		return nil, fmt.Errorf("jwt.secret is not set — generate one with: openssl rand -hex 32")
 	}
 
-	return NewTokenService(secret, accessExpiry, refreshExpiry), nil
+	return NewTokenService(cfg.JWT.Secret, accessExpiry, refreshExpiry), nil
 }

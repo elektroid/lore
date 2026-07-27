@@ -19,6 +19,28 @@ type Config struct {
 	JWT              JWTConfig              `toml:"jwt"`
 	CORS             CORSConfig             `toml:"cors"`
 	Bootstrap        BootstrapConfig        `toml:"bootstrap"`
+	Crypto           CryptoConfig           `toml:"crypto"`
+	Auth             AuthConfig             `toml:"auth"`
+}
+
+// CryptoConfig holds the key stored API keys are encrypted with. Empty means
+// "reuse jwt.secret", which is what every existing install did — see
+// Config.EncryptionKey.
+type CryptoConfig struct {
+	Key string `toml:"key"`
+}
+
+type AuthConfig struct {
+	// Registration is "open" (anyone may create an account) or "closed"
+	// (only the bootstrap user and accounts an administrator promotes).
+	// Defaults to open: there is no admin-side user creation screen yet, so
+	// closing it by default would leave an operator no way to add players.
+	Registration string `toml:"registration"`
+}
+
+// RegistrationOpen reports whether self-service signup is allowed.
+func (c *Config) RegistrationOpen() bool {
+	return !strings.EqualFold(strings.TrimSpace(c.Auth.Registration), "closed")
 }
 
 type ExternalMaterialConfig struct {
@@ -52,15 +74,15 @@ type UploadsConfig struct {
 }
 
 type JWTConfig struct {
-	Secret         string `toml:"secret"`
-	AccessExpiry   string `toml:"access_expiry"`   // e.g., "24h"
-	RefreshExpiry  string `toml:"refresh_expiry"`  // e.g., "168h" (7 days)
-	SigningMethod  string `toml:"signing_method"`  // e.g., "HS256"
+	Secret        string `toml:"secret"`
+	AccessExpiry  string `toml:"access_expiry"`  // e.g., "24h"
+	RefreshExpiry string `toml:"refresh_expiry"` // e.g., "168h" (7 days)
+	SigningMethod string `toml:"signing_method"` // e.g., "HS256"
 }
 
 type CORSConfig struct {
-	Origins []string `toml:"origins"`
-	Credentials bool   `toml:"credentials"`
+	Origins     []string `toml:"origins"`
+	Credentials bool     `toml:"credentials"`
 }
 
 type BootstrapConfig struct {
@@ -69,11 +91,11 @@ type BootstrapConfig struct {
 
 func Load(path string) (*Config, error) {
 	cfg := &Config{
-		Server: ServerConfig{Host: "localhost", Port: 8080},
-		Database: DatabaseConfig{Path: "lore.db"},
-		Uploads: UploadsConfig{Dir: "./data/uploads"},
+		Server:           ServerConfig{Host: "localhost", Port: 8080},
+		Database:         DatabaseConfig{Path: "lore.db"},
+		Uploads:          UploadsConfig{Dir: "./data/uploads"},
 		ExternalMaterial: ExternalMaterialConfig{Dir: "./external-material"},
-		Mistral: MistralConfig{ImageCount: 3},
+		Mistral:          MistralConfig{ImageCount: 3},
 		JWT: JWTConfig{
 			AccessExpiry:  "24h",
 			RefreshExpiry: "168h", // 7 days
@@ -83,6 +105,7 @@ func Load(path string) (*Config, error) {
 			Origins:     []string{"http://localhost:5173"},
 			Credentials: true,
 		},
+		Auth: AuthConfig{Registration: "open"},
 	}
 
 	if _, err := os.Stat(path); err == nil {
@@ -125,6 +148,12 @@ func Load(path string) (*Config, error) {
 	// Bootstrap user from env
 	if v := os.Getenv("LORE_BOOTSTRAP_USER"); v != "" {
 		cfg.Bootstrap.User = v
+	}
+	if v := os.Getenv("LORE_CRYPTO_KEY"); v != "" {
+		cfg.Crypto.Key = v
+	}
+	if v := os.Getenv("LORE_REGISTRATION"); v != "" {
+		cfg.Auth.Registration = v
 	}
 
 	return cfg, nil

@@ -62,10 +62,34 @@ La configuration est lue depuis `lore.toml` (ignoré par git). Les variables d'e
 | `server.host` | `LORE_HOST` | `localhost` |
 | `server.port` | `LORE_PORT` | `8080` |
 | `database.path` | `LORE_DB_PATH` | `lore.db` |
-| `jwt.secret` | `LORE_JWT_SECRET` | *(dev default — changer en prod)* |
+| `jwt.secret` | `LORE_JWT_SECRET` | **obligatoire** — le serveur refuse de démarrer sans |
+| `crypto.key` | `LORE_CRYPTO_KEY` | *(vide — retombe sur `jwt.secret`)* |
+| `auth.registration` | `LORE_REGISTRATION` | `open` |
 | `jwt.access_expiry` | `LORE_JWT_ACCESS_EXPIRY` | `24h` |
 | `jwt.refresh_expiry` | `LORE_JWT_REFRESH_EXPIRY` | `168h` |
 | `cors.origins` | `LORE_CORS_ORIGINS` | `http://localhost:5173` |
+
+### Sécurité
+
+Deux réglages décident si l'instance est sûre :
+
+```toml
+[jwt]
+# Obligatoire. Sans lui le serveur ne démarre pas ; s'il vaut une valeur
+# publique connue et que le serveur écoute ailleurs que sur localhost,
+# il refuse de démarrer.
+secret = "…"   # openssl rand -hex 32
+
+[crypto]
+# Chiffre les clés d'API stockées en base. S'il est vide, `jwt.secret` est
+# utilisé — et changer ce dernier rend alors les clés enregistrées illisibles.
+key = "…"      # openssl rand -hex 32
+
+[auth]
+registration = "open"   # "closed" : seul l'administrateur crée des comptes
+```
+
+Le détail du modèle d'autorisation est dans [docs/authorization.md](docs/authorization.md).
 
 ### LLM
 
@@ -105,7 +129,9 @@ image_count = 3
 make build
 ```
 
-Produit un binaire `lore-engine` autonome qui sert le frontend buildé. La base de données SQLite est créée à côté du binaire au premier lancement.
+Produit un binaire `lore-engine` autonome : le frontend buildé est embarqué dedans, il n'y a rien d'autre à déployer. La base de données SQLite est créée à côté du binaire au premier lancement.
+
+Pour mettre en ligne (secrets, reverse proxy, sauvegardes), voir **[docs/deployment.md](docs/deployment.md)**.
 
 ## Structure du projet
 
