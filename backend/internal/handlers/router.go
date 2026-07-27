@@ -109,6 +109,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 			uploadsDir: uploadsDir,
 			encKey:     cfg.JWT.Secret,
 		}
+		scenarioFactory := &ScenarioFactoryHandler{db: database, encKey: cfg.JWT.Secret}
 		r.Route("/campaigns", func(r chi.Router) {
 			r.Get("/", campaigns.List)
 			r.Post("/", campaigns.Create)
@@ -130,6 +131,12 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 				r.Group(func(r chi.Router) {
 					r.Use(requireCampaignOwner(database))
 					r.Get("/search", entities.Search)
+
+					// Scenario factory — see docs/scenario-factory.md
+					r.Route("/scenario-drafts", func(r chi.Router) {
+						r.Get("/", scenarioFactory.List)
+						r.Post("/", scenarioFactory.Create)
+					})
 					r.Route("/npcs", func(r chi.Router) {
 						r.Get("/", entities.ListNPCs)
 						r.Post("/", entities.CreateNPC)
@@ -200,6 +207,18 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 				r.Get("/", scenarios.List)
 				r.Post("/", scenarios.Create)
 			})
+		})
+
+		// Draft-scoped factory routes: the draft resolves to its campaign, so
+		// they hang off the draft id rather than under /campaigns.
+		r.Route("/scenario-drafts/{draftId}", func(r chi.Router) {
+			r.Use(requireDraftOwner(database))
+			r.Get("/", scenarioFactory.Get)
+			r.Put("/", scenarioFactory.Update)
+			r.Delete("/", scenarioFactory.Delete)
+			r.Post("/regenerate", scenarioFactory.Regenerate)
+			r.Post("/scenes/{sceneRef}/expand", scenarioFactory.ExpandScene)
+			r.Post("/commit", scenarioFactory.Commit)
 		})
 
 		scenarios := &ScenarioHandler{db: database}

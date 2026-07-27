@@ -93,3 +93,14 @@ func DeleteCampaignFaction(ctx context.Context, database *sql.DB, id string) err
 	return err
 }
 
+// AddNPCFactionLink records that an NPC belongs to a faction. Written by the
+// scenario factory's commit step, which knows the membership because the model
+// proposed it; no UI surfaces the link yet.
+func AddNPCFactionLink(ctx context.Context, database *sql.DB, npcID, factionID, role string) error {
+	_, err := database.ExecContext(ctx,
+		`INSERT INTO npc_faction_links(id,npc_id,faction_id,role) VALUES(?,?,?,?)
+		 ON CONFLICT(npc_id,faction_id) DO NOTHING`,
+		uuid.New().String(), npcID, factionID, role)
+	return err
+}
+

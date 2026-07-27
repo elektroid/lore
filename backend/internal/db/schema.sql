@@ -51,6 +51,21 @@ CREATE TABLE IF NOT EXISTS synopsis_snapshots (
 );
 
 
+-- A scenario factory run: the GM's brief plus the whole LLM proposal, held as
+-- one JSON document until the GM commits it into real scenes and entities.
+-- See docs/scenario-factory.md.
+CREATE TABLE IF NOT EXISTS scenario_drafts (
+    id          TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    scenario_id TEXT NOT NULL DEFAULT '',
+    title       TEXT NOT NULL DEFAULT '',
+    brief       TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'draft',
+    proposal    TEXT NOT NULL DEFAULT '{}',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS campaign_npcs (
     id          TEXT PRIMARY KEY,
     campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
@@ -298,6 +313,11 @@ CREATE INDEX IF NOT EXISTS idx_scenarios_campaign_id ON scenarios(campaign_id);
 -- synopses.scenario_id has UNIQUE — already indexed
 
 CREATE INDEX IF NOT EXISTS idx_synopsis_snapshots_synopsis_id ON synopsis_snapshots(synopsis_id);
+
+-- Safe here, unlike the sessions(table_token) case below: scenario_drafts is a
+-- brand-new table, so CREATE TABLE IF NOT EXISTS really did create it (with
+-- this column) a few statements earlier, on old and new databases alike.
+CREATE INDEX IF NOT EXISTS idx_scenario_drafts_campaign_id ON scenario_drafts(campaign_id);
 
 CREATE INDEX IF NOT EXISTS idx_campaign_npcs_campaign_id       ON campaign_npcs(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_locations_campaign_id  ON campaign_locations(campaign_id);

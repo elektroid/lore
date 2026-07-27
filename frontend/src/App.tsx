@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import CampaignsPage from '@/pages/CampaignsPage'
 import CampaignDetailPage from '@/pages/CampaignDetailPage'
 import CampaignEntitiesPage from '@/pages/CampaignEntitiesPage'
+import ScenarioFactoryPage from '@/pages/ScenarioFactoryPage'
 import SettingsPage from '@/pages/SettingsPage'
 import ProfilePage from '@/pages/ProfilePage'
 import AdminPage from '@/pages/AdminPage'
@@ -62,6 +63,15 @@ export default function App() {
           element={
             <ProtectedRoute>
               <CampaignEntitiesPage />
+            </ProtectedRoute>
+          }
+        />
+        {/* Scenario factory — see docs/scenario-factory.md */}
+        <Route
+          path="/campaigns/:id/factory"
+          element={
+            <ProtectedRoute>
+              <ScenarioFactoryPage />
             </ProtectedRoute>
           }
         />

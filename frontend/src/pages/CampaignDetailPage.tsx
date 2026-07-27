@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard'
-import { BookOpen, Download, Plus, Users, Trash2, UserPlus } from 'lucide-react'
+import { BookOpen, Download, Plus, Users, Trash2, UserPlus, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -329,6 +329,10 @@ function ScenarioList({ campaignId }: { campaignId: string }) {
           <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
             <Plus className="h-3.5 w-3.5 mr-1" />
             Nouveau scénario
+          </Button>
+          <Button size="sm" onClick={() => navigate(`/campaigns/${campaignId}/factory`)}>
+            <Wand2 className="h-3.5 w-3.5 mr-1" />
+            Fabrique
           </Button>
         </div>
       </div>

@@ -66,6 +66,40 @@ func requireCampaignOwnerByParam(database *sql.DB, paramName string) func(http.H
 	}
 }
 
+// requireDraftOwner guards routes that use {draftId} as the scenario-draft ID
+// param. It resolves the draft to its campaign and applies the same ownership
+// rule as everything else. See docs/scenario-factory.md.
+func requireDraftOwner(database *sql.DB) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, ok := auth.GetUserFromContext(r)
+			if !ok {
+				writeError(w, http.StatusUnauthorized, "authentication required")
+				return
+			}
+			if user.Role == "superuser" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			draft, err := db.GetScenarioDraft(r.Context(), database, chi.URLParam(r, "draftId"))
+			if err != nil || draft == nil {
+				writeError(w, http.StatusNotFound, "draft not found")
+				return
+			}
+			campaign, err := db.GetCampaign(r.Context(), database, draft.CampaignID)
+			if err != nil || campaign == nil {
+				writeError(w, http.StatusNotFound, "campaign not found")
+				return
+			}
+			if campaign.OwnerID != user.ID {
+				writeError(w, http.StatusForbidden, "campaign owner access required")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // requireScenarioOwner guards routes that use {id} as the scenario ID param.
 // It resolves the scenario to its campaign and checks ownership.
 func requireScenarioOwner(database *sql.DB) func(http.Handler) http.Handler {

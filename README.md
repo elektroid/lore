@@ -10,6 +10,7 @@ Le MJ reste auteur — le LLM est un sparring partner rapide. L'IA complète, en
 
 - **Gestion de campagnes** — campagnes multi-utilisateurs avec rôles (superutilisateur / joueur)
 - **Fiches d'entités** — PNJs, Artefacts, Lieux, Factions avec suggestions LLM et génération d'images
+- **Fabrique de scénario** — d'une idée de départ à un scénario complet (pitch, casting, déroulé des scènes) que le MJ relit et valide avant qu'il n'entre dans la campagne — voir [docs/scenario-factory.md](docs/scenario-factory.md)
 - **Éditeur de synopsis** — scènes par glisser-déposer, versioning par snapshots, diff visuel
 - **Brainstorm** — outil LLM libre pour explorer des idées de scénario
 - **Recherche globale** — recherche plein-texte sur toutes les entités d'une campagne
