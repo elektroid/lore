@@ -286,6 +286,19 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 				})
 			})
 
+			// Improvised beats — captured during play, developed and adopted
+			// later. See docs/play-improv.md.
+			r.Route("/beats", func(r chi.Router) {
+				r.Get("/", synopsis.ListBeats)
+				r.Post("/", synopsis.CreateBeat)
+				r.Route("/{beatId}", func(r chi.Router) {
+					r.Put("/", synopsis.UpdateBeat)
+					r.Delete("/", synopsis.DeleteBeat)
+					r.Post("/develop", synopsis.DevelopBeat)
+					r.Post("/adopt", synopsis.AdoptBeat)
+				})
+			})
+
 			r.Route("/brainstorm/threads", func(r chi.Router) {
 				r.Get("/", brainstorm.ListThreads)
 				r.Post("/", brainstorm.CreateThread)

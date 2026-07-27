@@ -205,6 +205,27 @@ CREATE TABLE IF NOT EXISTS session_scenes (
     UNIQUE(session_id, scene_id)
 );
 
+-- Something the players did that the scenario never anticipated. Captured in
+-- one keystroke during play, developed by the LLM later, optionally adopted as
+-- a real scene. `note` is the GM's own words and is never overwritten.
+-- See docs/play-improv.md.
+CREATE TABLE IF NOT EXISTS session_beats (
+    id              TEXT PRIMARY KEY,
+    session_id      TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    scenario_id     TEXT NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
+    anchor_scene_id TEXT REFERENCES synopsis_scenes(id) ON DELETE SET NULL,
+    note            TEXT NOT NULL DEFAULT '',
+    status          TEXT NOT NULL DEFAULT 'captured',
+    title           TEXT NOT NULL DEFAULT '',
+    description     TEXT NOT NULL DEFAULT '',
+    outcome         TEXT NOT NULL DEFAULT '',
+    notes           TEXT NOT NULL DEFAULT '',
+    coherency       TEXT NOT NULL DEFAULT '{}',
+    scene_id        TEXT REFERENCES synopsis_scenes(id) ON DELETE SET NULL,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS campaign_factions (
     id          TEXT PRIMARY KEY,
     campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
@@ -351,6 +372,14 @@ CREATE INDEX IF NOT EXISTS idx_sessions_active_scene_id    ON sessions(active_sc
 CREATE INDEX IF NOT EXISTS idx_session_scenes_scene_id ON session_scenes(scene_id);
 
 CREATE INDEX IF NOT EXISTS idx_session_rolls_session_id ON session_rolls(session_id, created_at);
+
+-- Same safety as scenario_drafts above: session_beats is a brand-new table, so
+-- these columns exist by the time the indexes run. The scenario_id index carries
+-- the cross-session prep query, which is the one that has to stay trivial.
+CREATE INDEX IF NOT EXISTS idx_session_beats_scenario_id ON session_beats(scenario_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_session_beats_session_id  ON session_beats(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_beats_anchor      ON session_beats(anchor_scene_id);
+CREATE INDEX IF NOT EXISTS idx_session_beats_scene_id    ON session_beats(scene_id);
 
 -- NOTE: the index on sessions(table_token) lives in MigrateAlters, not here.
 -- CREATE TABLE IF NOT EXISTS is a no-op on a pre-existing sessions table, so on

@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, Lightbulb } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { useSynopsisLLM } from '@/hooks/useSynopsisLLM'
 import NPCEditorModal from '@/components/NPCEditorModal'
+import ImprovPanel from '@/components/play/ImprovPanel'
 import NPCCard from './NPCCard'
 import type { Scene, Synopsis, SynopsisNPC } from '@/types/synopsis'
+import type { SessionBeat } from '@/types/beat'
 import { api } from '@/api/client'
 
 interface Props {
@@ -45,10 +47,37 @@ export default function BetweenScenesPanel({ scenarioId, campaignId, synopsis, o
     queryFn: () => api.get<SynopsisNPC[]>(`/scenarios/${scenarioId}/synopsis/npcs`),
   })
 
+  // Every session's improvised beats, not just the last one — prep for session 4
+  // opens with what the players invented in sessions 1 to 3 and nobody has
+  // folded in yet. See docs/play-improv.md.
+  const { data: beats = [] } = useQuery({
+    queryKey: ['beats', scenarioId, 'all'],
+    queryFn: () => api.get<SessionBeat[]>(`/scenarios/${scenarioId}/beats`),
+  })
+  const openBeats = beats.filter(b => b.status === 'captured' || b.status === 'developed').length
+
   const upcoming = scenes.filter(s => s.type === 'scene' && !s.played).slice(0, 3)
 
   return (
     <div className="space-y-6">
+      {/* What the players invented and nobody has folded in yet */}
+      {beats.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex-1">
+              Impros des sessions
+            </p>
+            {openBeats > 0 && (
+              <span className="rounded-full px-1.5 text-[10px] font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                {openBeats} à traiter
+              </span>
+            )}
+          </div>
+          <ImprovPanel scenarioId={scenarioId} onOpenScene={onSelectScene} />
+        </section>
+      )}
+
       {/* Coming up */}
       {upcoming.length > 0 && (
         <section className="space-y-2">

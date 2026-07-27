@@ -15,6 +15,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import GMDiceTray from '@/components/play/GMDiceTray'
 import ProjectionPanel from '@/components/play/ProjectionPanel'
 import TableShareDialog from '@/components/play/TableShareDialog'
+import ImprovBar from '@/components/play/ImprovBar'
+import ImprovPanel from '@/components/play/ImprovPanel'
+import type { SessionBeat } from '@/types/beat'
 import type { Scenario } from '@/types/scenario'
 import type { Campaign } from '@/types/campaign'
 import type { Scene, SceneNPC } from '@/types/synopsis'
@@ -481,6 +484,7 @@ export default function PlayPage() {
   const [locationPickerOpen, setLocationPickerOpen] = useState(false)
   const [rosterOpen, setRosterOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const [improvOpen, setImprovOpen] = useState(false)
 
   const { data: scenario } = useQuery({
     queryKey: ['scenario', scenarioId],
@@ -529,6 +533,15 @@ export default function PlayPage() {
     queryFn: () => api.get<SessionPlayer[]>(`/scenarios/${scenarioId}/sessions/${activeSession!.id}/players`),
     enabled: !!activeSession?.id,
   })
+
+  // Improvised beats, this session — see docs/play-improv.md. Fetched here only
+  // for the badge count; the panel owns its own query.
+  const { data: beats = [] } = useQuery({
+    queryKey: ['beats', scenarioId, activeSession?.id ?? 'all'],
+    queryFn: () => api.get<SessionBeat[]>(`/scenarios/${scenarioId}/beats?session_id=${activeSession!.id}`),
+    enabled: !!activeSession?.id,
+  })
+  const openBeats = beats.filter(b => b.status === 'captured' || b.status === 'developed').length
 
   useDocTitle(scenario ? `lore: ${scenario.name} — Play` : 'lore')
 
@@ -771,6 +784,30 @@ export default function PlayPage() {
                 {l.name}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* ── Impro capture ───────────────────────────────────────────────
+            Always visible, never behind a click: the GM has about three
+            seconds. See docs/play-improv.md. */}
+        {activeSession && (
+          <ImprovBar
+            scenarioId={scenarioId}
+            sessionId={activeSession.id}
+            anchorTitle={activeSceneObj?.title ?? ''}
+            openCount={openBeats}
+            panelOpen={improvOpen}
+            onTogglePanel={() => setImprovOpen(v => !v)}
+          />
+        )}
+
+        {activeSession && improvOpen && (
+          <div className="rounded-lg border bg-card p-4">
+            <ImprovPanel
+              scenarioId={scenarioId}
+              sessionId={activeSession.id}
+              onOpenScene={id => setSelectedSceneId(id)}
+            />
           </div>
         )}
 

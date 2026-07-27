@@ -12,6 +12,7 @@ Le MJ reste auteur — le LLM est un sparring partner rapide. L'IA complète, en
 - **Fiches d'entités** — PNJs, Artefacts, Lieux, Factions avec suggestions LLM et génération d'images
 - **Fabrique de scénario** — d'une idée de départ à un scénario complet (pitch, casting, déroulé des scènes) que le MJ relit et valide avant qu'il n'entre dans la campagne — voir [docs/scenario-factory.md](docs/scenario-factory.md)
 - **Éditeur de synopsis** — scènes par glisser-déposer, versioning par snapshots, diff visuel
+- **Impros de table** — noter en une touche ce que les joueurs inventent en séance, laisser le LLM le mettre au propre et vérifier la cohérence, puis l'adopter comme scène — voir [docs/play-improv.md](docs/play-improv.md)
 - **Brainstorm** — outil LLM libre pour explorer des idées de scénario
 - **Recherche globale** — recherche plein-texte sur toutes les entités d'une campagne
 - **Export print** — vue imprimable du synopsis
