@@ -53,6 +53,21 @@ Ouvrir [http://localhost:5173](http://localhost:5173).
 
 Au premier lancement, si `bootstrap.user` est configuré dans `lore.toml`, le compte superutilisateur est créé automatiquement.
 
+## Vérifications
+
+```bash
+make check          # build + vet + tests Go, typecheck + build front, lint (informatif)
+make install-hooks  # lance `make check` avant chaque `git push`
+```
+
+Tout tourne en local, il n'y a aucun service externe. Le hook s'installe une
+fois et se retire avec `git config --unset core.hooksPath` ; un push isolé se
+force avec `git push --no-verify`.
+
+Le lint est affiché mais ne bloque pas — il reste des avertissements hérités.
+Les suites end-to-end (`docs/`) ne sont pas dans `make check` : elles appellent
+réellement le LLM et coûtent de l'argent à chaque exécution.
+
 ## Configuration
 
 La configuration est lue depuis `lore.toml` (ignoré par git). Les variables d'environnement ont priorité sur le fichier.

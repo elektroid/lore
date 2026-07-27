@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+# Runs the same checks a CI service would, before anything leaves this machine.
+# Install with: make install-hooks
+# Skip once with: git push --no-verify
+set -e
+
+echo "── pre-push : make check"
+if ! make check; then
+    echo
+    echo "✗ push annulé — les vérifications ont échoué."
+    echo "  Corrigez, ou forcez avec : git push --no-verify"
+    exit 1
+fi
