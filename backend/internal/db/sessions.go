@@ -15,6 +15,8 @@ type Session struct {
 	Players          string `json:"players"` // JSON [{player_name, character_name}]
 	ActiveLocationID string `json:"active_location_id"`
 	ActiveSceneID    string `json:"active_scene_id"`
+	TableToken       string `json:"table_token"` // '' until the GM first shares the table
+	Projection       string `json:"projection"`  // JSON Projection — see table.go
 	CreatedAt        string `json:"created_at"`
 	UpdatedAt        string `json:"updated_at"`
 }
@@ -27,12 +29,14 @@ type SessionScene struct {
 
 const sessionCols = `id, scenario_id, name, date, players,
 	COALESCE(active_location_id,''), COALESCE(active_scene_id,''),
+	COALESCE(table_token,''), COALESCE(NULLIF(projection,''),'{}'),
 	created_at, updated_at`
 
 func scanSession(row interface{ Scan(...any) error }) (*Session, error) {
 	var s Session
 	err := row.Scan(&s.ID, &s.ScenarioID, &s.Name, &s.Date, &s.Players,
-		&s.ActiveLocationID, &s.ActiveSceneID, &s.CreatedAt, &s.UpdatedAt)
+		&s.ActiveLocationID, &s.ActiveSceneID, &s.TableToken, &s.Projection,
+		&s.CreatedAt, &s.UpdatedAt)
 	return &s, err
 }
 

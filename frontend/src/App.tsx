@@ -9,6 +9,8 @@ import AdminPage from '@/pages/AdminPage'
 import SynopsisPage from '@/pages/SynopsisPage'
 import PrintPage from '@/pages/PrintPage'
 import PlayPage from '@/pages/PlayPage'
+import TablePage from '@/pages/TablePage'
+import PlayerSeatPage from '@/pages/PlayerSeatPage'
 import LoginPage from '@/pages/LoginPage'
 import RegisterPage from '@/pages/RegisterPage'
 import { useUIStore } from '@/stores/ui'
@@ -31,6 +33,12 @@ export default function App() {
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+
+        {/* Table surface — the share token in the URL is the credential, because
+            the projection screen is usually a TV nobody logs in on.
+            See docs/play-table.md. */}
+        <Route path="/table/:token" element={<TablePage />} />
+        <Route path="/table/:token/player" element={<PlayerSeatPage />} />
 
         {/* Protected routes */}
         <Route

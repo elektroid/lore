@@ -159,8 +159,26 @@ CREATE TABLE IF NOT EXISTS sessions (
     players            TEXT NOT NULL DEFAULT '[]',
     active_location_id TEXT REFERENCES campaign_locations(id) ON DELETE SET NULL,
     active_scene_id    TEXT REFERENCES synopsis_scenes(id) ON DELETE SET NULL,
+    -- Table surface: share token for the projection screen and player seats,
+    -- and the single thing currently shown there. See docs/play-table.md.
+    table_token        TEXT NOT NULL DEFAULT '',
+    projection         TEXT NOT NULL DEFAULT '{}',
     created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Dice rolls made during a session, by the GM or by a player seat.
+CREATE TABLE IF NOT EXISTS session_rolls (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    actor      TEXT NOT NULL DEFAULT '',
+    actor_kind TEXT NOT NULL DEFAULT 'player',
+    notation   TEXT NOT NULL DEFAULT '',
+    label      TEXT NOT NULL DEFAULT '',
+    detail     TEXT NOT NULL DEFAULT '',
+    total      INTEGER NOT NULL DEFAULT 0,
+    secret     INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS session_scenes (
@@ -311,6 +329,13 @@ CREATE INDEX IF NOT EXISTS idx_sessions_active_scene_id    ON sessions(active_sc
 
 -- session_scenes UNIQUE(session_id, scene_id) covers session_id; scene_id needs its own
 CREATE INDEX IF NOT EXISTS idx_session_scenes_scene_id ON session_scenes(scene_id);
+
+CREATE INDEX IF NOT EXISTS idx_session_rolls_session_id ON session_rolls(session_id, created_at);
+
+-- NOTE: the index on sessions(table_token) lives in MigrateAlters, not here.
+-- CREATE TABLE IF NOT EXISTS is a no-op on a pre-existing sessions table, so on
+-- an older database the column does not exist yet when this file runs — and an
+-- index on a missing column aborts the whole migration.
 
 -- npc_faction_links UNIQUE(npc_id, faction_id) covers npc_id; faction_id needs its own
 CREATE INDEX IF NOT EXISTS idx_npc_faction_links_faction_id ON npc_faction_links(faction_id);

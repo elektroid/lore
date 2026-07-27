@@ -45,6 +45,22 @@ const config: Config = {
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
       },
+      // Table surface — see docs/play-table.md. A projection swap should feel
+      // like a cut on a screen, and a roll should land.
+      keyframes: {
+        'stage-in': {
+          from: { opacity: '0' },
+          to: { opacity: '1' },
+        },
+        'roll-in': {
+          from: { opacity: '0', transform: 'translate(-50%, -14px) scale(0.96)' },
+          to: { opacity: '1', transform: 'translate(-50%, 0) scale(1)' },
+        },
+      },
+      animation: {
+        'stage-in': 'stage-in 700ms ease-out',
+        'roll-in': 'roll-in 320ms cubic-bezier(0.22, 1, 0.36, 1)',
+      },
     },
   },
   plugins: [],

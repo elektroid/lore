@@ -1,5 +1,45 @@
 # Lore — development rules
 
+## Dev servers — already running
+
+**The dev servers are started by hand in a terminal (`make dev`). Assume they are
+up. Do not start, restart, or kill them.**
+
+| | Port | Runner | Notes |
+|---|---|---|---|
+| Backend | `8080` | `air` (from `backend/`) | hot-reloads on every Go change |
+| Frontend | `5173` | `vite` | proxies `/api`, `/uploads`, `/external-material` → `:8080` |
+
+The live database is **`backend/lore.db`** — `lore.toml` says `lore.db`, and air
+runs from `backend/`. It is in WAL mode, so a plain file copy without the `-wal`
+sidecar reads as empty. Never write to it.
+
+### Consequences of the hot reload
+
+`schema.sql` is `go:embed`-ed, so **every rebuild re-runs `Migrate` and
+`MigrateAlters` against the live database** — a schema change takes effect the
+moment the file is saved, before any deliberate action. Two things follow:
+
+- A migration that can fail on an existing database takes the dev server down
+  with it (`main.go` treats a `Migrate` error as `log.Fatalf`). Adding a column
+  to an existing table plus an index over it is the classic trap — see
+  [docs/play-table.md](docs/play-table.md) § data model.
+- After editing `schema.sql` or `db.go`, check the migration actually landed
+  rather than assuming.
+
+### Smoke-testing against a real server
+
+Do not reuse the dev instance. Build a throwaway one in the scratchpad: its own
+`lore.toml`, its own port (`8097`–`8099`), its own db path, and a `[bootstrap]`
+user to log in with. Clean up the process when done.
+
+Two gotchas when scripting it:
+
+- A campaign needs a valid `game_id` — `games` has a foreign key, and creating a
+  campaign against an empty database fails on it. Create a game first.
+- `POST`/`PUT`/`DELETE` need the `X-CSRF-Token` header matching the `lore_csrf`
+  cookie from login (double-submit); read it out of the curl cookie jar.
+
 ## Entity list items (frontend)
 
 All entity types (NPCs, Artefacts, Locations, Factions, …) follow a shared list-item pattern. Apply it consistently when adding or modifying entity tabs.

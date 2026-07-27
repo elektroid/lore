@@ -11,6 +11,8 @@ export interface Session {
   players: string           // JSON Player[] — legacy, replaced by session_players
   active_location_id: string
   active_scene_id: string
+  table_token: string       // share token for the table screen and player seats
+  projection: string        // JSON Projection — see types/table.ts
   created_at: string
   updated_at: string
 }

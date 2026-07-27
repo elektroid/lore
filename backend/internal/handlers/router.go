@@ -11,6 +11,7 @@ import (
 
 	"lore/internal/auth"
 	"lore/internal/config"
+	"lore/internal/table"
 )
 
 func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenService *auth.TokenService, cfg *config.Config) *chi.Mux {
@@ -32,6 +33,18 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 
 	// Initialize auth handler
 	authHandler := NewAuthHandler(database, tokenService, cfg)
+
+	// Live table surface — one hub shared by the console, the projection screen
+	// and every player seat. See docs/play-table.md.
+	tableHandler := NewTableHandler(database, table.NewHub())
+
+	// Table endpoints are public: the share token in the path is the credential,
+	// because the projection screen is usually a TV nobody logs in on.
+	r.Route("/api/table/{token}", func(r chi.Router) {
+		r.Get("/", tableHandler.Snapshot)
+		r.Get("/stream", tableHandler.Stream)
+		r.Post("/rolls", tableHandler.PlayerRoll)
+	})
 
 	// Auth endpoints (public - no auth middleware)
 	r.Route("/api/auth", func(r chi.Router) {
@@ -244,6 +257,13 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 					r.Get("/players", synopsis.ListSessionPlayers)
 					r.Put("/players/{userId}", synopsis.SetSessionPlayer)
 					r.Delete("/players/{userId}", synopsis.RemoveSessionPlayer)
+
+					// Table surface, GM side
+					r.Post("/table-token", tableHandler.EnsureToken)
+					r.Put("/projection", tableHandler.SetProjection)
+					r.Delete("/projection", tableHandler.ClearProjection)
+					r.Get("/rolls", tableHandler.ListRolls)
+					r.Post("/rolls", tableHandler.GMRoll)
 				})
 			})
 

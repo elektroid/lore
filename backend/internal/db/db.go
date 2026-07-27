@@ -51,6 +51,12 @@ func MigrateAlters(database *sql.DB) {
 		`ALTER TABLE synopsis_scenes ADD COLUMN playlist_type TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE synopsis_scenes ADD COLUMN playlist_value TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE games ADD COLUMN genre TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sessions ADD COLUMN table_token TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sessions ADD COLUMN projection TEXT NOT NULL DEFAULT '{}'`,
+		// Must come after the ALTER above: on an older database the column does
+		// not exist when schema.sql runs, and indexing a missing column there
+		// would abort the whole migration.
+		`CREATE INDEX IF NOT EXISTS idx_sessions_table_token ON sessions(table_token)`,
 	}
 	for _, stmt := range alters {
 		database.Exec(stmt) //nolint:errcheck — duplicate column error is expected on re-run

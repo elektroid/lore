@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"strings"
 
 	"lore/internal/db"
 )
@@ -38,6 +39,12 @@ func isPublicEndpoint(path string) bool {
 	switch path {
 	case "/api/auth/register", "/api/auth/login", "/api/auth/logout",
 		"/api/auth/refresh", "/api/auth/csrf", "/api/auth/bootstrap":
+		return true
+	}
+	// The table surface (projection screen, player seats) authenticates with the
+	// share token in the path — the screen is often a TV nobody logs in on.
+	// See docs/play-table.md.
+	if strings.HasPrefix(path, "/api/table/") {
 		return true
 	}
 	return false

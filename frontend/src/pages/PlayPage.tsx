@@ -1,21 +1,26 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Play, Flag, CheckCircle2, XCircle, Circle, MapPin, Users,
-  Plus, Pencil, Trash2, ChevronDown, ArrowLeft, UserPlus,
+  Plus, Pencil, Trash2, ChevronDown, ArrowLeft, UserPlus, MonitorPlay,
 } from 'lucide-react'
 import AppShell from '@/components/AppShell'
 import { useDocTitle } from '@/hooks/useDocTitle'
+import { useTableStream } from '@/hooks/useTableStream'
 import { api } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import GMDiceTray from '@/components/play/GMDiceTray'
+import ProjectionPanel from '@/components/play/ProjectionPanel'
+import TableShareDialog from '@/components/play/TableShareDialog'
 import type { Scenario } from '@/types/scenario'
 import type { Campaign } from '@/types/campaign'
 import type { Scene, SceneNPC } from '@/types/synopsis'
 import type { CampaignLocation, NPCImage, LocationImage } from '@/types/entities'
 import type { Session, SessionPlayer, MemberWithCharacters, ScenePlayState } from '@/types/session'
+import { EMPTY_PROJECTION, type Projection } from '@/types/table'
 
 // ── Scene state display ───────────────────────────────────────────────────────
 
@@ -475,6 +480,7 @@ export default function PlayPage() {
   const [editingSession, setEditingSession] = useState<Session | null>(null)
   const [locationPickerOpen, setLocationPickerOpen] = useState(false)
   const [rosterOpen, setRosterOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const { data: scenario } = useQuery({
     queryKey: ['scenario', scenarioId],
@@ -593,6 +599,46 @@ export default function PlayPage() {
     },
   })
 
+  // ── Table surface ──────────────────────────────────────────────────────────
+  // See docs/play-table.md. The console subscribes to the same public stream the
+  // table screen uses, so player rolls show up here live; the authenticated roll
+  // log (which also holds secret rolls) is refreshed off those events.
+
+  const tableToken = activeSession?.table_token ?? ''
+
+  const ensureToken = useMutation({
+    mutationFn: (regenerate: boolean) =>
+      api.post<{ table_token: string }>(
+        `/scenarios/${scenarioId}/sessions/${activeSession!.id}/table-token`, { regenerate }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions', scenarioId] }),
+  })
+
+  // Mint the share token as soon as a session is opened, so the links are ready
+  // the moment the GM asks for them. Idempotent — the backend returns the
+  // existing token unless asked to regenerate.
+  useEffect(() => {
+    if (activeSession && !activeSession.table_token && !ensureToken.isPending) {
+      ensureToken.mutate(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSession?.id, activeSession?.table_token])
+
+  const onStreamRoll = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['session-rolls', activeSession?.id] })
+  }, [qc, activeSession?.id])
+
+  const { snapshot: tableState, status: tableStatus } = useTableStream(tableToken, { onRoll: onStreamRoll })
+
+  const setProjection = useMutation({
+    mutationFn: (p: Projection) =>
+      api.put<Projection>(`/scenarios/${scenarioId}/sessions/${activeSession!.id}/projection`, p),
+  })
+
+  const clearProjection = useMutation({
+    mutationFn: () =>
+      api.delete(`/scenarios/${scenarioId}/sessions/${activeSession!.id}/projection`),
+  })
+
   const activeSceneObj = scenes.find(s => s.id === activeSession?.active_scene_id) ?? null
   const selectedScene = scenes.find(s => s.id === selectedSceneId) ?? null
   const activeLocation = locations.find(l => l.id === activeSession?.active_location_id)
@@ -678,6 +724,25 @@ export default function PlayPage() {
                 ? <span className="text-muted-foreground">Joueurs…</span>
                 : sessionPlayers.map(p => p.character_name || p.user_name).join(', ')
               }
+            </button>
+          )}
+
+          {/* Table surface */}
+          {activeSession && (
+            <button
+              onClick={() => setShareOpen(true)}
+              disabled={!tableToken}
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border border-border hover:bg-accent transition-colors disabled:opacity-50"
+              title="Écran de table et liens joueurs"
+            >
+              <MonitorPlay className="h-3.5 w-3.5 text-muted-foreground" />
+              Table
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  tableStatus === 'live' ? 'bg-emerald-500' : 'bg-muted-foreground/40'
+                }`}
+                title={tableStatus === 'live' ? 'Diffusion active' : 'Diffusion hors ligne'}
+              />
             </button>
           )}
 
@@ -768,6 +833,21 @@ export default function PlayPage() {
             </div>
           </div>
         )}
+
+        {/* ── Table surface: what the room sees, and the dice ─────────────── */}
+        {activeSession && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ProjectionPanel
+              campaignId={scenario?.campaign_id ?? ''}
+              scene={selectedScene}
+              current={tableState?.projection ?? EMPTY_PROJECTION}
+              pending={setProjection.isPending || clearProjection.isPending}
+              onProject={p => setProjection.mutate(p)}
+              onClear={() => clearProjection.mutate()}
+            />
+            <GMDiceTray scenarioId={scenarioId} sessionId={activeSession.id} />
+          </div>
+        )}
       </div>
     </AppShell>
 
@@ -787,6 +867,16 @@ export default function PlayPage() {
         sessionId={activeSession.id}
         campaignId={scenario.campaign_id}
         onClose={() => setRosterOpen(false)}
+      />
+    )}
+
+    {/* Table share dialog */}
+    {shareOpen && tableToken && (
+      <TableShareDialog
+        token={tableToken}
+        regenerating={ensureToken.isPending}
+        onRegenerate={() => ensureToken.mutate(true)}
+        onClose={() => setShareOpen(false)}
       />
     )}
     </>
