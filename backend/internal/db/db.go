@@ -73,7 +73,103 @@ func MigrateAlters(database *sql.DB) {
 
 	dropCampaignGameFK(database)
 	backfillRuns(database)
+	dropLegacyPlayData(database)
 }
+
+// hasLegacyPlayData reports whether this database still carries the pre-run
+// shape: the `played` flag on scenes, the free-text roster on sessions, or the
+// per-session roster table.
+//
+// Everything below is keyed off this rather than off an error from a query that
+// mentions a dropped column. Once the drop has happened, a swallowed "no such
+// column" on every single boot is indistinguishable from a real failure.
+func hasLegacyPlayData(database *sql.DB) bool {
+	return hasColumn(database, "synopsis_scenes", "played") ||
+		hasColumn(database, "sessions", "players") ||
+		hasTable(database, "session_players")
+}
+
+func hasColumn(database *sql.DB, table, column string) bool {
+	// table and column are compile-time constants from this file, never input.
+	rows, err := database.Query(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`, table, column)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	return rows.Next()
+}
+
+func hasTable(database *sql.DB, table string) bool {
+	var n int
+	err := database.QueryRow(
+		`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&n)
+	return err == nil && n > 0
+}
+
+// dropLegacyPlayData removes the columns and table that runs superseded:
+// synopsis_scenes.played, sessions.players and the whole session_players table.
+//
+// This is destructive DDL running on every hot reload against the developer's
+// live database, where main.go turns a Migrate error into log.Fatalf. Three
+// things make that acceptable:
+//
+//   - It runs after backfillRuns, never before.
+//   - It is interlocked: if any campaign still owes a run, nothing is dropped.
+//     The backfill reads exactly these columns, so dropping one while a campaign
+//     still needed it would destroy the data instead of migrating it.
+//   - Every statement is best-effort. A drop that cannot happen leaves the
+//     column in place and unread, which is where this change started.
+func dropLegacyPlayData(database *sql.DB) {
+	if !hasLegacyPlayData(database) {
+		return
+	}
+	if n := campaignsAwaitingBackfill(database); n > 0 {
+		log.Printf("legacy play columns kept: %d campaign(s) still awaiting the run backfill", n)
+		return
+	}
+	for _, stmt := range []string{
+		`ALTER TABLE synopsis_scenes DROP COLUMN played`,
+		`ALTER TABLE sessions DROP COLUMN players`,
+		// Dropped last: it is the one the backfill reads to seed a run's party,
+		// and the only one carrying rows rather than a column default.
+		`DROP TABLE IF EXISTS session_players`,
+	} {
+		if _, err := database.Exec(stmt); err != nil {
+			// Expected once the statement has already run — the columns are
+			// gone from schema.sql, so a fresh database never had them.
+			continue
+		}
+	}
+}
+
+// campaignsAwaitingBackfill counts the campaigns backfillRuns would still act
+// on. Zero is the precondition for dropping what it reads.
+func campaignsAwaitingBackfill(database *sql.DB) int {
+	var n int
+	if err := database.QueryRow(backfillPendingQuery).Scan(&n); err != nil {
+		// The columns are already gone, or the schema predates runs entirely.
+		// Either way there is nothing here left to protect.
+		return 0
+	}
+	return n
+}
+
+// The campaigns backfillRuns still owes a group: they have play data, and no run
+// to own it. Shared with the drop interlock below so the two can never disagree
+// about what is outstanding — the drop removes exactly what this query reads.
+const backfillPendingFrom = `
+	FROM campaigns c
+	WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.campaign_id = c.id)
+	  AND (
+	    EXISTS (SELECT 1 FROM sessions s
+	            JOIN scenarios sc ON sc.id = s.scenario_id
+	            WHERE sc.campaign_id = c.id)
+	 OR EXISTS (SELECT 1 FROM synopsis_scenes sn
+	            JOIN scenarios sc ON sc.id = sn.scenario_id
+	            WHERE sc.campaign_id = c.id AND sn.played = 1)
+	  )`
+
+const backfillPendingQuery = `SELECT COUNT(DISTINCT c.id) ` + backfillPendingFrom
 
 // backfillRuns gives every pre-run campaign the group its play data implies.
 //
@@ -89,17 +185,10 @@ func MigrateAlters(database *sql.DB) {
 // a Migrate error into log.Fatalf, so a backfill that cannot complete must leave
 // the database as it found it and let the server start regardless.
 func backfillRuns(database *sql.DB) {
-	rows, err := database.Query(`
-		SELECT DISTINCT c.id FROM campaigns c
-		WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.campaign_id = c.id)
-		  AND (
-		    EXISTS (SELECT 1 FROM sessions s
-		            JOIN scenarios sc ON sc.id = s.scenario_id
-		            WHERE sc.campaign_id = c.id)
-		 OR EXISTS (SELECT 1 FROM synopsis_scenes sn
-		            JOIN scenarios sc ON sc.id = sn.scenario_id
-		            WHERE sc.campaign_id = c.id AND sn.played = 1)
-		  )`)
+	if !hasLegacyPlayData(database) {
+		return // already migrated and dropped
+	}
+	rows, err := database.Query(`SELECT DISTINCT c.id ` + backfillPendingFrom)
 	if err != nil {
 		return // pre-runs schema, or a database mid-upgrade — nothing to do
 	}

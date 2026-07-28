@@ -60,9 +60,11 @@ fix them:
   that seats a player validates against both: access to the campaign, and the
   character belonging to that player.
 
-`synopsis_scenes.played`, `sessions.players` and `session_players` are `LEGACY`
-— present in the schema, read by nothing but the backfill. Do not wire them back
-up.
+`synopsis_scenes.played`, `sessions.players` and `session_players` are **gone** —
+dropped from `schema.sql` and from existing databases by `dropLegacyPlayData`.
+Do not reintroduce them. If a migration ever drops something again, note that an
+index in `schema.sql` over a dropped column or table aborts the whole migration,
+and `main.go` turns that into `log.Fatalf`.
 
 ## Entity list items (frontend)
 

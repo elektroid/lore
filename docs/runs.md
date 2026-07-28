@@ -141,10 +141,27 @@ A campaign with played scenes but **no session at all** gets its run and none of
 the flags: there is no evening to attach them to, and a `played` with no session
 behind it was authoring bookkeeping — the exact thing being abolished.
 
-### Superseded, not dropped
+### Then the drop
 
-`synopsis_scenes.played`, `sessions.players` and `session_players` are no longer
-read or written. They stay in the schema, marked `LEGACY` with a pointer to the
-ADR. Dropping them is a destructive DDL running on every hot reload against the
-live database, where a `Migrate` error is `log.Fatalf` — worth doing
-deliberately one day, not as a side effect of this change.
+Once nothing is owed, the same migration removes what it just read:
+`synopsis_scenes.played`, `sessions.players` and the `session_players` table.
+They are gone from `schema.sql` too, so a fresh database and an upgraded one end
+up with the same shape — a column present in one and absent in the other is how
+the `campaigns.game_id` bug survived unnoticed for so long.
+
+`dropLegacyPlayData` is **interlocked**: if `campaignsAwaitingBackfill` returns
+anything but zero, it drops nothing and logs why. The backfill reads exactly
+these columns, so a backfill that could not finish must never be followed by the
+destruction of its input. The check and the backfill share one SQL fragment
+(`backfillPendingFrom`) so they cannot drift apart.
+
+Two things to know if you touch this:
+
+- **Never add an index on a dropped column or table to `schema.sql`.** It aborts
+  the whole migration, and `main.go` turns that into `log.Fatalf`. The
+  `session_players` indexes had to be removed along with the table, for the same
+  reason `sessions(table_token)` lives in `MigrateAlters`.
+- `hasLegacyPlayData` gates the whole path, so once the drop has run neither the
+  backfill nor the drop executes another statement. Detecting "already done" by
+  swallowing a *no such column* error on every boot would make a real failure
+  indistinguishable from the normal case.

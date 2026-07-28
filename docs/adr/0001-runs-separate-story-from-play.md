@@ -87,14 +87,30 @@ sessions are filtered to the selected run. Creating a session requires a run.
 ### Superseded columns and tables
 
 `synopsis_scenes.played`, `sessions.players` and `session_players` are no longer
-read or written by any code. They are **left in place**, marked `LEGACY` in
-`schema.sql` with a pointer to this ADR, rather than dropped.
+read or written by any code, and are **dropped**: removed from `schema.sql`, and
+removed from existing databases by `dropLegacyPlayData` in `db.go`.
 
-The reason is operational, not sentimental: `schema.sql` is `go:embed`-ed and
-re-run on every hot reload against the live database (see `CLAUDE.md`), and
-`main.go` treats a `Migrate` error as `log.Fatalf`. A destructive DDL that fails
-once takes the dev server down and costs more than a dead column. Dropping them
-is a separate, deliberate cleanup.
+The hazard is real — `schema.sql` is `go:embed`-ed and re-run on every hot
+reload against the live database (see `CLAUDE.md`), and `main.go` treats a
+`Migrate` error as `log.Fatalf`, so destructive DDL there can take the dev
+server down. Three properties contain it:
+
+- **Ordered.** The drop runs after `backfillRuns`, never before.
+- **Interlocked.** If any campaign still owes a run, nothing is dropped. The
+  backfill reads exactly these columns, so dropping one while a campaign still
+  needed it would destroy the data instead of migrating it. This is the case
+  that would otherwise be silent and unrecoverable.
+- **Best-effort.** Every statement tolerates failure, leaving the column in
+  place and unread — the state this ADR started from.
+
+The `session_players` **indexes had to leave `schema.sql` too.** An index over a
+dropped table aborts the whole migration, which is the `log.Fatalf` path; this
+is the same trap already documented for `sessions(table_token)`.
+
+Dropping also keeps a fresh database and an upgraded one identical, which is the
+divergence that let the `campaigns.game_id` bug hide on the developer's own
+long-lived database (see `dropCampaignGameFK`). A column present in one and
+absent in the other is exactly that shape of bug waiting to happen.
 
 ## Migration
 

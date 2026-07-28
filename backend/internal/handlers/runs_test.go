@@ -349,7 +349,62 @@ func TestRunScenesRejectsAnotherCampaignsRun(t *testing.T) {
 	}
 }
 
-// ── Backfill ──────────────────────────────────────────────────────────────────
+// ── Backfill and the drop that follows it ────────────────────────────────────
+
+// restoreLegacyShape puts back what runs superseded and the migration has since
+// dropped: the `played` flag on scenes, the free-text roster on sessions, and
+// the per-session roster table.
+//
+// The current schema.sql no longer creates any of it, so a test about upgrading
+// an old database has to build the old database first. That is an improvement
+// on relying on leftovers: what is reconstructed here is exactly, and only,
+// what a pre-runs installation had.
+func restoreLegacyShape(t *testing.T, database *sql.DB) {
+	t.Helper()
+	for _, stmt := range []string{
+		`ALTER TABLE synopsis_scenes ADD COLUMN played INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE sessions ADD COLUMN players TEXT NOT NULL DEFAULT '[]'`,
+		`CREATE TABLE session_players (
+			id           TEXT PRIMARY KEY,
+			session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+			user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			character_id TEXT REFERENCES player_characters(id) ON DELETE SET NULL,
+			created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(session_id, user_id)
+		)`,
+	} {
+		if _, err := database.Exec(stmt); err != nil {
+			t.Fatalf("restoring the legacy shape: %v", err)
+		}
+	}
+}
+
+func legacyShapeGone(t *testing.T, database *sql.DB) []string {
+	t.Helper()
+	var left []string
+	for _, c := range []struct{ table, column string }{
+		{"synopsis_scenes", "played"}, {"sessions", "players"},
+	} {
+		rows, err := database.Query(
+			`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`, c.table, c.column)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rows.Next() {
+			left = append(left, c.table+"."+c.column)
+		}
+		rows.Close()
+	}
+	var n int
+	if err := database.QueryRow(
+		`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='session_players'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n > 0 {
+		left = append(left, "session_players")
+	}
+	return left
+}
 
 // A database written before runs existed carries sessions, per-session rosters
 // and scene `played` flags that all silently belonged to one unnamed group.
@@ -365,6 +420,7 @@ func TestBackfillAdoptsPreRunPlayData(t *testing.T) {
 
 	// Fabricate the pre-runs shape: a session with no group, a roster on that
 	// session, and a scene the story itself called played.
+	restoreLegacyShape(t, database)
 	if _, err := database.ExecContext(ctx,
 		`INSERT INTO sessions(id, scenario_id, name, date) VALUES('old-session',?,'Ancienne','2025-11-02')`,
 		scenario.ID); err != nil {
@@ -415,7 +471,13 @@ func TestBackfillAdoptsPreRunPlayData(t *testing.T) {
 		t.Errorf("the played flag was not carried over: %v", states)
 	}
 
-	// Every hot reload runs this again. It must be a no-op.
+	// Once nothing is owed, the same migration drops what it just read.
+	if left := legacyShapeGone(t, database); len(left) > 0 {
+		t.Errorf("legacy play data survived the migration: %v", left)
+	}
+
+	// Every hot reload runs this again. It must be a no-op, and must not fail
+	// now that the statements it would run refer to things that are gone.
 	db.MigrateAlters(database)
 	db.MigrateAlters(database)
 
@@ -427,9 +489,14 @@ func TestBackfillAdoptsPreRunPlayData(t *testing.T) {
 	if len(party) != 1 {
 		t.Errorf("re-running the migration duplicated the party: %v", party)
 	}
+	states, _ = db.ListRunSceneStates(ctx, database, run.ID, scenario.ID)
+	if states[scene.ID] != "cleared" {
+		t.Errorf("re-running the migration lost the migrated progress: %v", states)
+	}
 }
 
-// A campaign nobody ever played must not acquire a group out of nowhere.
+// A campaign nobody ever played must not acquire a group out of nowhere — and
+// the drop must still happen, since there is nothing left to migrate.
 func TestBackfillLeavesUnplayedCampaignsAlone(t *testing.T) {
 	database := testDB(t)
 	campaign, scenario := mkCampaignScenario(t, database, "gm@test.local")
@@ -437,6 +504,7 @@ func TestBackfillLeavesUnplayedCampaignsAlone(t *testing.T) {
 		db.CreateSceneParams{ScenarioID: scenario.ID, Title: "A"}); err != nil {
 		t.Fatal(err)
 	}
+	restoreLegacyShape(t, database)
 
 	db.MigrateAlters(database)
 
@@ -447,4 +515,46 @@ func TestBackfillLeavesUnplayedCampaignsAlone(t *testing.T) {
 	if len(runs) != 0 {
 		t.Errorf("an unplayed campaign got %d run(s): %v", len(runs), runs)
 	}
+	if left := legacyShapeGone(t, database); len(left) > 0 {
+		t.Errorf("nothing was owed, so the drop should have run: %v", left)
+	}
+}
+
+// The interlock. The drop removes exactly what the backfill reads, so it must
+// refuse while any campaign is still owed a group — otherwise a backfill that
+// could not complete would be followed by the destruction of its input.
+func TestDropIsHeldBackWhileACampaignStillOwesARun(t *testing.T) {
+	database := testDB(t)
+	ctx := t.Context()
+	_, scenario := mkCampaignScenario(t, database, "gm@test.local")
+	scene, _ := db.CreateScene(ctx, database, db.CreateSceneParams{ScenarioID: scenario.ID, Title: "A"})
+
+	restoreLegacyShape(t, database)
+	if _, err := database.ExecContext(ctx,
+		`UPDATE synopsis_scenes SET played=1 WHERE id=?`, scene.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a backfill that cannot run: drop the table it inserts into, so
+	// backfillOneCampaignRun fails and the campaign stays owed.
+	if _, err := database.Exec(`DROP TABLE run_players`); err != nil {
+		t.Fatal(err)
+	}
+
+	db.MigrateAlters(database)
+
+	left := legacyShapeGone(t, database)
+	for _, want := range []string{"synopsis_scenes.played", "session_players"} {
+		if !containsAny(joinStrings(left), want) {
+			t.Errorf("the backfill failed, so %s must be kept — survivors: %v", want, left)
+		}
+	}
+}
+
+func joinStrings(ss []string) string {
+	out := ""
+	for _, s := range ss {
+		out += s + " "
+	}
+	return out
 }

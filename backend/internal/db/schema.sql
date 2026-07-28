@@ -129,10 +129,6 @@ CREATE TABLE IF NOT EXISTS synopsis_scenes (
     description TEXT NOT NULL DEFAULT '',
     outcome     TEXT NOT NULL DEFAULT '',
     location_id    TEXT REFERENCES campaign_locations(id) ON DELETE SET NULL,
-    -- LEGACY, unread: play state on authored material. A scene is played by a
-    -- *group*, so progress is derived from that run's session_scenes instead.
-    -- See docs/adr/0001-runs-separate-story-from-play.md § superseded.
-    played         INTEGER NOT NULL DEFAULT 0,
     playlist_type  TEXT NOT NULL DEFAULT '',
     playlist_value TEXT NOT NULL DEFAULT '',
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -214,9 +210,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     run_id             TEXT REFERENCES runs(id) ON DELETE CASCADE,
     name               TEXT NOT NULL DEFAULT '',
     date               TEXT NOT NULL DEFAULT '',
-    -- LEGACY, unread: a free-text roster superseded by run_players.
-    -- See docs/adr/0001-runs-separate-story-from-play.md § superseded.
-    players            TEXT NOT NULL DEFAULT '[]',
     active_location_id TEXT REFERENCES campaign_locations(id) ON DELETE SET NULL,
     active_scene_id    TEXT REFERENCES synopsis_scenes(id) ON DELETE SET NULL,
     -- Table surface: share token for the projection screen and player seats,
@@ -359,19 +352,6 @@ CREATE TABLE IF NOT EXISTS player_characters (
     updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- LEGACY, unread: the party re-declared once per evening, superseded by
--- run_players. Kept so an existing database keeps its rows; backfillRuns reads
--- it once to seed the run's party.
--- See docs/adr/0001-runs-separate-story-from-play.md § superseded.
-CREATE TABLE IF NOT EXISTS session_players (
-    id           TEXT PRIMARY KEY,
-    session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    character_id TEXT REFERENCES player_characters(id) ON DELETE SET NULL,
-    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(session_id, user_id)
-);
-
 -- Foreign key indexes
 
 CREATE INDEX IF NOT EXISTS idx_campaigns_game_id    ON campaigns(game_id);
@@ -458,7 +438,3 @@ CREATE INDEX IF NOT EXISTS idx_campaign_members_user_id ON campaign_members(user
 
 CREATE INDEX IF NOT EXISTS idx_player_characters_user_id ON player_characters(user_id);
 CREATE INDEX IF NOT EXISTS idx_player_characters_game_id ON player_characters(game_id);
-
--- session_players UNIQUE(session_id, user_id) covers session_id; user_id and character_id need their own
-CREATE INDEX IF NOT EXISTS idx_session_players_user_id      ON session_players(user_id);
-CREATE INDEX IF NOT EXISTS idx_session_players_character_id ON session_players(character_id);
