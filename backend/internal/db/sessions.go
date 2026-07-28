@@ -7,12 +7,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// A session is one evening: the group that played it (RunID) and the story it
+// advanced (ScenarioID). See docs/adr/0001-runs-separate-story-from-play.md.
 type Session struct {
 	ID               string `json:"id"`
 	ScenarioID       string `json:"scenario_id"`
+	RunID            string `json:"run_id"`
 	Name             string `json:"name"`
 	Date             string `json:"date"`
-	Players          string `json:"players"` // JSON [{player_name, character_name}]
 	ActiveLocationID string `json:"active_location_id"`
 	ActiveSceneID    string `json:"active_scene_id"`
 	TableToken       string `json:"table_token"` // '' until the GM first shares the table
@@ -27,22 +29,32 @@ type SessionScene struct {
 	State     string `json:"state"` // "cleared" | "void"
 }
 
-const sessionCols = `id, scenario_id, name, date, players,
+const sessionCols = `id, scenario_id, COALESCE(run_id,''), name, date,
 	COALESCE(active_location_id,''), COALESCE(active_scene_id,''),
 	COALESCE(table_token,''), COALESCE(NULLIF(projection,''),'{}'),
 	created_at, updated_at`
 
 func scanSession(row interface{ Scan(...any) error }) (*Session, error) {
 	var s Session
-	err := row.Scan(&s.ID, &s.ScenarioID, &s.Name, &s.Date, &s.Players,
+	err := row.Scan(&s.ID, &s.ScenarioID, &s.RunID, &s.Name, &s.Date,
 		&s.ActiveLocationID, &s.ActiveSceneID, &s.TableToken, &s.Projection,
 		&s.CreatedAt, &s.UpdatedAt)
 	return &s, err
 }
 
-func ListSessions(ctx context.Context, database *sql.DB, scenarioID string) ([]Session, error) {
-	rows, err := database.QueryContext(ctx,
-		`SELECT `+sessionCols+` FROM sessions WHERE scenario_id=? ORDER BY date DESC, created_at DESC`, scenarioID)
+// ListSessions returns a scenario's sessions. A non-empty runID narrows them to
+// one group's evenings — which is what the play console always wants, since two
+// groups running the same scenario must not see each other's sessions.
+func ListSessions(ctx context.Context, database *sql.DB, scenarioID, runID string) ([]Session, error) {
+	query := `SELECT ` + sessionCols + ` FROM sessions WHERE scenario_id=?`
+	args := []any{scenarioID}
+	if runID != "" {
+		query += ` AND run_id=?`
+		args = append(args, runID)
+	}
+	query += ` ORDER BY date DESC, created_at DESC`
+
+	rows, err := database.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +84,7 @@ func GetSession(ctx context.Context, database *sql.DB, id string) (*Session, err
 
 type CreateSessionParams struct {
 	ScenarioID string
+	RunID      string
 	Name       string
 	Date       string
 }
@@ -79,8 +92,8 @@ type CreateSessionParams struct {
 func CreateSession(ctx context.Context, database *sql.DB, p CreateSessionParams) (*Session, error) {
 	id := uuid.New().String()
 	_, err := database.ExecContext(ctx,
-		`INSERT INTO sessions(id, scenario_id, name, date) VALUES(?,?,?,?)`,
-		id, p.ScenarioID, p.Name, p.Date)
+		`INSERT INTO sessions(id, scenario_id, run_id, name, date) VALUES(?,?,?,?,?)`,
+		id, p.ScenarioID, p.RunID, p.Name, p.Date)
 	if err != nil {
 		return nil, err
 	}
@@ -91,11 +104,13 @@ type UpdateSessionParams struct {
 	ID               string
 	Name             string
 	Date             string
-	Players          string
 	ActiveLocationID string
 	ActiveSceneID    string
 }
 
+// UpdateSession does not move a session between groups. Which group played an
+// evening is not an editable detail — everything recorded that evening belongs
+// to them.
 func UpdateSession(ctx context.Context, database *sql.DB, p UpdateSessionParams) (*Session, error) {
 	var locID, sceneID interface{}
 	if p.ActiveLocationID != "" {
@@ -104,13 +119,9 @@ func UpdateSession(ctx context.Context, database *sql.DB, p UpdateSessionParams)
 	if p.ActiveSceneID != "" {
 		sceneID = p.ActiveSceneID
 	}
-	players := p.Players
-	if players == "" {
-		players = "[]"
-	}
 	_, err := database.ExecContext(ctx,
-		`UPDATE sessions SET name=?,date=?,players=?,active_location_id=?,active_scene_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-		p.Name, p.Date, players, locID, sceneID, p.ID)
+		`UPDATE sessions SET name=?,date=?,active_location_id=?,active_scene_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+		p.Name, p.Date, locID, sceneID, p.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -160,66 +171,20 @@ func ClearSessionSceneState(ctx context.Context, database *sql.DB, sessionID, sc
 	return err
 }
 
-// ── Session players ───────────────────────────────────────────────────────────
+// ── Party ─────────────────────────────────────────────────────────────────────
+//
+// The party belongs to the run, not the session — see runs.go. What is left here
+// is the lookup that goes the other way: from an evening back to the group that
+// played it, for callers holding only a session id.
 
-// SessionPlayer represents a user enrolled in a session, with their optional character.
-type SessionPlayer struct {
-	ID            string `json:"id"`
-	SessionID     string `json:"session_id"`
-	UserID        string `json:"user_id"`
-	UserName      string `json:"user_name"`
-	UserEmail     string `json:"user_email"`
-	CharacterID   string `json:"character_id"`
-	CharacterName string `json:"character_name"`
-}
-
-// ListSessionPlayers returns all players enrolled in a session.
-func ListSessionPlayers(ctx context.Context, database *sql.DB, sessionID string) ([]SessionPlayer, error) {
-	rows, err := database.QueryContext(ctx, `
-		SELECT sp.id, sp.session_id, sp.user_id, u.name, u.email,
-		       COALESCE(sp.character_id,''), COALESCE(pc.name,'')
-		FROM session_players sp
-		JOIN users u ON u.id = sp.user_id
-		LEFT JOIN player_characters pc ON pc.id = sp.character_id
-		WHERE sp.session_id = ?
-		ORDER BY u.name`, sessionID)
-	if err != nil {
-		return nil, err
+// RunIDForSession resolves a session to its group. Returns "" for a session that
+// predates runs and no backfill could claim.
+func RunIDForSession(ctx context.Context, database *sql.DB, sessionID string) (string, error) {
+	var runID sql.NullString
+	err := database.QueryRowContext(ctx,
+		`SELECT run_id FROM sessions WHERE id=?`, sessionID).Scan(&runID)
+	if err == sql.ErrNoRows {
+		return "", nil
 	}
-	defer rows.Close()
-	var list []SessionPlayer
-	for rows.Next() {
-		var p SessionPlayer
-		if err := rows.Scan(&p.ID, &p.SessionID, &p.UserID, &p.UserName, &p.UserEmail,
-			&p.CharacterID, &p.CharacterName); err != nil {
-			return nil, err
-		}
-		list = append(list, p)
-	}
-	if list == nil {
-		list = []SessionPlayer{}
-	}
-	return list, rows.Err()
-}
-
-// SetSessionPlayer upserts a player in a session, optionally assigning a character.
-// Pass an empty characterID to clear the character assignment.
-func SetSessionPlayer(ctx context.Context, database *sql.DB, sessionID, userID, characterID string) error {
-	var charID interface{}
-	if characterID != "" {
-		charID = characterID
-	}
-	_, err := database.ExecContext(ctx, `
-		INSERT INTO session_players(id, session_id, user_id, character_id)
-		VALUES(?,?,?,?)
-		ON CONFLICT(session_id, user_id) DO UPDATE SET character_id=excluded.character_id`,
-		uuid.New().String(), sessionID, userID, charID)
-	return err
-}
-
-// RemoveSessionPlayer removes a player from a session.
-func RemoveSessionPlayer(ctx context.Context, database *sql.DB, sessionID, userID string) error {
-	_, err := database.ExecContext(ctx,
-		`DELETE FROM session_players WHERE session_id=? AND user_id=?`, sessionID, userID)
-	return err
+	return runID.String, err
 }

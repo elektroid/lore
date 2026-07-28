@@ -25,7 +25,7 @@ interface Props {
 
 type ScenePatch = Partial<{
   title: string; status: SceneStatus; description: string; outcome: string; notes: string
-  location_id: string; played: boolean; is_start: boolean; is_end: boolean
+  location_id: string; is_start: boolean; is_end: boolean
 }>
 
 const SCENE_SUGGESTION_FIELDS: SuggestionField[] = [
@@ -299,7 +299,6 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
         outcome: base.outcome,
         notes: base.notes,
         location_id: base.location_id,
-        played: base.played,
         is_start: base.is_start,
         is_end: base.is_end,
         ...patch,

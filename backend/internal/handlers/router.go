@@ -114,6 +114,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 		})
 
 		campaigns := &CampaignHandler{db: database}
+		runs := &RunHandler{db: database}
 		entities := &EntityHandler{db: database, encKey: cfg.EncryptionKey()}
 		uploads := &UploadsHandler{db: database, uploadsDir: uploadsDir}
 		imageLLM := &ImageLLMHandler{
@@ -143,6 +144,23 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 				r.Group(func(r chi.Router) {
 					r.Use(requireCampaignOwner(database))
 					r.Get("/search", entities.Search)
+
+					// Groups playing this campaign, and their parties. The
+					// campaign is authored once and played by several of them.
+					// See docs/adr/0001-runs-separate-story-from-play.md.
+					r.Route("/runs", func(r chi.Router) {
+						r.Get("/", runs.List)
+						r.Post("/", runs.Create)
+						r.Route("/{runId}", func(r chi.Router) {
+							r.Use(requireChild(database, "id", "runId", db.TableRuns, db.ColCampaignID))
+							r.Get("/", runs.Get)
+							r.Put("/", runs.Update)
+							r.Delete("/", runs.Delete)
+							r.Get("/players", runs.ListPlayers)
+							r.Put("/players/{userId}", runs.SetPlayer)
+							r.Delete("/players/{userId}", runs.RemovePlayer)
+						})
+					})
 
 					// Scenario factory — see docs/scenario-factory.md
 					r.Route("/scenario-drafts", func(r chi.Router) {
@@ -283,6 +301,10 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 				})
 			})
 
+			// How far one group has got in this scenario. Derived from that
+			// group's sessions — see docs/adr/0001-runs-separate-story-from-play.md.
+			r.Get("/runs/{runId}/scenes", synopsis.GetRunScenes)
+
 			r.Route("/sessions", func(r chi.Router) {
 				r.Get("/", synopsis.ListSessions)
 				r.Post("/", synopsis.CreateSession)
@@ -293,9 +315,6 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 					r.Get("/scenes", synopsis.GetSessionScenes)
 					r.Put("/scenes/{sceneId}", synopsis.SetSessionSceneState)
 					r.Delete("/scenes/{sceneId}", synopsis.ClearSessionSceneState)
-					r.Get("/players", synopsis.ListSessionPlayers)
-					r.Put("/players/{userId}", synopsis.SetSessionPlayer)
-					r.Delete("/players/{userId}", synopsis.RemoveSessionPlayer)
 
 					// Table surface, GM side
 					r.Post("/table-token", tableHandler.EnsureToken)

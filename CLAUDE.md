@@ -40,6 +40,30 @@ Two gotchas when scripting it:
 - `POST`/`PUT`/`DELETE` need the `X-CSRF-Token` header matching the `lore_csrf`
   cookie from login (double-submit); read it out of the curl cookie jar.
 
+## Story vs. play — the line that matters
+
+A campaign is **written once and played by several groups**. A *run* (UI:
+**Groupe**) is one group and its playthrough; a *session* is one evening of a
+run. See [docs/runs.md](docs/runs.md) and
+[docs/adr/0001-runs-separate-story-from-play.md](docs/adr/0001-runs-separate-story-from-play.md).
+
+Two rules to keep, because they were broken once and the whole feature exists to
+fix them:
+
+- **Never put play state on authored material.** No column on `synopsis_scenes`,
+  `scenarios` or `campaigns` may record what a group did. Progress is derived
+  from the run's `session_scenes`, never stored — do not add a `run_scenes`
+  table.
+- **Two player lists, and they are not interchangeable.** `campaign_members` is
+  authorization ("may this account open the campaign", UI: **Accès**);
+  `run_players` is the party ("who is at this table", UI: **Groupes**). Anything
+  that seats a player validates against both: access to the campaign, and the
+  character belonging to that player.
+
+`synopsis_scenes.played`, `sessions.players` and `session_players` are `LEGACY`
+— present in the schema, read by nothing but the backfill. Do not wire them back
+up.
+
 ## Entity list items (frontend)
 
 All entity types (NPCs, Artefacts, Locations, Factions, …) follow a shared list-item pattern. Apply it consistently when adding or modifying entity tabs.

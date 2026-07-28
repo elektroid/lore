@@ -64,13 +64,17 @@ or a player joining halfway through.
 ### Seats
 
 A player opening `/table/:token/player` **claims a seat**: they pick their name
-from the session roster (the players already enrolled via the console) or type a
-free-form display name. The claim is stored in `localStorage` — reopening the
-link on the same device restores it.
+from the session's **group** — the party enrolled once on the run, character
+name preferred — or types a free-form display name. The claim is stored in
+`localStorage` — reopening the link on the same device restores it.
+
+The party is the group's, not the evening's, so a player who missed the session
+the roster happened to be built in is still in the picker. See
+[docs/runs.md](runs.md).
 
 No login. A group gets going by passing one URL around. The roster picker exists
 so the roll feed says *"Kaelen"* rather than *"Player 3"*, and it degrades to a
-text field when the GM has not filled the roster.
+text field when the GM has not filled the party.
 
 ### Why a token and not accounts
 

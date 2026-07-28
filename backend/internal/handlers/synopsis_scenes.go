@@ -59,7 +59,6 @@ func (h *SynopsisHandler) UpdateScene(w http.ResponseWriter, r *http.Request) {
 		Outcome       string `json:"outcome"`
 		Notes         string `json:"notes"`
 		LocationID    string `json:"location_id"`
-		Played        bool   `json:"played"`
 		IsStart       bool   `json:"is_start"`
 		IsEnd         bool   `json:"is_end"`
 		PlaylistType  string `json:"playlist_type"`
@@ -86,7 +85,6 @@ func (h *SynopsisHandler) UpdateScene(w http.ResponseWriter, r *http.Request) {
 		Outcome:       body.Outcome,
 		Notes:         body.Notes,
 		LocationID:    body.LocationID,
-		Played:        body.Played,
 		IsStart:       body.IsStart,
 		IsEnd:         body.IsEnd,
 		PlaylistType:  body.PlaylistType,

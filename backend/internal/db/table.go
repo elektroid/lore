@@ -196,15 +196,17 @@ type Seat struct {
 	Name string `json:"name"`
 }
 
-// ListSeats returns the display names of the session's enrolled players,
-// preferring the character name over the account name.
+// ListSeats returns the display names of the party playing this session,
+// preferring the character name over the account name. The party comes from the
+// session's run — the group, not the evening. See runs.go.
 func ListSeats(ctx context.Context, database *sql.DB, sessionID string) ([]Seat, error) {
 	rows, err := database.QueryContext(ctx, `
 		SELECT COALESCE(NULLIF(pc.name,''), u.name)
-		FROM session_players sp
-		JOIN users u ON u.id = sp.user_id
-		LEFT JOIN player_characters pc ON pc.id = sp.character_id
-		WHERE sp.session_id = ?
+		FROM run_players rp
+		JOIN sessions s ON s.run_id = rp.run_id
+		JOIN users u ON u.id = rp.user_id
+		LEFT JOIN player_characters pc ON pc.id = rp.character_id
+		WHERE s.id = ?
 		ORDER BY 1`, sessionID)
 	if err != nil {
 		return nil, err

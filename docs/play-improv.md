@@ -71,6 +71,9 @@ Development returns a verdict alongside the prose:
 | `tension` | pulls against something — a planned scene gets harder, an NPC's motive shifts | amber |
 | `conflict` | contradicts something already established or already played | red |
 
+"Already played" means **this group** has been there — coherency is judged
+against the run's progress, not one evening's. See [docs/runs.md](runs.md).
+
 Plus a one-line summary and a list of **which existing scenes it affects**, each
 with a sentence on how.
 
@@ -186,12 +189,14 @@ It lands as `key_event`, **not played**, linked to the anchor's location, and
 carrying the beat's title/description/outcome/notes (falling back to the raw
 note when the beat was never developed).
 
-**Why not mark it played, given it demonstrably happened?** Because `played` is
-scenario-level state that drives "what's left to run", and the same beat may
-well be adopted as *setup for next time* rather than as a record of last time.
-Wrongly marking something played hides it from the one view where the GM looks
-for work; wrongly leaving it unplayed costs one click in the scene list. The
-cheap error is the right default.
+**Why not mark it played, given it demonstrably happened?** Because at adoption
+the beat becomes *authored material*, and authored material has no progress of
+its own — progress belongs to the group that played it, and marking a scene
+played for everyone is precisely the confusion runs exist to prevent. On top of
+that, the same beat may well be adopted as *setup for next time* rather than as
+a record of last time. Ticking it off costs one click in the console; the cheap
+error is the right default. See
+[docs/adr/0001-runs-separate-story-from-play.md](adr/0001-runs-separate-story-from-play.md).
 
 The beat keeps its own record either way: status `adopted`, `scene_id` pointing
 at what it became.

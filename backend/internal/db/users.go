@@ -325,6 +325,23 @@ func ListPlayerCharacters(ctx context.Context, database *sql.DB, userID string) 
 	return chars, rows.Err()
 }
 
+// CharacterBelongsToUser reports whether a character is this user's. The GM
+// assigns characters to their party from a campaign-scoped route, which proves
+// nothing about a character id arriving in the body.
+func CharacterBelongsToUser(ctx context.Context, database *sql.DB, characterID, userID string) (bool, error) {
+	if characterID == "" || userID == "" {
+		return false, nil
+	}
+	var n int
+	err := database.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM player_characters WHERE id = ? AND user_id = ?`,
+		characterID, userID).Scan(&n)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // GetPlayerCharacter returns a single character by ID
 func GetPlayerCharacter(ctx context.Context, database *sql.DB, id, userID string) (*PlayerCharacter, error) {
 	row := database.QueryRowContext(ctx, `

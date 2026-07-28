@@ -146,7 +146,11 @@ func (h *SynopsisHandler) DeleteBeat(w http.ResponseWriter, r *http.Request) {
 // ── Develop ───────────────────────────────────────────────────────────────────
 
 // beatSceneLines numbers the beat sheet so the model can point at scenes
-// without inventing UUIDs, and marks what this session already did with them.
+// without inventing UUIDs, and marks what this group already did with them.
+//
+// Progress is the run's, not the session's: "déjà jouée" has to mean the party
+// has been there, whether that was tonight or three evenings ago. Judging
+// coherency against one evening would call every earlier scene unplayed.
 func (h *SynopsisHandler) beatSceneLines(ctx context.Context, scenarioID, sessionID, anchorID string) ([]improv.SceneLine, error) {
 	scenes, err := db.ListScenes(ctx, h.db, scenarioID)
 	if err != nil {
@@ -154,7 +158,13 @@ func (h *SynopsisHandler) beatSceneLines(ctx context.Context, scenarioID, sessio
 	}
 	states := map[string]string{}
 	if sessionID != "" {
-		if s, err := db.ListSessionScenes(ctx, h.db, sessionID); err == nil {
+		runID, err := db.RunIDForSession(ctx, h.db, sessionID)
+		if err == nil && runID != "" {
+			if s, err := db.ListRunSceneStates(ctx, h.db, runID, scenarioID); err == nil {
+				states = s
+			}
+		} else if s, err := db.ListSessionScenes(ctx, h.db, sessionID); err == nil {
+			// A session predating runs that no backfill claimed.
 			states = s
 		}
 	}
@@ -174,7 +184,7 @@ func (h *SynopsisHandler) beatSceneLines(ctx context.Context, scenarioID, sessio
 			Title:    s.Title,
 			Summary:  truncateRunes(summary, 160),
 			Status:   s.Status,
-			Played:   s.Played || states[s.ID] == "cleared",
+			Played:   states[s.ID] == "cleared",
 			Voided:   states[s.ID] == "void",
 			IsAnchor: s.ID == anchorID,
 		})
@@ -281,10 +291,12 @@ func (h *SynopsisHandler) DevelopBeat(w http.ResponseWriter, r *http.Request) {
 // AdoptBeat turns the beat into a real scene, inserted immediately after its
 // anchor so the beat sheet reads in the order the evening actually went.
 //
-// It lands not-played on purpose: `played` drives "what is left to run", and
-// the same beat may be adopted as setup for next time rather than as a record
-// of last time. Wrongly marking it played hides it from the view the GM works
-// from; wrongly leaving it unplayed costs one click.
+// It lands unplayed for every group, including the one that improvised it: the
+// scene is authored material now, and progress is something a run records by
+// playing it. The same beat may equally be adopted as setup for next time
+// rather than as a record of last time — and marking it played for the whole
+// campaign is exactly the confusion runs exist to prevent. Ticking it off costs
+// one click in the console. See docs/adr/0001-runs-separate-story-from-play.md.
 func (h *SynopsisHandler) AdoptBeat(w http.ResponseWriter, r *http.Request) {
 	scenarioID := chi.URLParam(r, "id")
 

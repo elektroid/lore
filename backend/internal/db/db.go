@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
 )
 
@@ -59,12 +60,133 @@ func MigrateAlters(database *sql.DB) {
 		// not exist when schema.sql runs, and indexing a missing column there
 		// would abort the whole migration.
 		`CREATE INDEX IF NOT EXISTS idx_sessions_table_token ON sessions(table_token)`,
+		// A session belongs to the group whose evening it was. NULL default is
+		// not a choice: SQLite only allows ALTER TABLE ADD COLUMN to carry a
+		// REFERENCES clause when the default is NULL.
+		// See docs/adr/0001-runs-separate-story-from-play.md.
+		`ALTER TABLE sessions ADD COLUMN run_id TEXT REFERENCES runs(id) ON DELETE CASCADE`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_run_id ON sessions(run_id)`,
 	}
 	for _, stmt := range alters {
 		database.Exec(stmt) //nolint:errcheck — duplicate column error is expected on re-run
 	}
 
 	dropCampaignGameFK(database)
+	backfillRuns(database)
+}
+
+// backfillRuns gives every pre-run campaign the group its play data implies.
+//
+// Before runs existed, a campaign's sessions, its per-session rosters and its
+// scene `played` flags all silently belonged to one unnamed group. This creates
+// that group and moves them onto it.
+//
+// Idempotent by construction: a campaign that already has a run is skipped
+// entirely. That matters more than usual here — schema.sql is embedded and
+// re-run on every hot reload, so this executes on every rebuild.
+//
+// Best-effort and non-fatal, same contract as dropCampaignGameFK: main.go turns
+// a Migrate error into log.Fatalf, so a backfill that cannot complete must leave
+// the database as it found it and let the server start regardless.
+func backfillRuns(database *sql.DB) {
+	rows, err := database.Query(`
+		SELECT DISTINCT c.id FROM campaigns c
+		WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.campaign_id = c.id)
+		  AND (
+		    EXISTS (SELECT 1 FROM sessions s
+		            JOIN scenarios sc ON sc.id = s.scenario_id
+		            WHERE sc.campaign_id = c.id)
+		 OR EXISTS (SELECT 1 FROM synopsis_scenes sn
+		            JOIN scenarios sc ON sc.id = sn.scenario_id
+		            WHERE sc.campaign_id = c.id AND sn.played = 1)
+		  )`)
+	if err != nil {
+		return // pre-runs schema, or a database mid-upgrade — nothing to do
+	}
+	var campaignIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return
+		}
+		campaignIDs = append(campaignIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return
+	}
+
+	for _, campaignID := range campaignIDs {
+		if err := backfillOneCampaignRun(database, campaignID); err != nil {
+			log.Printf("run backfill skipped for campaign %s: %v", campaignID, err)
+		}
+	}
+}
+
+func backfillOneCampaignRun(database *sql.DB, campaignID string) error {
+	tx, err := database.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck — no-op once committed
+
+	runID := uuid.New().String()
+	if _, err := tx.Exec(
+		`INSERT INTO runs(id, campaign_id, name) VALUES(?,?,'Groupe 1')`, runID, campaignID); err != nil {
+		return err
+	}
+
+	// Every session of this campaign that no group has claimed.
+	if _, err := tx.Exec(`
+		UPDATE sessions SET run_id = ?
+		WHERE run_id IS NULL
+		  AND scenario_id IN (SELECT id FROM scenarios WHERE campaign_id = ?)`,
+		runID, campaignID); err != nil {
+		return err
+	}
+
+	// The party, as the union of everyone ever enrolled in one of its evenings.
+	// A player who used different characters across sessions keeps the most
+	// recent one — MAX over a uuid is arbitrary but stable, and the GM re-picks
+	// in one click.
+	if _, err := tx.Exec(`
+		INSERT INTO run_players(id, run_id, user_id, character_id)
+		SELECT lower(hex(randomblob(16))), ?, sp.user_id, MAX(sp.character_id)
+		FROM session_players sp
+		JOIN sessions s ON s.id = sp.session_id
+		WHERE s.run_id = ?
+		GROUP BY sp.user_id`, runID, runID); err != nil {
+		return err
+	}
+
+	// Progress: a scene the story called played becomes a scene this group
+	// cleared, recorded against its earliest evening. A campaign with played
+	// scenes but no session at all gets nothing here — there is no evening to
+	// attach it to, and the flag was authoring bookkeeping. See the ADR.
+	var firstSession string
+	err = tx.QueryRow(`
+		SELECT id FROM sessions WHERE run_id = ?
+		ORDER BY date, created_at LIMIT 1`, runID).Scan(&firstSession)
+	if err == sql.ErrNoRows {
+		return tx.Commit()
+	}
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`
+		INSERT INTO session_scenes(id, session_id, scene_id, state)
+		SELECT lower(hex(randomblob(16))), ?, sn.id, 'cleared'
+		FROM synopsis_scenes sn
+		JOIN scenarios sc ON sc.id = sn.scenario_id
+		WHERE sc.campaign_id = ? AND sn.played = 1
+		ON CONFLICT(session_id, scene_id) DO NOTHING`,
+		firstSession, campaignID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 // dropCampaignGameFK rebuilds `campaigns` without the foreign key on game_id.

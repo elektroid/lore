@@ -15,9 +15,17 @@ type SessionHandler struct {
 	}
 }
 
+// ListSessions returns a scenario's sessions, narrowed to one group with
+// ?run_id=. The console always passes it — two groups running the same scenario
+// must not see each other's evenings.
 func (h *SynopsisHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	scenarioID := chi.URLParam(r, "id")
-	sessions, err := db.ListSessions(r.Context(), h.db, scenarioID)
+	runID := r.URL.Query().Get("run_id")
+	if runID != "" && !h.runInScenarioCampaign(r, runID) {
+		writeError(w, http.StatusNotFound, "groupe introuvable dans cette campagne")
+		return
+	}
+	sessions, err := db.ListSessions(r.Context(), h.db, scenarioID, runID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -28,15 +36,27 @@ func (h *SynopsisHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 func (h *SynopsisHandler) CreateSession(w http.ResponseWriter, r *http.Request) {
 	scenarioID := chi.URLParam(r, "id")
 	var body struct {
-		Name string `json:"name"`
-		Date string `json:"date"`
+		RunID string `json:"run_id"`
+		Name  string `json:"name"`
+		Date  string `json:"date"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "corps invalide")
 		return
 	}
+	// An evening belongs to a group. Without one there is nowhere to record what
+	// happened, and the scenario would inherit it as if it were written.
+	if body.RunID == "" {
+		writeError(w, http.StatusBadRequest, "run_id requis — une session appartient à un groupe")
+		return
+	}
+	if !h.runInScenarioCampaign(r, body.RunID) {
+		writeError(w, http.StatusNotFound, "groupe introuvable dans cette campagne")
+		return
+	}
 	session, err := db.CreateSession(r.Context(), h.db, db.CreateSessionParams{
 		ScenarioID: scenarioID,
+		RunID:      body.RunID,
 		Name:       body.Name,
 		Date:       body.Date,
 	})
@@ -47,12 +67,23 @@ func (h *SynopsisHandler) CreateSession(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusCreated, session)
 }
 
+// runInScenarioCampaign checks a run id that arrived on a scenario-scoped route.
+// The route guard only proves the caller owns the scenario, which says nothing
+// about a run id in the query string or body.
+func (h *SynopsisHandler) runInScenarioCampaign(r *http.Request, runID string) bool {
+	campaignID, err := db.CampaignIDForScenario(r.Context(), h.db, chi.URLParam(r, "id"))
+	if err != nil || campaignID == "" {
+		return false
+	}
+	ok, err := db.RunInCampaign(r.Context(), h.db, runID, campaignID)
+	return err == nil && ok
+}
+
 func (h *SynopsisHandler) UpdateSession(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 	var body struct {
 		Name             string `json:"name"`
 		Date             string `json:"date"`
-		Players          string `json:"players"`
 		ActiveLocationID string `json:"active_location_id"`
 		ActiveSceneID    string `json:"active_scene_id"`
 	}
@@ -64,7 +95,6 @@ func (h *SynopsisHandler) UpdateSession(w http.ResponseWriter, r *http.Request) 
 		ID:               sessionID,
 		Name:             body.Name,
 		Date:             body.Date,
-		Players:          body.Players,
 		ActiveLocationID: body.ActiveLocationID,
 		ActiveSceneID:    body.ActiveSceneID,
 	})
@@ -119,45 +149,6 @@ func (h *SynopsisHandler) ClearSessionSceneState(w http.ResponseWriter, r *http.
 	sessionID := chi.URLParam(r, "sessionId")
 	sceneID := chi.URLParam(r, "sceneId")
 	if err := db.ClearSessionSceneState(r.Context(), h.db, sessionID, sceneID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// ── Session players ───────────────────────────────────────────────────────────
-
-func (h *SynopsisHandler) ListSessionPlayers(w http.ResponseWriter, r *http.Request) {
-	sessionID := chi.URLParam(r, "sessionId")
-	players, err := db.ListSessionPlayers(r.Context(), h.db, sessionID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, players)
-}
-
-func (h *SynopsisHandler) SetSessionPlayer(w http.ResponseWriter, r *http.Request) {
-	sessionID := chi.URLParam(r, "sessionId")
-	userID := chi.URLParam(r, "userId")
-	var body struct {
-		CharacterID string `json:"character_id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "corps invalide")
-		return
-	}
-	if err := db.SetSessionPlayer(r.Context(), h.db, sessionID, userID, body.CharacterID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *SynopsisHandler) RemoveSessionPlayer(w http.ResponseWriter, r *http.Request) {
-	sessionID := chi.URLParam(r, "sessionId")
-	userID := chi.URLParam(r, "userId")
-	if err := db.RemoveSessionPlayer(r.Context(), h.db, sessionID, userID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

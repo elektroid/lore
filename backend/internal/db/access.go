@@ -14,6 +14,7 @@ const (
 	TableFactions   = "campaign_factions"
 	TableArtefacts  = "campaign_artefacts"
 	TableScenes     = "synopsis_scenes"
+	TableRuns       = "runs"
 	TableSessions   = "sessions"
 	TableBeats      = "session_beats"
 	TableThreads    = "brainstorm_threads"

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, X, Sparkles, Printer, Play, BookOpen, FolderOpen } from 'lucide-react'
+import { ChevronDown, X, Sparkles, Printer, Play, BookOpen, FolderOpen, Users } from 'lucide-react'
 import AppShell from '@/components/AppShell'
 import HookWidget from '@/components/synopsis/HookWidget'
 import FactionWidget from '@/components/synopsis/FactionWidget'
@@ -17,6 +17,7 @@ import type { Campaign } from '@/types/campaign'
 import type { Scenario } from '@/types/scenario'
 import type { Scene, SynopsisData } from '@/types/synopsis'
 import type { GameDocument } from '@/types/game'
+import type { Run } from '@/types/run'
 
 function DocumentsDialog({ gameId, gameName, onClose }: { gameId: string; gameName: string; onClose: () => void }) {
   const [search, setSearch] = useState('')
@@ -98,6 +99,24 @@ export default function SynopsisPage() {
   const [brainstormOpen, setBrainstormOpen] = useState(false)
   const [docsOpen, setDocsOpen] = useState(false)
 
+  // The run lens. Empty by default, and that default is the point: the synopsis
+  // is the story, and the story is the same for every group that plays it.
+  // Picking a group overlays how far *they* have got, without changing a word.
+  // See docs/adr/0001-runs-separate-story-from-play.md.
+  const [lensRunId, setLensRunId] = useState('')
+
+  const { data: runs = [] } = useQuery({
+    queryKey: ['runs', scenario?.campaign_id],
+    queryFn: () => api.get<Run[]>(`/campaigns/${scenario!.campaign_id}/runs`),
+    enabled: !!scenario?.campaign_id,
+  })
+
+  const { data: sceneStates = {} } = useQuery({
+    queryKey: ['run-scenes', lensRunId, scenarioId],
+    queryFn: () => api.get<Record<string, string>>(`/scenarios/${scenarioId}/runs/${lensRunId}/scenes`),
+    enabled: !!lensRunId,
+  })
+
   useDocTitle(scenario ? `lore: ${scenario.name}` : 'lore')
 
   function onChange(patch: Partial<SynopsisData>) {
@@ -143,6 +162,24 @@ export default function SynopsisPage() {
         <div className="flex items-center justify-between">
           {isSaving && <span className="text-xs text-muted-foreground">Sauvegarde…</span>}
           <div className="ml-auto flex items-center gap-2">
+            {runs.length > 0 && (
+              <div
+                className="flex items-center gap-1.5 text-xs pl-2 pr-1 py-1 rounded-md border border-border text-muted-foreground"
+                title="Afficher la progression d'un groupe par-dessus le scénario"
+              >
+                <Users className="h-3.5 w-3.5" />
+                <select
+                  value={lensRunId}
+                  onChange={e => setLensRunId(e.target.value)}
+                  className="bg-transparent text-xs py-0.5 pr-1 focus:outline-none"
+                >
+                  <option value="">Scénario seul</option>
+                  {runs.map(r => (
+                    <option key={r.id} value={r.id}>Progression : {r.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <a
               href={`/scenarios/${scenarioId}/play`}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -224,6 +261,7 @@ export default function SynopsisPage() {
               scenarioId={scenarioId}
               selectedId={selectedSceneId}
               onSelect={id => setSelectedSceneId(id === selectedSceneId ? '' : id)}
+              sceneStates={sceneStates}
             />
           </div>
 
@@ -254,6 +292,8 @@ export default function SynopsisPage() {
                   campaignId={scenario?.campaign_id ?? ''}
                   synopsis={query.data}
                   onSelectScene={setSelectedSceneId}
+                  sceneStates={sceneStates}
+                  lensRunName={runs.find(r => r.id === lensRunId)?.name ?? ''}
                 />
               </div>
             )}

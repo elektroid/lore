@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react'
-import { Plus, GripVertical, Trash2, Sparkles, SeparatorHorizontal, Play, Flag } from 'lucide-react'
+import {
+  Plus, GripVertical, Trash2, Sparkles, SeparatorHorizontal, Play, Flag,
+  CheckCircle2, CircleSlash,
+} from 'lucide-react'
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor,
   useSensor, useSensors, type DragEndEvent,
@@ -14,12 +17,21 @@ import { Button } from '@/components/ui/button'
 import { useSynopsisLLM } from '@/hooks/useSynopsisLLM'
 import type { Scene, SceneStatus } from '@/types/synopsis'
 import { api } from '@/api/client'
-import { patchCachedListItem } from '@/api/cache'
 
 interface Props {
   scenarioId: string
   selectedId: string | null
   onSelect: (id: string) => void
+  /**
+   * Progress of the group currently used as a lens, scene id → state. Empty
+   * when no group is selected, which is the default: the synopsis is the story,
+   * and the story has no progress of its own.
+   *
+   * Read-only here. Progress is produced by playing an evening, so it is ticked
+   * off in the play console — writing it from the editor would mean inventing a
+   * session to attach it to. See docs/adr/0001-runs-separate-story-from-play.md.
+   */
+  sceneStates: Record<string, string>
 }
 
 // ── Status dot ────────────────────────────────────────────────────────────────
@@ -39,15 +51,17 @@ function StatusDot({ status }: { status: SceneStatus }) {
 function SceneRow({
   scene,
   selected,
+  played,
+  voided,
   onSelect,
   onDelete,
-  onTogglePlayed,
 }: {
   scene: Scene
   selected: boolean
+  played: boolean
+  voided: boolean
   onSelect: () => void
   onDelete: () => void
-  onTogglePlayed: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: scene.id })
@@ -82,7 +96,7 @@ function SceneRow({
       className={`flex items-center gap-2 rounded-md border px-2 py-2 cursor-pointer transition-colors ${
         selected
           ? 'bg-accent border-accent-foreground/20 text-accent-foreground'
-          : scene.played
+          : played || voided
             ? 'bg-muted/40 border-transparent text-muted-foreground'
             : 'bg-card border-border hover:bg-accent/50'
       }`}
@@ -97,15 +111,18 @@ function SceneRow({
         <GripVertical className="h-3.5 w-3.5" />
       </button>
 
-      <input
-        type="checkbox"
-        checked={scene.played}
-        onChange={e => { e.stopPropagation(); onTogglePlayed() }}
-        onClick={e => e.stopPropagation()}
-        className="h-3.5 w-3.5 rounded shrink-0 accent-primary cursor-pointer"
-      />
+      {played && (
+        <span title="Jouée par ce groupe" className="shrink-0">
+          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+        </span>
+      )}
+      {voided && (
+        <span title="Annulée par ce groupe" className="shrink-0">
+          <CircleSlash className="h-3.5 w-3.5 text-muted-foreground/50" />
+        </span>
+      )}
 
-      <span className={`flex-1 text-sm truncate ${scene.played ? 'line-through' : ''}`}>
+      <span className={`flex-1 text-sm truncate ${played ? 'line-through' : ''}`}>
         {scene.title || <span className="text-muted-foreground italic">Sans titre</span>}
       </span>
       {scene.is_start && <span title="Scène de départ"><Play className="h-3 w-3 shrink-0 text-emerald-600" /></span>}
@@ -129,7 +146,7 @@ function SceneRow({
 
 // ── Widget ────────────────────────────────────────────────────────────────────
 
-export default function SceneList({ scenarioId, selectedId, onSelect }: Props) {
+export default function SceneList({ scenarioId, selectedId, onSelect, sceneStates }: Props) {
   const qc = useQueryClient()
   const llm = useSynopsisLLM(scenarioId)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -162,26 +179,6 @@ export default function SceneList({ scenarioId, selectedId, onSelect }: Props) {
       qc.invalidateQueries({ queryKey: ['scenes', scenarioId] })
       if (selectedId === id) onSelect('')
     },
-  })
-
-  const togglePlayed = useMutation({
-    mutationFn: (scene: Scene) =>
-      api.put<Scene>(`/scenarios/${scenarioId}/synopsis/scenes/${scene.id}`, {
-        title: scene.title,
-        status: scene.status,
-        description: scene.description,
-        outcome: scene.outcome,
-        notes: scene.notes,
-        location_id: scene.location_id,
-        played: !scene.played,
-        is_start: scene.is_start,
-        is_end: scene.is_end,
-      }),
-    // Optimistic — the checkbox must not wait a round trip to flip.
-    onMutate: (scene: Scene) => {
-      patchCachedListItem<Scene>(qc, ['scenes', scenarioId], scene.id, { played: !scene.played })
-    },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['scenes', scenarioId] }),
   })
 
   const reorder = useMutation({
@@ -249,8 +246,9 @@ export default function SceneList({ scenarioId, selectedId, onSelect }: Props) {
                 scene={scene}
                 selected={selectedId === scene.id}
                 onSelect={() => onSelect(scene.id)}
+                played={sceneStates[scene.id] === 'cleared'}
+                voided={sceneStates[scene.id] === 'void'}
                 onDelete={() => deleteScene.mutate(scene.id)}
-                onTogglePlayed={() => togglePlayed.mutate(scene)}
               />
             ))}
           </ul>

@@ -14,6 +14,10 @@ interface Props {
   scenarioId: string
   campaignId: string
   synopsis: Synopsis | undefined
+  /** Progress of the group used as a lens, scene id → state. Empty for none. */
+  sceneStates: Record<string, string>
+  /** Name of that group, for labelling. Empty when no lens is active. */
+  lensRunName: string
 }
 
 // ── Coming up card (compact) ──────────────────────────────────────────────────
@@ -33,7 +37,9 @@ function ComingUpCard({ scene, onSelect }: { scene: Scene; onSelect: () => void 
 
 // ── Panel ─────────────────────────────────────────────────────────────────────
 
-export default function BetweenScenesPanel({ scenarioId, campaignId, synopsis, onSelectScene }: Props & { onSelectScene: (id: string) => void }) {
+export default function BetweenScenesPanel({
+  scenarioId, campaignId, synopsis, onSelectScene, sceneStates, lensRunName,
+}: Props & { onSelectScene: (id: string) => void }) {
   const llm = useSynopsisLLM(scenarioId)
   const [editNpcId, setEditNpcId] = useState<string | null>(null)
 
@@ -56,7 +62,12 @@ export default function BetweenScenesPanel({ scenarioId, campaignId, synopsis, o
   })
   const openBeats = beats.filter(b => b.status === 'captured' || b.status === 'developed').length
 
-  const upcoming = scenes.filter(s => s.type === 'scene' && !s.played).slice(0, 3)
+  // "What is left" is only a question a group can be asked. Without a lens the
+  // synopsis shows the story from the start, which is what it is.
+  // See docs/adr/0001-runs-separate-story-from-play.md.
+  const upcoming = scenes
+    .filter(s => s.type === 'scene' && !sceneStates[s.id])
+    .slice(0, 3)
 
   return (
     <div className="space-y-6">
@@ -81,7 +92,9 @@ export default function BetweenScenesPanel({ scenarioId, campaignId, synopsis, o
       {/* Coming up */}
       {upcoming.length > 0 && (
         <section className="space-y-2">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">À venir</p>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            {lensRunName ? `À venir — ${lensRunName}` : 'Déroulé'}
+          </p>
           <div className="space-y-2">
             {upcoming.map(s => (
               <ComingUpCard key={s.id} scene={s} onSelect={() => onSelectScene(s.id)} />
@@ -90,8 +103,10 @@ export default function BetweenScenesPanel({ scenarioId, campaignId, synopsis, o
         </section>
       )}
 
-      {upcoming.length === 0 && scenes.length > 0 && (
-        <p className="text-sm text-muted-foreground">Toutes les scènes sont jouées.</p>
+      {upcoming.length === 0 && scenes.length > 0 && lensRunName && (
+        <p className="text-sm text-muted-foreground">
+          {lensRunName} a joué toutes les scènes.
+        </p>
       )}
 
       {/* Overview */}

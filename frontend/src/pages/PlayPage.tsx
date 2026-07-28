@@ -22,7 +22,8 @@ import type { Scenario } from '@/types/scenario'
 import type { Campaign } from '@/types/campaign'
 import type { Scene, SceneNPC } from '@/types/synopsis'
 import type { CampaignLocation, NPCImage, LocationImage } from '@/types/entities'
-import type { Session, SessionPlayer, MemberWithCharacters, ScenePlayState } from '@/types/session'
+import type { Session, MemberWithCharacters, ScenePlayState } from '@/types/session'
+import type { Run, RunPlayer } from '@/types/run'
 import { EMPTY_PROJECTION, type Projection } from '@/types/table'
 
 // ── Scene state display ───────────────────────────────────────────────────────
@@ -80,19 +81,25 @@ function SessionModal({
 
 // ── Roster dialog ─────────────────────────────────────────────────────────────
 
+/**
+ * The party — of the *group*, not of tonight. Editing it here changes who plays
+ * this campaign with this group, for every session past and future. That is the
+ * point: a roster re-declared every evening was never anybody's model of a
+ * table. See docs/adr/0001-runs-separate-story-from-play.md.
+ */
 function RosterDialog({
-  scenarioId, sessionId, campaignId, onClose,
+  runId, runName, campaignId, onClose,
 }: {
-  scenarioId: string
-  sessionId: string
+  runId: string
+  runName: string
   campaignId: string
   onClose: () => void
 }) {
   const qc = useQueryClient()
 
-  const { data: sessionPlayers = [] } = useQuery({
-    queryKey: ['session-players', sessionId],
-    queryFn: () => api.get<SessionPlayer[]>(`/scenarios/${scenarioId}/sessions/${sessionId}/players`),
+  const { data: party = [] } = useQuery({
+    queryKey: ['run-players', runId],
+    queryFn: () => api.get<RunPlayer[]>(`/campaigns/${campaignId}/runs/${runId}/players`),
   })
 
   const { data: memberCharacters = [] } = useQuery({
@@ -100,26 +107,29 @@ function RosterDialog({
     queryFn: () => api.get<MemberWithCharacters[]>(`/campaigns/${campaignId}/members/characters`),
   })
 
-  const enrolledIds = new Set(sessionPlayers.map(p => p.user_id))
+  const enrolledIds = new Set(party.map(p => p.user_id))
   const available = memberCharacters.filter(m => !enrolledIds.has(m.user_id))
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['session-players', sessionId] })
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['run-players', runId] })
+    qc.invalidateQueries({ queryKey: ['runs', campaignId] })
+  }
 
   const addPlayer = useMutation({
     mutationFn: (userId: string) =>
-      api.put(`/scenarios/${scenarioId}/sessions/${sessionId}/players/${userId}`, { character_id: '' }),
+      api.put(`/campaigns/${campaignId}/runs/${runId}/players/${userId}`, { character_id: '' }),
     onSuccess: invalidate,
   })
 
   const removePlayer = useMutation({
     mutationFn: (userId: string) =>
-      api.delete(`/scenarios/${scenarioId}/sessions/${sessionId}/players/${userId}`),
+      api.delete(`/campaigns/${campaignId}/runs/${runId}/players/${userId}`),
     onSuccess: invalidate,
   })
 
   const assignCharacter = useMutation({
     mutationFn: ({ userId, characterId }: { userId: string; characterId: string }) =>
-      api.put(`/scenarios/${scenarioId}/sessions/${sessionId}/players/${userId}`, { character_id: characterId }),
+      api.put(`/campaigns/${campaignId}/runs/${runId}/players/${userId}`, { character_id: characterId }),
     onSuccess: invalidate,
   })
 
@@ -131,17 +141,17 @@ function RosterDialog({
     <Dialog open onOpenChange={o => !o && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Joueurs de la session</DialogTitle>
+          <DialogTitle>Joueurs — {runName}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 mt-2">
           {/* Enrolled players */}
-          {sessionPlayers.length === 0 && (
-            <p className="text-xs text-muted-foreground italic">Aucun joueur dans cette session.</p>
+          {party.length === 0 && (
+            <p className="text-xs text-muted-foreground italic">Aucun joueur dans ce groupe.</p>
           )}
-          {sessionPlayers.length > 0 && (
+          {party.length > 0 && (
             <ul className="space-y-2">
-              {sessionPlayers.map(p => {
+              {party.map(p => {
                 const chars = charactersFor(p.user_id)
                 return (
                   <li key={p.user_id} className="flex items-center gap-2">
@@ -203,15 +213,15 @@ function RosterDialog({
             </div>
           )}
 
-          {available.length === 0 && sessionPlayers.length > 0 && memberCharacters.length > 0 && (
+          {available.length === 0 && party.length > 0 && memberCharacters.length > 0 && (
             <p className="text-xs text-muted-foreground italic pt-2 border-t">
-              Tous les joueurs inscrits sont dans cette session.
+              Tous les comptes ayant accès sont dans ce groupe.
             </p>
           )}
 
           {memberCharacters.length === 0 && (
             <p className="text-xs text-muted-foreground italic">
-              Aucun joueur inscrit à cette campagne. Ajoutez-en depuis la page de la campagne.
+              Aucun compte n'a accès à cette campagne. Ajoutez-en depuis la page de la campagne.
             </p>
           )}
         </div>
@@ -479,6 +489,7 @@ export default function PlayPage() {
   const qc = useQueryClient()
 
   const [selectedSceneId, setSelectedSceneId] = useState('')
+  const [activeRunId, setActiveRunId] = useState('')
   const [sessionModalOpen, setSessionModalOpen] = useState(false)
   const [editingSession, setEditingSession] = useState<Session | null>(null)
   const [locationPickerOpen, setLocationPickerOpen] = useState(false)
@@ -497,14 +508,31 @@ export default function PlayPage() {
     enabled: !!scenario?.campaign_id,
   })
 
+  // Which group is at the table. Everything below is scoped to it — two groups
+  // running this scenario must not see each other's evenings or progress.
+  // See docs/adr/0001-runs-separate-story-from-play.md.
+  const { data: runs = [] } = useQuery({
+    queryKey: ['runs', scenario?.campaign_id],
+    queryFn: () => api.get<Run[]>(`/campaigns/${scenario!.campaign_id}/runs`),
+    enabled: !!scenario?.campaign_id,
+  })
+
+  // Falls back to the first group rather than syncing state in an effect, so
+  // the console is never briefly group-less on load.
+  const activeRun = runs.find(r => r.id === activeRunId) ?? runs[0] ?? null
+
   const { data: sessions = [] } = useQuery({
-    queryKey: ['sessions', scenarioId],
-    queryFn: () => api.get<Session[]>(`/scenarios/${scenarioId}/sessions`),
+    queryKey: ['sessions', scenarioId, activeRun?.id],
+    queryFn: () => api.get<Session[]>(`/scenarios/${scenarioId}/sessions?run_id=${activeRun!.id}`),
+    enabled: !!activeRun?.id,
   })
 
   const [activeSessionId, setActiveSessionId] = useState<string>('')
   const activeSession = sessions.find(s => s.id === activeSessionId) ?? sessions[0] ?? null
 
+  // Switching group needs no reset: `sessions` is already that group's, so a
+  // session id left over from the previous one simply does not match and the
+  // fallback above lands on the new group's most recent evening.
   useEffect(() => {
     if (!activeSessionId && sessions.length > 0) {
       setActiveSessionId(sessions[0].id)
@@ -529,9 +557,9 @@ export default function PlayPage() {
   })
 
   const { data: sessionPlayers = [] } = useQuery({
-    queryKey: ['session-players', activeSession?.id],
-    queryFn: () => api.get<SessionPlayer[]>(`/scenarios/${scenarioId}/sessions/${activeSession!.id}/players`),
-    enabled: !!activeSession?.id,
+    queryKey: ['run-players', activeRun?.id],
+    queryFn: () => api.get<RunPlayer[]>(`/campaigns/${scenario!.campaign_id}/runs/${activeRun!.id}/players`),
+    enabled: !!activeRun?.id && !!scenario?.campaign_id,
   })
 
   // Improvised beats, this session — see docs/play-improv.md. Fetched here only
@@ -549,12 +577,14 @@ export default function PlayPage() {
 
   const createSession = useMutation({
     mutationFn: (data: { name: string; date: string }) =>
-      api.post<Session>(`/scenarios/${scenarioId}/sessions`, data),
+      api.post<Session>(`/scenarios/${scenarioId}/sessions`, { ...data, run_id: activeRun!.id }),
     onSuccess: (s) => {
-      qc.invalidateQueries({ queryKey: ['sessions', scenarioId] })
+      qc.invalidateQueries({ queryKey: ['sessions', scenarioId, activeRun?.id] })
       setActiveSessionId(s.id)
       setSessionModalOpen(false)
-      setRosterOpen(true)
+      // Only worth interrupting for when the group has nobody in it yet — the
+      // party persists across evenings now, so this is a one-time prompt.
+      if ((activeRun?.player_count ?? 0) === 0) setRosterOpen(true)
     },
   })
 
@@ -562,7 +592,7 @@ export default function PlayPage() {
     mutationFn: (data: Partial<Session>) =>
       api.put<Session>(`/scenarios/${scenarioId}/sessions/${activeSession!.id}`, data),
     onSuccess: (s) => {
-      qc.setQueryData(['sessions', scenarioId], (old: Session[] = []) =>
+      qc.setQueryData(['sessions', scenarioId, activeRun?.id], (old: Session[] = []) =>
         old.map(x => x.id === s.id ? s : x))
       setSessionModalOpen(false)
       setEditingSession(null)
@@ -572,7 +602,7 @@ export default function PlayPage() {
   const deleteSession = useMutation({
     mutationFn: (id: string) => api.delete(`/scenarios/${scenarioId}/sessions/${id}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sessions', scenarioId] })
+      qc.invalidateQueries({ queryKey: ['sessions', scenarioId, activeRun?.id] })
       setActiveSessionId('')
     },
   })
@@ -595,7 +625,9 @@ export default function PlayPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['session-scenes', activeSession?.id] })
-      qc.invalidateQueries({ queryKey: ['sessions', scenarioId] })
+      qc.invalidateQueries({ queryKey: ['sessions', scenarioId, activeRun?.id] })
+      // The group's progress in the synopsis is derived from this.
+      qc.invalidateQueries({ queryKey: ['run-scenes', activeRun?.id] })
     },
   })
 
@@ -606,7 +638,7 @@ export default function PlayPage() {
         active_location_id: locationId,
       }),
     onSuccess: (s) => {
-      qc.setQueryData(['sessions', scenarioId], (old: Session[] = []) =>
+      qc.setQueryData(['sessions', scenarioId, activeRun?.id], (old: Session[] = []) =>
         old.map(x => x.id === s.id ? s : x))
       setLocationPickerOpen(false)
     },
@@ -623,7 +655,7 @@ export default function PlayPage() {
     mutationFn: (regenerate: boolean) =>
       api.post<{ table_token: string }>(
         `/scenarios/${scenarioId}/sessions/${activeSession!.id}/table-token`, { regenerate }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions', scenarioId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions', scenarioId, activeRun?.id] }),
   })
 
   // Mint the share token as soon as a session is opened, so the links are ready
@@ -678,6 +710,32 @@ export default function PlayPage() {
         {/* ── Top bar ────────────────────────────────────────────────── */}
         <div className="flex items-center gap-3 flex-wrap">
 
+          {/* Group selector — everything below is scoped to it */}
+          <div className="flex items-center gap-1.5">
+            <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            {runs.length > 0 ? (
+              <select
+                value={activeRun?.id ?? ''}
+                onChange={e => setActiveRunId(e.target.value)}
+                className="text-sm rounded border border-input bg-background px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
+                title="Groupe qui joue"
+              >
+                {runs.map(r => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            ) : (
+              <a
+                href={`/campaigns/${scenario?.campaign_id ?? ''}`}
+                className="text-sm text-muted-foreground hover:text-foreground underline"
+              >
+                Aucun groupe — en créer un
+              </a>
+            )}
+          </div>
+
+          <div className="h-5 w-px bg-border" />
+
           {/* Session selector */}
           <div className="flex items-center gap-2">
             {sessions.length > 0 ? (
@@ -696,6 +754,8 @@ export default function PlayPage() {
               <span className="text-sm text-muted-foreground">Aucune session</span>
             )}
             <Button size="sm" variant="outline" className="h-8 px-2 text-xs"
+              disabled={!activeRun}
+              title={activeRun ? 'Nouvelle session' : 'Créez d\u2019abord un groupe'}
               onClick={() => { setEditingSession(null); setSessionModalOpen(true) }}>
               <Plus className="h-3.5 w-3.5" />
             </Button>
@@ -725,12 +785,12 @@ export default function PlayPage() {
             </button>
           )}
 
-          {/* Players */}
-          {activeSession && (
+          {/* The party — the group's, so it is there before the first session */}
+          {activeRun && (
             <button
               onClick={() => setRosterOpen(true)}
               className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border border-border hover:bg-accent transition-colors"
-              title="Gérer les joueurs"
+              title="Joueurs du groupe"
             >
               <Users className="h-3.5 w-3.5 text-muted-foreground" />
               {sessionPlayers.length === 0
@@ -825,9 +885,25 @@ export default function PlayPage() {
         )}
 
         {/* ── Main split ─────────────────────────────────────────────── */}
-        {!activeSession ? (
+        {!activeRun ? (
           <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
-            <p className="text-muted-foreground text-sm">Créez une session pour commencer à jouer.</p>
+            <p className="text-muted-foreground text-sm">
+              Ce scénario n'est encore joué par aucun groupe.
+            </p>
+            <p className="text-xs text-muted-foreground max-w-sm">
+              Un groupe réunit les joueurs et garde sa propre progression. Le scénario
+              reste identique pour tous ceux qui le jouent.
+            </p>
+            <Button onClick={() => navigate(`/campaigns/${scenario?.campaign_id ?? ''}`)}>
+              <Users className="h-4 w-4 mr-1.5" />
+              Créer un groupe
+            </Button>
+          </div>
+        ) : !activeSession ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
+            <p className="text-muted-foreground text-sm">
+              Aucune session pour {activeRun.name}. Créez-en une pour commencer à jouer.
+            </p>
             <Button onClick={() => { setEditingSession(null); setSessionModalOpen(true) }}>
               <Plus className="h-4 w-4 mr-1.5" />
               Nouvelle session
@@ -898,10 +974,10 @@ export default function PlayPage() {
     )}
 
     {/* Roster dialog */}
-    {rosterOpen && activeSession && scenario?.campaign_id && (
+    {rosterOpen && activeRun && scenario?.campaign_id && (
       <RosterDialog
-        scenarioId={scenarioId}
-        sessionId={activeSession.id}
+        runId={activeRun.id}
+        runName={activeRun.name}
         campaignId={scenario.campaign_id}
         onClose={() => setRosterOpen(false)}
       />

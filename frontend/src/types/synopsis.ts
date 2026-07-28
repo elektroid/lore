@@ -64,7 +64,6 @@ export interface Scene {
   notes: string
   location_id: string
   location_name: string
-  played: boolean
   is_start: boolean
   is_end: boolean
   npcs: SceneNPC[]

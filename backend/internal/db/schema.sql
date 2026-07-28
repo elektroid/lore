@@ -129,6 +129,9 @@ CREATE TABLE IF NOT EXISTS synopsis_scenes (
     description TEXT NOT NULL DEFAULT '',
     outcome     TEXT NOT NULL DEFAULT '',
     location_id    TEXT REFERENCES campaign_locations(id) ON DELETE SET NULL,
+    -- LEGACY, unread: play state on authored material. A scene is played by a
+    -- *group*, so progress is derived from that run's session_scenes instead.
+    -- See docs/adr/0001-runs-separate-story-from-play.md § superseded.
     played         INTEGER NOT NULL DEFAULT 0,
     playlist_type  TEXT NOT NULL DEFAULT '',
     playlist_value TEXT NOT NULL DEFAULT '',
@@ -176,11 +179,43 @@ CREATE TABLE IF NOT EXISTS scene_artefacts (
     UNIQUE(scene_id, artefact_id)
 );
 
+-- A run: one group of players and their playthrough of a campaign. The campaign
+-- is written once and meant to be played by more than one group, so everything
+-- that belongs to a group — its party, its progress — hangs off here and not
+-- off the authored material. See docs/adr/0001-runs-separate-story-from-play.md.
+CREATE TABLE IF NOT EXISTS runs (
+    id          TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL DEFAULT '',
+    notes       TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'active',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- The party. One row per person playing the campaign with this group, with the
+-- character they play. Not per session: who is in the group is a property of
+-- the group, and re-declaring it every evening is what session_players did.
+CREATE TABLE IF NOT EXISTS run_players (
+    id           TEXT PRIMARY KEY,
+    run_id       TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    character_id TEXT REFERENCES player_characters(id) ON DELETE SET NULL,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(run_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
     id                 TEXT PRIMARY KEY,
     scenario_id        TEXT NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
+    -- The group whose evening this was. Nullable only because ALTER TABLE on an
+    -- existing database cannot add a NOT NULL reference; every session created
+    -- through the API has one. See MigrateAlters.
+    run_id             TEXT REFERENCES runs(id) ON DELETE CASCADE,
     name               TEXT NOT NULL DEFAULT '',
     date               TEXT NOT NULL DEFAULT '',
+    -- LEGACY, unread: a free-text roster superseded by run_players.
+    -- See docs/adr/0001-runs-separate-story-from-play.md § superseded.
     players            TEXT NOT NULL DEFAULT '[]',
     active_location_id TEXT REFERENCES campaign_locations(id) ON DELETE SET NULL,
     active_scene_id    TEXT REFERENCES synopsis_scenes(id) ON DELETE SET NULL,
@@ -324,7 +359,10 @@ CREATE TABLE IF NOT EXISTS player_characters (
     updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Session players: links real user accounts (and optionally their characters) to a session
+-- LEGACY, unread: the party re-declared once per evening, superseded by
+-- run_players. Kept so an existing database keeps its rows; backfillRuns reads
+-- it once to seed the run's party.
+-- See docs/adr/0001-runs-separate-story-from-play.md § superseded.
 CREATE TABLE IF NOT EXISTS session_players (
     id           TEXT PRIMARY KEY,
     session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -374,6 +412,12 @@ CREATE INDEX IF NOT EXISTS idx_npc_artefact_links_artefact_id ON npc_artefact_li
 -- scene_artefacts UNIQUE(scene_id, artefact_id) covers scene_id; artefact_id needs its own
 CREATE INDEX IF NOT EXISTS idx_scene_artefacts_artefact_id ON scene_artefacts(artefact_id);
 
+CREATE INDEX IF NOT EXISTS idx_runs_campaign_id ON runs(campaign_id);
+
+-- run_players UNIQUE(run_id, user_id) covers run_id; the other two need their own
+CREATE INDEX IF NOT EXISTS idx_run_players_user_id      ON run_players(user_id);
+CREATE INDEX IF NOT EXISTS idx_run_players_character_id ON run_players(character_id);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_scenario_id        ON sessions(scenario_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_active_location_id ON sessions(active_location_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_active_scene_id    ON sessions(active_scene_id);
@@ -391,10 +435,11 @@ CREATE INDEX IF NOT EXISTS idx_session_beats_session_id  ON session_beats(sessio
 CREATE INDEX IF NOT EXISTS idx_session_beats_anchor      ON session_beats(anchor_scene_id);
 CREATE INDEX IF NOT EXISTS idx_session_beats_scene_id    ON session_beats(scene_id);
 
--- NOTE: the index on sessions(table_token) lives in MigrateAlters, not here.
--- CREATE TABLE IF NOT EXISTS is a no-op on a pre-existing sessions table, so on
--- an older database the column does not exist yet when this file runs — and an
--- index on a missing column aborts the whole migration.
+-- NOTE: the indexes on sessions(table_token) and sessions(run_id) live in
+-- MigrateAlters, not here. CREATE TABLE IF NOT EXISTS is a no-op on a
+-- pre-existing sessions table, so on an older database those columns do not
+-- exist yet when this file runs — and an index on a missing column aborts the
+-- whole migration.
 
 -- npc_faction_links UNIQUE(npc_id, faction_id) covers npc_id; faction_id needs its own
 CREATE INDEX IF NOT EXISTS idx_npc_faction_links_faction_id ON npc_faction_links(faction_id);

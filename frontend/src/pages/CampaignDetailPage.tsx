@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import AppShell from '@/components/AppShell'
+import RunsSection from '@/components/RunsSection'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import { api } from '@/api/client'
 import { useUser } from '@/stores/auth'
@@ -33,7 +34,13 @@ interface PublicUser {
   created_at: string
 }
 
-function JoueursSection({ campaignId, ownerID }: { campaignId: string; ownerID: string }) {
+/**
+ * Access control: which accounts may open this campaign. Not the party — that
+ * is a group's, in RunsSection below. The two were one list once, and reading
+ * an ACL as "the players of this story" is exactly the confusion runs fixed.
+ * See docs/adr/0001-runs-separate-story-from-play.md.
+ */
+function AccessSection({ campaignId, ownerID }: { campaignId: string; ownerID: string }) {
   const queryClient = useQueryClient()
   const currentUser = useUser()
   const isOwner = currentUser?.id === ownerID || currentUser?.role === 'superuser'
@@ -76,10 +83,16 @@ function JoueursSection({ campaignId, ownerID }: { campaignId: string; ownerID: 
 
   return (
     <div className="space-y-3 pt-6 border-t">
-      <p className="text-sm font-medium">Joueurs</p>
+      <div>
+        <p className="text-sm font-medium">Accès</p>
+        <p className="text-xs text-muted-foreground">
+          Les comptes autorisés à ouvrir cette campagne. Pour constituer une table,
+          placez-les dans un groupe ci-dessous.
+        </p>
+      </div>
 
       {members.length === 0 && (
-        <p className="text-xs text-muted-foreground">Aucun joueur inscrit.</p>
+        <p className="text-xs text-muted-foreground">Aucun compte autorisé.</p>
       )}
 
       {members.length > 0 && (
@@ -111,7 +124,7 @@ function JoueursSection({ campaignId, ownerID }: { campaignId: string; ownerID: 
 
       {isOwner && available.length > 0 && (
         <div className="space-y-2 pt-2">
-          <p className="text-xs text-muted-foreground font-medium">Ajouter un joueur</p>
+          <p className="text-xs text-muted-foreground font-medium">Donner accès à un compte</p>
           <Input
             placeholder="Rechercher par nom ou email…"
             value={search}
@@ -275,8 +288,11 @@ function CampaignForm({ campaign }: { campaign: Campaign }) {
       {/* Scenario list */}
       <ScenarioList campaignId={id!} />
 
-      {/* Joueurs */}
-      <JoueursSection campaignId={id!} ownerID={campaign.owner_id} />
+      {/* Who may open the campaign */}
+      <AccessSection campaignId={id!} ownerID={campaign.owner_id} />
+
+      {/* Who plays it, and how far they have got */}
+      <RunsSection campaignId={id!} />
       {guardDialog}
     </form>
   )
