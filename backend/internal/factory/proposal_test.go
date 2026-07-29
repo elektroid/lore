@@ -379,11 +379,10 @@ func TestSystemPromptOffersExistingNamesForReuse(t *testing.T) {
 	got := SystemPrompt(PromptContext{
 		GameName:     "Cyberpunk RED",
 		Genre:        "cyberpunk",
-		Lore:         "Night City, 2045",
 		ExistingNPCs: []string{"Rache Bartmoss"},
 	})
 
-	for _, want := range []string{"Cyberpunk RED", "cyberpunk", "Night City, 2045", "Rache Bartmoss", "EXACTEMENT"} {
+	for _, want := range []string{"Cyberpunk RED", "cyberpunk", "Rache Bartmoss", "EXACTEMENT"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("system prompt missing %q", want)
 		}

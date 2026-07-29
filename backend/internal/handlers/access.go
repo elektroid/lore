@@ -70,8 +70,8 @@ func requireCampaignOwnerByParam(database *sql.DB, paramName string) func(http.H
 // every campaign in the instance runs through, and the shared game catalogue.
 //
 // Without it any registered player could repoint base_url at a host they
-// control and quietly receive every prompt the instance sends, campaign lore
-// included, while spending the owner's API key.
+// control and quietly receive every prompt the instance sends, authored
+// scenario material included, while spending the owner's API key.
 func requireSuperuser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.GetUserFromContext(r)

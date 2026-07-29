@@ -80,6 +80,36 @@ So running the factory on a live campaign extends it — the recurring fixer
 stays one NPC with one set of images — instead of cloning it. The review UI
 marks those items *Réutilisé* so the GM can see it happening.
 
+### Names become mentions
+
+By the time a scene is written, commit is holding the uuid of every entity the
+proposal named. So the names in the prose become real mentions
+(`@[Rache Bartmoss](uuid)` — see `frontend/src/lib/mentions.ts`) instead of dead
+text, and the GM gets a navigable scene without typing a single `@`.
+
+Applied to the pitch, to scene descriptions, and to the descriptions of the
+entities **this commit created**. Never to an entity it merely reused: that
+description is the GM's own writing.
+
+Four rules keep the result readable rather than exhaustive
+(`handlers/mention_linker.go`):
+
+| Rule | Why |
+|---|---|
+| First occurrence per entity, per field | A scene naming Bartmoss four times gets one chip, the way a GM would have written it |
+| Longest name first | "Rache Bartmoss" wins over a separate NPC called "Bartmoss" |
+| Whole words only, letters and digits as boundaries | `murmure` is not the faction `Mur`; `l'Afterlife` and `d'Arasaka` still match, because French elision would otherwise hide half the names |
+| An entity is never linked in its own description | The chip pointing at the record you are reading is noise |
+
+Matching is case- and accent-insensitive, same as the reuse check above, so a
+model that wrote "le kabuki noye" still lands on *Le Kabuki noyé* — and the chip
+displays the entity's live name, not what the model typed.
+
+A short name made of a common word (a faction called *Le Mur*) will occasionally
+link where it shouldn't. That is the accepted cost: a wrong chip is one keystroke
+to delete and the sentence survives, whereas skipping short names would miss
+*Arasaka*.
+
 ### Include, don't accept
 
 Every item in a draft carries `include` (true by default). The review screen is
@@ -180,18 +210,25 @@ contract. Called bare, it writes them into the draft.
 
 ## 4. Commit
 
-Ordered so that every link target exists before the link is written:
+Ordered so that every link target exists before the link is written, and so
+that all of them exist before any prose is written:
 
 1. `CreateScenario` — also creates the empty synopsis (existing transaction).
-2. Synopsis hook ← `pitch`.
-3. Factions → `synopsis_factions`.
-4. Locations.
-5. NPCs → `synopsis_npcs` (status `draft`), and `npc_faction_links` from `faction_ref`.
-6. Artefacts.
-7. Scenes in list order, with `sort_order`, `status`, `is_start` / `is_end`,
+2. Factions → `synopsis_factions`.
+3. Locations.
+4. NPCs → `synopsis_npcs` (status `draft`), and `npc_faction_links` from `faction_ref`.
+5. Artefacts.
+6. **Mention pass** — every entity now has an id, so the names in the prose can
+   become links. See *Names become mentions* below.
+7. Synopsis hook ← `pitch`, linked.
+8. Scenes in list order, with `sort_order`, `status`, `is_start` / `is_end`,
    `location_id` resolved from `location_ref`; then `scene_npcs` and
-   `scene_artefacts` from the `_refs` arrays.
-8. Draft → `status='committed'`, `scenario_id` set.
+   `scene_artefacts` from the `_refs` arrays. Descriptions are linked.
+9. Draft → `status='committed'`, `scenario_id` set.
+
+The hook used to be written at step 2. It waits for the linker now, which means
+a commit that fails half way leaves an empty synopsis rather than an unlinked
+one — acceptable, because the draft stays uncommitted and still holds the pitch.
 
 Excluded items are skipped, and any link pointing at them is skipped with them.
 Only one scene can carry `is_start`; the first one wins and the rest are

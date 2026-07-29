@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -13,29 +12,6 @@ import (
 	db "lore/internal/db"
 	"lore/internal/llm"
 )
-
-var mentionRE = regexp.MustCompile(`@\[([^\]]+)\]\(([^)]+)\)`)
-
-func resolveMentions(content string, npcs []db.CampaignNPC) string {
-	npcMap := make(map[string]db.CampaignNPC, len(npcs))
-	for _, n := range npcs {
-		npcMap[n.ID] = n
-	}
-	return mentionRE.ReplaceAllStringFunc(content, func(m string) string {
-		sub := mentionRE.FindStringSubmatch(m)
-		if len(sub) < 3 {
-			return m
-		}
-		storedName, id := sub[1], sub[2]
-		if npc, ok := npcMap[id]; ok {
-			if npc.Role != "" {
-				return npc.Name + " (" + npc.Role + ")"
-			}
-			return npc.Name
-		}
-		return storedName
-	})
-}
 
 // ── local types mirroring frontend SynopsisData ──────────────────────────
 
@@ -114,10 +90,10 @@ func (h *SynopsisHandler) llmContext(r *http.Request, scenarioID string) (*llm.C
 
 	sc := parseSynopsisCtx(synopsis)
 
-	// Resolve @[Name](uuid) mentions in hook content using campaign NPCs
-	if campaignNPCs, err2 := db.ListCampaignNPCs(r.Context(), h.db, scenario.CampaignID); err2 == nil {
-		sc.Hook.Content = resolveMentions(sc.Hook.Content, campaignNPCs)
-	}
+	// Mentions can be typed into the synopsis and into any scene description, so
+	// every authored field below passes through the resolver on its way out.
+	mentions := newMentionResolver(r.Context(), h.db, scenario.CampaignID)
+	sc.Hook.Content = mentions.resolve(sc.Hook.Content)
 
 	// Load real NPCs from junction table
 	snpcs, err := db.ListSynopsisNPCs(r.Context(), h.db, scenarioID)
@@ -126,7 +102,7 @@ func (h *SynopsisHandler) llmContext(r *http.Request, scenarioID string) (*llm.C
 		for i, n := range snpcs {
 			sc.NPCs[i] = npcItem{
 				ID: n.ID, Name: n.Name, Role: n.Role,
-				Description: n.Description, Quote: n.Quote, Status: n.Status,
+				Description: mentions.resolve(n.Description), Quote: n.Quote, Status: n.Status,
 			}
 		}
 	}
@@ -138,7 +114,8 @@ func (h *SynopsisHandler) llmContext(r *http.Request, scenarioID string) (*llm.C
 		for i, s := range scenes {
 			sc.Scenes[i] = sceneItem{
 				ID: s.ID, Type: s.Type, Title: s.Title,
-				Description: s.Description, Outcome: s.Outcome, Notes: s.Notes, Location: s.LocationName,
+				Description: mentions.resolve(s.Description), Outcome: s.Outcome,
+				Notes: s.Notes, Location: s.LocationName,
 			}
 		}
 	}
@@ -308,6 +285,7 @@ func (h *SynopsisHandler) DevelopNPC(w http.ResponseWriter, r *http.Request) {
 		"quote":       target.Quote,
 	}
 	applyCurrentOverrides(current, devReq.Current, "name", "role", "description", "quote", "motivation")
+	mentionsForScenario(r.Context(), h.db, scenarioID).resolveAll(current)
 
 	npcJSON, _ := json.Marshal(current)
 	prompt := fmt.Sprintf(
@@ -441,6 +419,7 @@ func (h *SynopsisHandler) DevelopScene(w http.ResponseWriter, r *http.Request) {
 		"location":    scene.LocationName,
 	}
 	applyCurrentOverrides(current, devReq.Current, "title", "description", "outcome", "notes", "location")
+	mentionsForScenario(r.Context(), h.db, scenarioID).resolveAll(current)
 
 	sceneJSON, _ := json.Marshal(current)
 

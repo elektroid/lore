@@ -13,7 +13,6 @@ import (
 type PromptContext struct {
 	GameName          string
 	Genre             string
-	Lore              string
 	ExistingNPCs      []string
 	ExistingLocations []string
 	ExistingFactions  []string
@@ -31,9 +30,6 @@ func SystemPrompt(ctx PromptContext) string {
 	}
 	if ctx.Genre != "" {
 		fmt.Fprintf(&sb, "\nGenre: %s.", ctx.Genre)
-	}
-	if ctx.Lore != "" {
-		fmt.Fprintf(&sb, "\n\nLore de la campagne :\n%s", ctx.Lore)
 	}
 
 	appendExisting(&sb, "PNJs", ctx.ExistingNPCs)

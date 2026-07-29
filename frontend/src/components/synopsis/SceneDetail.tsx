@@ -4,7 +4,8 @@ import LocationEditorModal from '@/components/LocationEditorModal'
 import NPCEditorModal from '@/components/NPCEditorModal'
 import ArtefactEditorModal from '@/components/ArtefactEditorModal'
 import NPCCard from './NPCCard'
-import MentionEditor from './MentionEditor'
+import MentionEditor from '@/components/MentionEditor'
+import { stripMentions } from '@/lib/mentions'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -225,7 +226,7 @@ function ArtefactPicker({
               <li key={a.id}>
                 <button onClick={() => { onPick(a.id); close() }} className="w-full text-left rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors">
                   <p className="font-medium">{a.name}</p>
-                  {a.description && <p className="text-xs text-muted-foreground line-clamp-1">{a.description}</p>}
+                  {a.description && <p className="text-xs text-muted-foreground line-clamp-1">{stripMentions(a.description)}</p>}
                 </button>
               </li>
             ))}
@@ -544,7 +545,7 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
         ) : (
           <div className="space-y-2">
             {scene.npcs.map(npc => (
-              <NPCCard key={npc.id} npc={npc} onRemove={() => removeNPC.mutate(npc.id)} onEdit={() => setEditNpcId(npc.id)} />
+              <NPCCard key={npc.id} npc={npc} campaignId={campaignId} onRemove={() => removeNPC.mutate(npc.id)} onEdit={() => setEditNpcId(npc.id)} />
             ))}
           </div>
         )}

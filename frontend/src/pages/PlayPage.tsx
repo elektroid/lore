@@ -17,6 +17,7 @@ import ProjectionPanel from '@/components/play/ProjectionPanel'
 import TableShareDialog from '@/components/play/TableShareDialog'
 import ImprovBar from '@/components/play/ImprovBar'
 import ImprovPanel from '@/components/play/ImprovPanel'
+import MentionText from '@/components/MentionText'
 import type { SessionBeat } from '@/types/beat'
 import type { Scenario } from '@/types/scenario'
 import type { Campaign } from '@/types/campaign'
@@ -291,7 +292,7 @@ function PlaySceneRow({
 
 // ── NPC detail dialog ─────────────────────────────────────────────────────────
 
-function NpcDetailDialog({ npc, onClose }: { npc: SceneNPC; onClose: () => void }) {
+function NpcDetailDialog({ npc, campaignId, onClose }: { npc: SceneNPC; campaignId: string; onClose: () => void }) {
   const images: NPCImage[] = (() => { try { return JSON.parse(npc.images) || [] } catch { return [] } })()
   const cover = images[0]
 
@@ -315,7 +316,11 @@ function NpcDetailDialog({ npc, onClose }: { npc: SceneNPC; onClose: () => void 
           {npc.description && (
             <div className="space-y-0.5">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Description</p>
-              <p className="text-sm whitespace-pre-wrap leading-relaxed">{npc.description}</p>
+              <MentionText
+                campaignId={campaignId}
+                text={npc.description}
+                className="text-sm whitespace-pre-wrap leading-relaxed"
+              />
             </div>
           )}
           {npc.motivation && (
@@ -374,7 +379,11 @@ function LocationDetailDialog({
             {location.description && (
               <div className="space-y-0.5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Description</p>
-                <p className="text-sm whitespace-pre-wrap leading-relaxed">{location.description}</p>
+                <MentionText
+                  campaignId={campaignId}
+                  text={location.description}
+                  className="text-sm whitespace-pre-wrap leading-relaxed"
+                />
               </div>
             )}
             {location.atmosphere && (
@@ -416,7 +425,11 @@ function PlayScenePanel({ scene, campaignId }: { scene: Scene; campaignId: strin
       {scene.description && (
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Description</p>
-          <p className="text-sm whitespace-pre-wrap leading-relaxed">{scene.description}</p>
+          <MentionText
+            campaignId={campaignId}
+            text={scene.description}
+            className="text-sm whitespace-pre-wrap leading-relaxed"
+          />
         </div>
       )}
       {scene.outcome && (
@@ -467,7 +480,7 @@ function PlayScenePanel({ scene, campaignId }: { scene: Scene; campaignId: strin
     </div>
 
     {selectedNpc && (
-      <NpcDetailDialog npc={selectedNpc} onClose={() => setSelectedNpc(null)} />
+      <NpcDetailDialog npc={selectedNpc} campaignId={campaignId} onClose={() => setSelectedNpc(null)} />
     )}
     {locationOpen && scene.location_id && (
       <LocationDetailDialog

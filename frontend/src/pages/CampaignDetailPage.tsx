@@ -6,7 +6,6 @@ import { BookOpen, Download, Plus, Users, Trash2, UserPlus, Wand2 } from 'lucide
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import AppShell from '@/components/AppShell'
 import RunsSection from '@/components/RunsSection'
@@ -166,19 +165,17 @@ interface FormState {
   name: string
   genre: string
   game_id: string
-  lore: string
 }
 
 function initForm(c: Campaign): FormState {
-  return { name: c.name, genre: c.genre, game_id: c.game_id, lore: c.lore }
+  return { name: c.name, genre: c.genre, game_id: c.game_id }
 }
 
 function isDirty(form: FormState, c: Campaign): boolean {
   return (
     form.name !== c.name ||
     form.genre !== c.genre ||
-    form.game_id !== c.game_id ||
-    form.lore !== c.lore
+    form.game_id !== c.game_id
   )
 }
 
@@ -200,7 +197,6 @@ function CampaignForm({ campaign }: { campaign: Campaign }) {
         name: f.name,
         genre: f.genre,
         game_id: f.game_id,
-        lore: f.lore,
       }),
     onSuccess: (updated) => {
       queryClient.setQueryData(['campaign', id], updated)
@@ -268,21 +264,6 @@ function CampaignForm({ campaign }: { campaign: Campaign }) {
             onChange={field('genre')}
           />
         </div>
-      </div>
-
-      {/* Lore global */}
-      <div className="space-y-2">
-        <Label htmlFor="lore">Lore global</Label>
-        <p className="text-xs text-muted-foreground">
-          Personnages récurrents, organisations, géographie, règles du monde. Markdown accepté.
-        </p>
-        <Textarea
-          id="lore"
-          placeholder="Le monde en quelques paragraphes…"
-          value={form.lore}
-          onChange={field('lore')}
-          className="min-h-[200px] font-mono text-sm"
-        />
       </div>
 
       {/* Scenario list */}

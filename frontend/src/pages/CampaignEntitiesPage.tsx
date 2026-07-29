@@ -16,6 +16,7 @@ import EntityAvatar from '@/components/EntityAvatar'
 import SearchDialog from '@/components/SearchDialog'
 import { api } from '@/api/client'
 import { useDocTitle } from '@/hooks/useDocTitle'
+import { stripMentions } from '@/lib/mentions'
 import type { Campaign } from '@/types/campaign'
 import type { CampaignNPC, NPCImage, CampaignLocation, LocationImage, CampaignArtefact, ArtefactImage, CampaignFaction, FactionImage } from '@/types/entities'
 
@@ -254,7 +255,7 @@ function LocationTab({ campaignId, openId, creating, onCreatingChange, form, onF
                 <div className="flex-1 min-w-0">
                   <button className="text-sm font-medium truncate hover:underline text-left" onClick={() => setEditId(loc.id)}>{loc.name || <span className="text-muted-foreground italic">(sans nom)</span>}</button>
                   {loc.atmosphere && <p className="text-xs text-muted-foreground">{loc.atmosphere}</p>}
-                  {loc.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{loc.description}</p>}
+                  {loc.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{stripMentions(loc.description)}</p>}
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(loc.id)}>
@@ -365,7 +366,7 @@ function FactionTab({ campaignId, openId, creating, onCreatingChange, form, onFo
                     {f.type && <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{f.type}</span>}
                   </div>
                   {f.motivation && <p className="text-xs text-primary/80 italic truncate mt-0.5">{f.motivation}</p>}
-                  {f.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{f.description}</p>}
+                  {f.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{stripMentions(f.description)}</p>}
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(f.id)}>
@@ -488,7 +489,7 @@ function ArtefactTab({ campaignId, openId, creating, onCreatingChange, form, onF
                   <button className="text-sm font-medium truncate hover:underline text-left" onClick={() => setEditId(a.id)}>
                     {a.name || <span className="text-muted-foreground italic">(sans nom)</span>}
                   </button>
-                  {a.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{a.description}</p>}
+                  {a.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{stripMentions(a.description)}</p>}
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(a.id)}>

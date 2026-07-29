@@ -1,9 +1,6 @@
 import { cn } from '@/lib/utils'
+import { stripMentions } from '@/lib/mentions'
 import type { SynopsisData, Snapshot } from '@/types/synopsis'
-
-function displayMentions(text: string): string {
-  return text.replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1')
-}
 
 interface Props {
   snapshot: Snapshot
@@ -50,10 +47,10 @@ export default function SnapshotDiff({ snapshot, current }: Props) {
         <section className="space-y-1.5">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Synopsis</p>
           <div className="rounded border bg-red-50 border-red-200 p-2 text-xs text-red-800 line-through whitespace-pre-wrap">
-            {displayMentions(snap.hook.content) || '(vide)'}
+            {stripMentions(snap.hook.content) || '(vide)'}
           </div>
           <div className="rounded border bg-green-50 border-green-200 p-2 text-xs text-green-800 whitespace-pre-wrap">
-            {displayMentions(current.hook.content) || '(vide)'}
+            {stripMentions(current.hook.content) || '(vide)'}
           </div>
         </section>
       )}

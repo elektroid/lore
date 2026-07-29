@@ -44,7 +44,7 @@ export default function BriefForm({ drafts, isGenerating, error, onGenerate, onO
             className="min-h-[180px]"
           />
           <p className="text-xs text-muted-foreground">
-            Le lore de la campagne, le système de jeu et les entités déjà créées sont ajoutés automatiquement au contexte.
+            Le système de jeu, le genre et les entités déjà créées sont ajoutés automatiquement au contexte.
           </p>
         </div>
 

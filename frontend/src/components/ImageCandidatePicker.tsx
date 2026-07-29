@@ -12,11 +12,22 @@ export default function ImageCandidatePicker({
   onClose: () => void
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Generated images only exist server-side until they are confirmed, so a
+  // stray click must not discard them — closing asks first.
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false)
+
+  // Each opening starts from a clean slate — reset while rendering rather than
+  // in an effect, so the first paint already shows the fresh state.
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) { setSelected(new Set()); setConfirmingDiscard(false) }
+  }
 
   function toggle(id: string) {
     setSelected(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
   }
@@ -26,9 +37,19 @@ export default function ImageCandidatePicker({
     setSelected(new Set())
   }
 
+  function requestClose() {
+    if (candidates.length === 0 || confirmingDiscard) { onClose(); return }
+    setConfirmingDiscard(true)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={o => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={o => !o && requestClose()}>
+      <DialogContent
+        className="max-w-2xl max-h-[80vh] overflow-y-auto"
+        // Clicking beside the dialog is the accident we are guarding against:
+        // ignore it outright rather than arming the discard prompt.
+        onInteractOutside={e => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>Choisir les illustrations à conserver</DialogTitle>
         </DialogHeader>
@@ -54,11 +75,25 @@ export default function ImageCandidatePicker({
             ))}
           </div>
         )}
+        {confirmingDiscard && (
+          <p className="text-xs text-destructive">
+            Les illustrations générées seront définitivement perdues — il faudra les régénérer.
+          </p>
+        )}
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={handleConfirm} disabled={selected.size === 0}>
-            Conserver {selected.size > 0 ? `(${selected.size})` : ''}
-          </Button>
+          {confirmingDiscard ? (
+            <>
+              <Button variant="outline" onClick={() => setConfirmingDiscard(false)}>Revenir</Button>
+              <Button variant="destructive" onClick={onClose}>Abandonner les illustrations</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={requestClose}>Annuler</Button>
+              <Button onClick={handleConfirm} disabled={selected.size === 0}>
+                Conserver {selected.size > 0 ? `(${selected.size})` : ''}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

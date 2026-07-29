@@ -10,6 +10,7 @@ import { patchCachedItem, patchCachedListItem } from '@/api/cache'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
 import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
+import MentionEditor from '@/components/MentionEditor'
 
 interface Props {
   npcId: string
@@ -295,7 +296,13 @@ export default function NPCEditorModal({ npcId, campaignId, open, onClose }: Pro
                   )}
                 </div>
                 {develop.isError && <p className="text-xs text-destructive">{(develop.error as Error).message}</p>}
-                <AutoTextarea value={local.description} onChange={v => handle('description', v)} placeholder="Description physique, psychologie…" className="min-h-[100px]" />
+                <MentionEditor
+                  campaignId={campaignId}
+                  value={local.description}
+                  onChange={v => handle('description', v)}
+                  placeholder="Description physique, psychologie… tapez @ pour citer un PNJ, un lieu, une faction"
+                  className="min-h-[100px]"
+                />
               </div>
 
               <div className="space-y-1">

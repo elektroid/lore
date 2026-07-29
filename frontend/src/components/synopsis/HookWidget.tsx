@@ -1,7 +1,7 @@
 import { Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import StatusBadge from './StatusBadge'
-import MentionEditor from './MentionEditor'
+import MentionEditor from '@/components/MentionEditor'
 import { useSynopsisLLM } from '@/hooks/useSynopsisLLM'
 import type { HookData, SynopsisData } from '@/types/synopsis'
 

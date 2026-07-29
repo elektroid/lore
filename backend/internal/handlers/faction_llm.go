@@ -45,6 +45,9 @@ func (h *EntityHandler) DevelopFaction(w http.ResponseWriter, r *http.Request) {
 		"motivation":  faction.Motivation,
 	}
 	applyCurrentOverrides(current, req.Current, "name", "type", "description", "motivation")
+	// The GM may have cited other entities in these fields; the model needs
+	// their names, not their refs. See mentions.go.
+	newMentionResolver(r.Context(), h.db, campaignID).resolveAll(current)
 
 	var sb strings.Builder
 	sb.WriteString("Tu es un assistant spécialisé dans l'écriture de scénarios de jeux de rôle (JdR).\n")

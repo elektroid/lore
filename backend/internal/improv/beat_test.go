@@ -223,10 +223,10 @@ func TestDevelopPromptHandlesAnEmptyScenario(t *testing.T) {
 func TestSystemPromptTellsTheModelNotToOverrule(t *testing.T) {
 	got := SystemPrompt(Context{
 		GameName: "Cyberpunk RED", Genre: "cyberpunk",
-		Lore: "Night City, 2045", ScenarioPitch: "Un fixer disparaît",
+		ScenarioPitch: "Un fixer disparaît",
 	})
 
-	for _, want := range []string{"Cyberpunk RED", "cyberpunk", "Night City, 2045", "Un fixer disparaît", "acquis"} {
+	for _, want := range []string{"Cyberpunk RED", "cyberpunk", "Un fixer disparaît", "acquis"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("system prompt missing %q", want)
 		}

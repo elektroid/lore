@@ -10,29 +10,12 @@ import { patchCachedItem, patchCachedListItem } from '@/api/cache'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
 import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
+import MentionEditor from '@/components/MentionEditor'
 
 const FACTION_SUGGESTION_FIELDS: SuggestionField[] = [
   { key: 'description', label: 'Description', multiline: true },
   { key: 'motivation', label: 'Motivation' },
 ]
-
-function AutoTextarea({ value, onChange, placeholder, className = '' }: {
-  value: string; onChange: (v: string) => void
-  placeholder?: string; className?: string
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => {
-    const el = ref.current; if (!el) return
-    el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'
-  }, [value])
-  return (
-    <textarea
-      ref={ref} rows={3} value={value} placeholder={placeholder}
-      onChange={e => onChange(e.target.value)}
-      className={`w-full resize-none overflow-hidden rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${className}`}
-    />
-  )
-}
 
 function ImageGrid({
   images, factionId, campaignId, onUpdated,
@@ -270,7 +253,13 @@ export default function FactionEditorModal({ factionId, campaignId, open, onClos
                 )}
               </div>
               {develop.isError && <p className="text-xs text-destructive">{(develop.error as Error).message}</p>}
-              <AutoTextarea value={local.description} onChange={v => handle('description', v)} placeholder="Présentation, structure, histoire…" className="min-h-[100px]" />
+              <MentionEditor
+                campaignId={campaignId}
+                value={local.description}
+                onChange={v => handle('description', v)}
+                placeholder="Présentation, structure, histoire… tapez @ pour citer un PNJ, un lieu"
+                className="min-h-[100px]"
+              />
             </div>
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Motivation</p>

@@ -171,6 +171,9 @@ lore/
 └── lore.toml.example
 ```
 
+Le schéma SQLite (tables, clés étrangères, diagrammes) est documenté dans
+[docs/data-model.md](docs/data-model.md).
+
 ## État du développement
 
 Le projet est fonctionnel et utilisable en production (usage personnel / petit groupe). Les fonctionnalités principales sont implémentées :

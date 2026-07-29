@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, UserRound, X } from 'lucide-react'
+import MentionText from '@/components/MentionText'
 
 interface NPCCardNPC {
   id: string
@@ -13,11 +14,13 @@ interface NPCCardNPC {
 
 interface Props {
   npc: NPCCardNPC
+  /** Needed to resolve the mentions in the description once expanded. */
+  campaignId: string
   onEdit: () => void
   onRemove?: () => void
 }
 
-export default function NPCCard({ npc, onEdit, onRemove }: Props) {
+export default function NPCCard({ npc, campaignId, onEdit, onRemove }: Props) {
   const [expanded, setExpanded] = useState(false)
   const images: { url: string }[] = (() => { try { return JSON.parse(npc.images || '[]') } catch { return [] } })()
   const portrait = images[0] ?? null
@@ -52,7 +55,13 @@ export default function NPCCard({ npc, onEdit, onRemove }: Props) {
       </div>
       {expanded && (
         <div className="space-y-1 pt-1 border-t mt-1">
-          {npc.description && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{npc.description}</p>}
+          {npc.description && (
+            <MentionText
+              campaignId={campaignId}
+              text={npc.description}
+              className="text-xs text-muted-foreground whitespace-pre-wrap"
+            />
+          )}
           {npc.quote && <p className="text-xs italic text-muted-foreground">«{npc.quote}»</p>}
         </div>
       )}

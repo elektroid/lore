@@ -9,7 +9,6 @@ import (
 type Context struct {
 	GameName      string
 	Genre         string
-	Lore          string
 	ScenarioPitch string
 }
 
@@ -28,9 +27,6 @@ func SystemPrompt(ctx Context) string {
 	}
 	if ctx.Genre != "" {
 		fmt.Fprintf(&sb, "\nGenre: %s.", ctx.Genre)
-	}
-	if ctx.Lore != "" {
-		fmt.Fprintf(&sb, "\n\nLore de la campagne :\n%s", ctx.Lore)
 	}
 	if ctx.ScenarioPitch != "" {
 		fmt.Fprintf(&sb, "\n\nSynopsis du scénario :\n%s", ctx.ScenarioPitch)

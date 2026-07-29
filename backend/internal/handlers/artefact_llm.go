@@ -46,6 +46,9 @@ func (h *ImageLLMHandler) DevelopArtefact(w http.ResponseWriter, r *http.Request
 		"description": artefact.Description,
 	}
 	applyCurrentOverrides(current, req.Current, "name", "description")
+	// The GM may have cited other entities in these fields; the model needs
+	// their names, not their refs. See mentions.go.
+	newMentionResolver(r.Context(), h.db, campaignID).resolveAll(current)
 
 	var sb strings.Builder
 	sb.WriteString("You are an assistant specialized in writing tabletop RPG scenarios.\n")
@@ -118,7 +121,8 @@ func (h *ImageLLMHandler) GenerateArtefactImages(w http.ResponseWriter, r *http.
 		return
 	}
 
-	prompt := buildArtefactImagePrompt(artefact.Name, artefact.Description)
+	mentions := newMentionResolver(r.Context(), h.db, campaignID)
+	prompt := buildArtefactImagePrompt(artefact.Name, mentions.resolve(artefact.Description))
 
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()

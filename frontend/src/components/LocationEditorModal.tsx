@@ -10,6 +10,7 @@ import { patchCachedItem, patchCachedListItem } from '@/api/cache'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
 import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
+import MentionEditor from '@/components/MentionEditor'
 
 interface Props {
   locationId: string
@@ -22,26 +23,6 @@ const LOCATION_SUGGESTION_FIELDS: SuggestionField[] = [
   { key: 'atmosphere', label: 'Atmosphère' },
   { key: 'description', label: 'Description', multiline: true },
 ]
-
-// ── Auto-grow textarea ─────────────────────────────────────────────────────────
-
-function AutoTextarea({ value, onChange, placeholder, className = '', disabled }: {
-  value: string; onChange: (v: string) => void
-  placeholder?: string; className?: string; disabled?: boolean
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => {
-    const el = ref.current; if (!el) return
-    el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'
-  }, [value])
-  return (
-    <textarea
-      ref={ref} rows={3} value={value} placeholder={placeholder} disabled={disabled}
-      onChange={e => onChange(e.target.value)}
-      className={`w-full resize-none overflow-hidden rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 ${className}`}
-    />
-  )
-}
 
 // ── Image grid ─────────────────────────────────────────────────────────────────
 
@@ -354,10 +335,11 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
                 {develop.isError && (
                   <p className="text-xs text-destructive">{(develop.error as Error).message}</p>
                 )}
-                <AutoTextarea
+                <MentionEditor
+                  campaignId={campaignId}
                   value={local.description}
                   onChange={v => handle('description', v)}
-                  placeholder="Décrivez le lieu — décor, ambiance, odeurs, sons…"
+                  placeholder="Décrivez le lieu — décor, ambiance, odeurs… tapez @ pour citer un PNJ, une faction"
                   className="min-h-[120px]"
                 />
               </div>

@@ -81,16 +81,19 @@ func (h *BrainstormHandler) llmSetup(r *http.Request, scenarioID string) (*llm.C
 	if synopsis != nil {
 		sc = parseSynopsisCtx(synopsis)
 	}
+	// Same rule as the synopsis handler: refs become names on the way out.
+	mentions := newMentionResolver(r.Context(), h.db, scenario.CampaignID)
+	sc.Hook.Content = mentions.resolve(sc.Hook.Content)
 	if snpcs, err := db.ListSynopsisNPCs(r.Context(), h.db, scenarioID); err == nil {
 		sc.NPCs = make([]npcItem, len(snpcs))
 		for i, n := range snpcs {
-			sc.NPCs[i] = npcItem{ID: n.ID, Name: n.Name, Role: n.Role, Description: n.Description}
+			sc.NPCs[i] = npcItem{ID: n.ID, Name: n.Name, Role: n.Role, Description: mentions.resolve(n.Description)}
 		}
 	}
 	if scenes, err := db.ListScenes(r.Context(), h.db, scenarioID); err == nil {
 		sc.Scenes = make([]sceneItem, len(scenes))
 		for i, s := range scenes {
-			sc.Scenes[i] = sceneItem{ID: s.ID, Type: s.Type, Title: s.Title, Description: s.Description}
+			sc.Scenes[i] = sceneItem{ID: s.ID, Type: s.Type, Title: s.Title, Description: mentions.resolve(s.Description)}
 		}
 	}
 

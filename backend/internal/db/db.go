@@ -74,6 +74,25 @@ func MigrateAlters(database *sql.DB) {
 	dropCampaignGameFK(database)
 	backfillRuns(database)
 	dropLegacyPlayData(database)
+	dropCampaignLore(database)
+}
+
+// dropCampaignLore removes campaigns.lore. "Le monde en quelques paragraphes"
+// described the setting, which belongs to the game system every campaign in it
+// shares — not to one campaign, and certainly not to one scenario. Nothing reads
+// the column any more, so it goes rather than lingering as a field the UI no
+// longer offers and no prompt includes.
+//
+// Ordered after dropCampaignGameFK on purpose: that rebuild no longer copies
+// lore either, so on a database old enough to still carry the games foreign key
+// the rebuild is what removes the column and this is a no-op.
+func dropCampaignLore(database *sql.DB) {
+	if !hasColumn(database, "campaigns", "lore") {
+		return
+	}
+	if _, err := database.Exec(`ALTER TABLE campaigns DROP COLUMN lore`); err != nil {
+		log.Printf("campaigns.lore not dropped: %v", err)
+	}
 }
 
 // hasLegacyPlayData reports whether this database still carries the pre-run
@@ -320,14 +339,13 @@ func dropCampaignGameFK(database *sql.DB) {
 			genre       TEXT NOT NULL DEFAULT '',
 			game        TEXT NOT NULL DEFAULT '',
 			game_id     TEXT NOT NULL DEFAULT '',
-			lore        TEXT NOT NULL DEFAULT '',
 			llm_config  TEXT NOT NULL DEFAULT '{}',
 			owner_id    TEXT NOT NULL DEFAULT '',
 			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
-		`INSERT INTO campaigns_rebuilt (id,name,genre,game,game_id,lore,llm_config,owner_id,created_at,updated_at)
-		 SELECT id,name,genre,game,game_id,lore,llm_config,owner_id,created_at,updated_at FROM campaigns`,
+		`INSERT INTO campaigns_rebuilt (id,name,genre,game,game_id,llm_config,owner_id,created_at,updated_at)
+		 SELECT id,name,genre,game,game_id,llm_config,owner_id,created_at,updated_at FROM campaigns`,
 		`DROP TABLE campaigns`,
 		`ALTER TABLE campaigns_rebuilt RENAME TO campaigns`,
 		`CREATE INDEX IF NOT EXISTS idx_campaigns_game_id  ON campaigns(game_id)`,

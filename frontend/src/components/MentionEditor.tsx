@@ -1,16 +1,9 @@
-import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/api/client'
-import type { CampaignNPC, CampaignFaction } from '@/types/entities'
-
-// Token format:
-//   NPC:     @[name](uuid)
-//   Faction: @[name](faction:uuid)
-const TOKEN_RE = /@\[([^\]]+)\]\(([^)]+)\)/g
-
-type MentionItem =
-  | { kind: 'npc'; id: string; name: string; sub: string }
-  | { kind: 'faction'; id: string; name: string; sub: string }
+import { useRef, useEffect, useState, useCallback } from 'react'
+import { useCampaignMentions, type Mentionable } from '@/hooks/useCampaignMentions'
+import {
+  MENTION_RE, MENTION_KIND_BADGE, MENTION_KIND_LABEL,
+  mentionRef, parseMentionRef, type MentionKind,
+} from '@/lib/mentions'
 
 interface DropdownState {
   query: string
@@ -24,35 +17,33 @@ interface Props {
   onChange: (value: string) => void
   placeholder?: string
   disabled?: boolean
+  className?: string
 }
 
-function factionStorageId(id: string) { return `faction:${id}` }
-function isFactionId(id: string) { return id.startsWith('faction:') }
-function stripFactionPrefix(id: string) { return id.slice('faction:'.length) }
+// Accented letters count as part of a name: "@Ré" must keep searching, not drop
+// the dropdown at the "é". \w would.
+const TRIGGER_RE = /@([\p{L}\p{N}_'-]*)$/u
 
-function buildHTML(text: string, npcMap: Map<string, string>, factionMap: Map<string, string>): string {
+type Resolve = (kind: MentionKind, id: string) => string | undefined
+
+function buildHTML(text: string, resolve: Resolve): string {
   let result = ''
   let last = 0
-  for (const m of text.matchAll(TOKEN_RE)) {
+  for (const m of text.matchAll(MENTION_RE)) {
     result += esc(text.slice(last, m.index))
-    const [, storedName, id] = m
-    let displayName: string
-    let stale: boolean
-    let extra = ''
-    if (isFactionId(id)) {
-      const rawId = stripFactionPrefix(id)
-      displayName = factionMap.get(rawId) ?? storedName
-      stale = !factionMap.has(rawId)
-      extra = ' data-mention-kind="faction"'
-    } else {
-      displayName = npcMap.get(id) ?? storedName
-      stale = !npcMap.has(id)
-    }
-    result += `<span contenteditable="false" data-mention="${escAttr(id)}" data-name="${escAttr(storedName)}"${extra} class="mention-chip${stale ? ' mention-chip--stale' : ''}">@${esc(displayName)}</span>`
+    const [, storedName, ref] = m
+    const { kind, id } = parseMentionRef(ref)
+    const live = resolve(kind, id)
+    result += chipHTML(ref, storedName, kind, live ?? storedName, live === undefined)
     last = (m.index ?? 0) + m[0].length
   }
   result += esc(text.slice(last))
   return result
+}
+
+function chipHTML(ref: string, storedName: string, kind: MentionKind, label: string, stale: boolean): string {
+  return `<span contenteditable="false" data-mention="${escAttr(ref)}" data-name="${escAttr(storedName)}"` +
+    ` data-mention-kind="${kind}" class="mention-chip${stale ? ' mention-chip--stale' : ''}">@${esc(label)}</span>`
 }
 
 function esc(s: string): string {
@@ -88,40 +79,31 @@ function getMentionTrigger(el: HTMLElement): DropdownState | null {
   const node = range.startContainer
   if (node.nodeType !== Node.TEXT_NODE || !el.contains(node)) return null
   const before = ((node as Text).textContent ?? '').slice(0, range.startOffset)
-  const match = before.match(/@(\w*)$/)
+  const match = before.match(TRIGGER_RE)
   if (!match) return null
   return { query: match[1], node: node as Text, atOffset: range.startOffset - match[0].length }
 }
 
-export default function MentionEditor({ campaignId, value, onChange, placeholder, disabled }: Props) {
+/**
+ * A one-line-or-more prose field where typing `@` offers the campaign's PNJs,
+ * artefacts, locations and factions. What is stored is text with inline refs
+ * (see lib/mentions.ts) — not a relation table, so a mention costs nothing to
+ * add and nothing to remove, and prose stays prose.
+ */
+export default function MentionEditor({ campaignId, value, onChange, placeholder, disabled, className }: Props) {
   const editorRef = useRef<HTMLDivElement>(null)
   const prevRef = useRef(value)
   const [dd, setDd] = useState<DropdownState | null>(null)
   const [activeIdx, setActiveIdx] = useState(0)
 
-  const { data: npcs = [] } = useQuery({
-    queryKey: ['campaign-npcs', campaignId],
-    queryFn: () => api.get<CampaignNPC[]>(`/campaigns/${campaignId}/npcs`),
-    enabled: !!campaignId,
-    staleTime: 60_000,
-  })
-
-  const { data: factions = [] } = useQuery({
-    queryKey: ['campaign-factions', campaignId],
-    queryFn: () => api.get<CampaignFaction[]>(`/campaigns/${campaignId}/factions`),
-    enabled: !!campaignId,
-    staleTime: 60_000,
-  })
-
-  const npcMap = useMemo(() => new Map(npcs.map(n => [n.id, n.name])), [npcs])
-  const factionMap = useMemo(() => new Map(factions.map(f => [f.id, f.name])), [factions])
+  const mentions = useCampaignMentions(campaignId)
+  const { resolve, search, all } = mentions
 
   const applyHTML = useCallback((text: string) => {
     const el = editorRef.current
     if (!el) return
-    el.innerHTML = buildHTML(text, npcMap, factionMap)
-    if (text === '') el.innerHTML = ''
-  }, [npcMap, factionMap])
+    el.innerHTML = text === '' ? '' : buildHTML(text, resolve)
+  }, [resolve])
 
   useEffect(() => { applyHTML(value) }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -132,26 +114,20 @@ export default function MentionEditor({ campaignId, value, onChange, placeholder
     }
   }, [value, applyHTML])
 
-  // Resolve chip labels when data arrives
+  // Relabel chips once the entity lists land, and whenever an entity is renamed
+  // or deleted elsewhere. Rewriting labels in place rather than re-rendering the
+  // whole field keeps the caret where the GM left it.
   useEffect(() => {
     const el = editorRef.current
     if (!el) return
     el.querySelectorAll<HTMLElement>('[data-mention]').forEach(span => {
-      const id = span.dataset.mention!
-      if (isFactionId(id)) {
-        const rawId = stripFactionPrefix(id)
-        const resolved = factionMap.get(rawId)
-        const stale = resolved === undefined
-        span.textContent = `@${resolved ?? span.dataset.name ?? ''}`
-        span.classList.toggle('mention-chip--stale', stale)
-      } else {
-        const resolved = npcMap.get(id)
-        const stale = resolved === undefined
-        span.textContent = `@${resolved ?? span.dataset.name ?? ''}`
-        span.classList.toggle('mention-chip--stale', stale)
-      }
+      const { kind, id } = parseMentionRef(span.dataset.mention!)
+      const live = resolve(kind, id)
+      span.dataset.mentionKind = kind
+      span.textContent = `@${live ?? span.dataset.name ?? ''}`
+      span.classList.toggle('mention-chip--stale', live === undefined)
     })
-  }, [npcMap, factionMap, npcs.length, factions.length])
+  }, [resolve, all.length])
 
   function handleInput() {
     const el = editorRef.current
@@ -167,27 +143,14 @@ export default function MentionEditor({ campaignId, value, onChange, placeholder
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (!dd) return
-    const matches = getMatches(dd.query)
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, matches.length - 1)) }
+    const found = search(dd.query)
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, found.length - 1)) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, 0)) }
-    else if ((e.key === 'Enter' || e.key === 'Tab') && matches.length > 0) { e.preventDefault(); insertMention(matches[activeIdx]) }
+    else if ((e.key === 'Enter' || e.key === 'Tab') && found.length > 0) { e.preventDefault(); insertMention(found[activeIdx]) }
     else if (e.key === 'Escape') setDd(null)
   }
 
-  function getMatches(query: string): MentionItem[] {
-    const q = query.toLowerCase()
-    const npcMatches: MentionItem[] = npcs
-      .filter(n => n.name.toLowerCase().includes(q))
-      .slice(0, 5)
-      .map(n => ({ kind: 'npc', id: n.id, name: n.name, sub: n.role }))
-    const facMatches: MentionItem[] = factions
-      .filter(f => f.name.toLowerCase().includes(q))
-      .slice(0, 3)
-      .map(f => ({ kind: 'faction', id: f.id, name: f.name, sub: f.type }))
-    return [...npcMatches, ...facMatches].slice(0, 8)
-  }
-
-  function insertMention(item: MentionItem) {
+  function insertMention(item: Mentionable) {
     if (!dd) return
     const sel = window.getSelection()
     if (!sel || sel.rangeCount === 0) return
@@ -198,13 +161,11 @@ export default function MentionEditor({ campaignId, value, onChange, placeholder
     deleteRange.setEnd(dd.node, cursorOffset)
     deleteRange.deleteContents()
 
-    const storageId = item.kind === 'faction' ? factionStorageId(item.id) : item.id
-
     const chipEl = document.createElement('span')
     chipEl.contentEditable = 'false'
-    chipEl.dataset.mention = storageId
+    chipEl.dataset.mention = mentionRef(item.kind, item.id)
     chipEl.dataset.name = item.name
-    if (item.kind === 'faction') chipEl.dataset.mentionKind = 'faction'
+    chipEl.dataset.mentionKind = item.kind
     chipEl.className = 'mention-chip'
     chipEl.textContent = `@${item.name}`
 
@@ -224,7 +185,7 @@ export default function MentionEditor({ campaignId, value, onChange, placeholder
     setDd(null)
   }
 
-  const matches = dd ? getMatches(dd.query) : []
+  const found = dd ? search(dd.query) : []
 
   return (
     <div className="relative">
@@ -240,11 +201,12 @@ export default function MentionEditor({ campaignId, value, onChange, placeholder
           'mention-editor w-full min-h-[72px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm',
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
           disabled ? 'cursor-not-allowed opacity-50' : '',
+          className ?? '',
         ].filter(Boolean).join(' ')}
       />
-      {dd && matches.length > 0 && (
+      {dd && found.length > 0 && (
         <div className="absolute z-50 mt-1 min-w-[220px] rounded-md border bg-popover text-popover-foreground shadow-md py-1">
-          {matches.map((item, i) => (
+          {found.map((item, i) => (
             <button
               key={`${item.kind}:${item.id}`}
               type="button"
@@ -253,8 +215,8 @@ export default function MentionEditor({ campaignId, value, onChange, placeholder
             >
               <span className="font-medium flex-1 truncate">{item.name}</span>
               {item.sub && <span className="text-xs text-muted-foreground truncate">{item.sub}</span>}
-              <span className={`text-xs px-1 py-0.5 rounded shrink-0 ${item.kind === 'faction' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
-                {item.kind === 'faction' ? 'Faction' : 'PNJ'}
+              <span className={`text-xs px-1 py-0.5 rounded shrink-0 ${MENTION_KIND_BADGE[item.kind]}`}>
+                {MENTION_KIND_LABEL[item.kind]}
               </span>
             </button>
           ))}

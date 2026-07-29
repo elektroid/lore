@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS campaigns (
     -- enforced in the handler, which can say "jeu introuvable" instead of
     -- surfacing a raw SQLite error. See MigrateAlters for existing databases.
     game_id     TEXT NOT NULL DEFAULT '',
-    lore        TEXT NOT NULL DEFAULT '',
     llm_config  TEXT NOT NULL DEFAULT '{}',
     -- Same reasoning as game_id above, and the same shape the rebuild in
     -- MigrateAlters produces — a fresh database must not end up with

@@ -5,11 +5,7 @@ import { api } from '@/api/client'
 import type { Scenario } from '@/types/scenario'
 import type { Campaign } from '@/types/campaign'
 import type { Synopsis, SynopsisNPC, Scene } from '@/types/synopsis'
-
-const MENTION_RE = /@\[([^\]]+)\]\([^)]+\)/g
-function stripMentions(text: string): string {
-  return text.replace(MENTION_RE, '@$1')
-}
+import { stripMentions } from '@/lib/mentions'
 
 function firstImage(imagesJson: string): string | null {
   try {
@@ -126,7 +122,7 @@ export default function PrintPage() {
                   <div className="print-npc-body">
                     <div className="print-npc-name">{npc.name}</div>
                     {npc.role && <div className="print-npc-role">{npc.role}</div>}
-                    {npc.description && <p className="print-npc-desc">{npc.description}</p>}
+                    {npc.description && <p className="print-npc-desc">{stripMentions(npc.description)}</p>}
                     {npc.motivation && <p className="print-npc-motivation"><em>Motivation : </em>{npc.motivation}</p>}
                     {npc.quote && <p className="print-npc-quote">« {npc.quote} »</p>}
                   </div>
@@ -154,7 +150,7 @@ export default function PrintPage() {
                     <span className="print-scene-location">📍 {scene.location_name}</span>
                   )}
                 </div>
-                {scene.description && <p className="print-prose mt-1">{scene.description}</p>}
+                {scene.description && <p className="print-prose mt-1">{stripMentions(scene.description)}</p>}
                 {scene.outcome && (
                   <p className="print-outcome"><strong>Dénouement : </strong>{scene.outcome}</p>
                 )}

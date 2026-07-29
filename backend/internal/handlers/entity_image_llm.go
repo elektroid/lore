@@ -55,7 +55,8 @@ func (h *ImageLLMHandler) GenerateNPCImages(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	prompt := buildNPCImagePrompt(npc.Name, npc.Role, npc.Description)
+	mentions := newMentionResolver(r.Context(), h.db, campaignID)
+	prompt := buildNPCImagePrompt(npc.Name, npc.Role, mentions.resolve(npc.Description))
 
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
@@ -165,7 +166,8 @@ func (h *ImageLLMHandler) GenerateLocationImages(w http.ResponseWriter, r *http.
 		return
 	}
 
-	prompt := buildLocationImagePrompt(location.Name, location.Atmosphere, location.Description)
+	mentions := newMentionResolver(r.Context(), h.db, campaignID)
+	prompt := buildLocationImagePrompt(location.Name, location.Atmosphere, mentions.resolve(location.Description))
 
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
@@ -275,7 +277,8 @@ func (h *ImageLLMHandler) GenerateFactionImages(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	prompt := buildFactionImagePrompt(faction.Name, faction.Type, faction.Description)
+	mentions := newMentionResolver(r.Context(), h.db, campaignID)
+	prompt := buildFactionImagePrompt(faction.Name, faction.Type, mentions.resolve(faction.Description))
 
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()

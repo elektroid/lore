@@ -276,3 +276,19 @@
   color: hsl(var(--muted-foreground));
   text-decoration: line-through;
 }
+/* One hue per entity kind, so an artefact chip is not mistaken for a PNJ in the
+   middle of a paragraph. PNJs keep the original primary tint — they were the
+   only kind of mention that existed, and most chips are still PNJs. */
+.mention-chip[data-mention-kind="artefact"] { background: hsl(38 92% 50% / 0.14); color: hsl(32 81% 34%); }
+.mention-chip[data-mention-kind="location"] { background: hsl(160 84% 39% / 0.14); color: hsl(163 88% 26%); }
+.mention-chip[data-mention-kind="faction"]  { background: hsl(25 95% 53% / 0.14); color: hsl(21 90% 36%); }
+.dark .mention-chip[data-mention-kind="artefact"] { color: hsl(43 96% 66%); }
+.dark .mention-chip[data-mention-kind="location"] { color: hsl(158 64% 60%); }
+.dark .mention-chip[data-mention-kind="faction"]  { color: hsl(31 97% 62%); }
+/* Stale wins over kind: a chip pointing at a deleted entity must read as broken
+   whatever it used to point at. */
+.mention-chip--stale[data-mention-kind],
+.dark .mention-chip--stale[data-mention-kind] {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}

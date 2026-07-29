@@ -13,7 +13,6 @@ type Campaign struct {
 	Genre      string `json:"genre"`
 	GameID     string `json:"game_id"`
 	GameName   string `json:"game_name"`
-	Lore       string `json:"lore"`
 	LLMConfig  string `json:"llm_config"`
 	OwnerID    string `json:"owner_id"`
 	OwnerName  string `json:"owner_name"`
@@ -25,7 +24,6 @@ type CreateCampaignParams struct {
 	Name      string
 	Genre     string
 	GameID    string
-	Lore      string
 	LLMConfig string
 	OwnerID   string
 }
@@ -35,19 +33,18 @@ type UpdateCampaignParams struct {
 	Name      string
 	Genre     string
 	GameID    string
-	Lore      string
 	LLMConfig string
 }
 
 const campaignSelect = `
-	SELECT c.id, c.name, c.genre, c.game_id, COALESCE(g.name, ''), c.lore, c.llm_config, c.owner_id, COALESCE(u.name, ''), c.created_at, c.updated_at
+	SELECT c.id, c.name, c.genre, c.game_id, COALESCE(g.name, ''), c.llm_config, c.owner_id, COALESCE(u.name, ''), c.created_at, c.updated_at
 	FROM campaigns c
 	LEFT JOIN games g ON g.id = c.game_id
 	LEFT JOIN users u ON u.id = c.owner_id`
 
 func scanCampaign(row interface{ Scan(...any) error }) (*Campaign, error) {
 	var c Campaign
-	err := row.Scan(&c.ID, &c.Name, &c.Genre, &c.GameID, &c.GameName, &c.Lore, &c.LLMConfig, &c.OwnerID, &c.OwnerName, &c.CreatedAt, &c.UpdatedAt)
+	err := row.Scan(&c.ID, &c.Name, &c.Genre, &c.GameID, &c.GameName, &c.LLMConfig, &c.OwnerID, &c.OwnerName, &c.CreatedAt, &c.UpdatedAt)
 	return &c, err
 }
 
@@ -137,8 +134,8 @@ func CreateCampaign(ctx context.Context, database *sql.DB, p CreateCampaignParam
 		ownerID = ""
 	}
 	_, err := database.ExecContext(ctx,
-		`INSERT INTO campaigns (id, name, genre, game_id, lore, llm_config, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, p.Name, p.Genre, p.GameID, p.Lore, llmConfig, ownerID)
+		`INSERT INTO campaigns (id, name, genre, game_id, llm_config, owner_id) VALUES (?, ?, ?, ?, ?, ?)`,
+		id, p.Name, p.Genre, p.GameID, llmConfig, ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -151,8 +148,8 @@ func UpdateCampaign(ctx context.Context, database *sql.DB, p UpdateCampaignParam
 		llmConfig = "{}"
 	}
 	_, err := database.ExecContext(ctx,
-		`UPDATE campaigns SET name=?, genre=?, game_id=?, lore=?, llm_config=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-		p.Name, p.Genre, p.GameID, p.Lore, llmConfig, p.ID)
+		`UPDATE campaigns SET name=?, genre=?, game_id=?, llm_config=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+		p.Name, p.Genre, p.GameID, llmConfig, p.ID)
 	if err != nil {
 		return nil, err
 	}

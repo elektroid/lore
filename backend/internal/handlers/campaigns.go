@@ -35,7 +35,6 @@ type campaignExportMeta struct {
 	Genre     string `json:"genre"`
 	GameID    string `json:"game_id"`
 	GameName  string `json:"game_name"`
-	Lore      string `json:"lore"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -128,7 +127,6 @@ type createCampaignBody struct {
 	Name      string `json:"name"`
 	Genre     string `json:"genre"`
 	GameID    string `json:"game_id"`
-	Lore      string `json:"lore"`
 	LLMConfig string `json:"llm_config"`
 }
 
@@ -159,7 +157,6 @@ func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Name:      body.Name,
 		Genre:     body.Genre,
 		GameID:    body.GameID,
-		Lore:      body.Lore,
 		LLMConfig: body.LLMConfig,
 		OwnerID:   user.ID,
 	})
@@ -174,7 +171,6 @@ type updateCampaignBody struct {
 	Name      string `json:"name"`
 	Genre     string `json:"genre"`
 	GameID    string `json:"game_id"`
-	Lore      string `json:"lore"`
 	LLMConfig string `json:"llm_config"`
 }
 
@@ -214,7 +210,6 @@ func (h *CampaignHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Name:      body.Name,
 		Genre:     body.Genre,
 		GameID:    body.GameID,
-		Lore:      body.Lore,
 		LLMConfig: body.LLMConfig,
 	})
 	if err != nil {
@@ -305,7 +300,6 @@ func (h *CampaignHandler) Export(w http.ResponseWriter, r *http.Request) {
 			Genre:     campaign.Genre,
 			GameID:    campaign.GameID,
 			GameName:  campaign.GameName,
-			Lore:      campaign.Lore,
 			CreatedAt: campaign.CreatedAt,
 			UpdatedAt: campaign.UpdatedAt,
 		},

@@ -60,8 +60,8 @@ configured, and every campaign needs the game list.
 
 This one is worth stating plainly: the LLM settings hold the endpoint **and the
 key that every campaign in the instance runs through**. A player who can
-repoint `base_url` quietly receives every prompt the server sends — campaign
-lore included — while spending the owner's API key.
+repoint `base_url` quietly receives every prompt the server sends — authored
+scenario material included — while spending the owner's API key.
 
 ## 3. What is deliberately open
 
@@ -84,7 +84,7 @@ projection contract.
 - **`GET /api/users` returns every user's name and email** to any authenticated
   user, so the campaign-member picker can work. Small-group assumption.
 - **No length caps on text fields.** A determined user can store a very large
-  campaign lore.
+  scene description.
 
 ## Regression tests
 

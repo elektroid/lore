@@ -151,7 +151,9 @@ func (h *SynopsisHandler) DeleteBeat(w http.ResponseWriter, r *http.Request) {
 // Progress is the run's, not the session's: "déjà jouée" has to mean the party
 // has been there, whether that was tonight or three evenings ago. Judging
 // coherency against one evening would call every earlier scene unplayed.
-func (h *SynopsisHandler) beatSceneLines(ctx context.Context, scenarioID, sessionID, anchorID string) ([]improv.SceneLine, error) {
+// mentions resolves the refs in scene descriptions before they are truncated —
+// a 160-rune cut through `@[Rache](3f2a…)` would hand the model half a uuid.
+func (h *SynopsisHandler) beatSceneLines(ctx context.Context, scenarioID, sessionID, anchorID string, mentions mentionResolver) ([]improv.SceneLine, error) {
 	scenes, err := db.ListScenes(ctx, h.db, scenarioID)
 	if err != nil {
 		return nil, err
@@ -178,6 +180,7 @@ func (h *SynopsisHandler) beatSceneLines(ctx context.Context, scenarioID, sessio
 		if summary == "" {
 			summary = s.Outcome
 		}
+		summary = mentions.resolve(summary)
 		lines = append(lines, improv.SceneLine{
 			Ref:      fmt.Sprintf("s%d", i+1),
 			ID:       s.ID,
@@ -230,7 +233,9 @@ func (h *SynopsisHandler) DevelopBeat(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg.MaxTokens = developBeatMaxTokens
 
-	lines, err := h.beatSceneLines(r.Context(), scenarioID, beat.SessionID, beat.AnchorSceneID)
+	mentions := newMentionResolver(r.Context(), h.db, campaign.ID)
+
+	lines, err := h.beatSceneLines(r.Context(), scenarioID, beat.SessionID, beat.AnchorSceneID, mentions)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -239,14 +244,13 @@ func (h *SynopsisHandler) DevelopBeat(w http.ResponseWriter, r *http.Request) {
 	ctxPrompt := improv.Context{
 		GameName: campaign.GameName,
 		Genre:    campaign.Genre,
-		Lore:     campaign.Lore,
 	}
 	if synopsis, err := db.GetSynopsisByScenario(r.Context(), h.db, scenarioID); err == nil && synopsis != nil {
 		var hook struct {
 			Content string `json:"content"`
 		}
 		_ = json.Unmarshal([]byte(synopsis.Hook), &hook)
-		ctxPrompt.ScenarioPitch = hook.Content
+		ctxPrompt.ScenarioPitch = mentions.resolve(hook.Content)
 	}
 
 	// The note is the GM's record of what happened and is never regenerated;

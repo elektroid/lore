@@ -43,6 +43,9 @@ func (h *EntityHandler) DevelopLocation(w http.ResponseWriter, r *http.Request) 
 		"description": loc.Description,
 	}
 	applyCurrentOverrides(current, req.Current, "name", "atmosphere", "description")
+	// The GM may have cited other entities in these fields; the model needs
+	// their names, not their refs. See mentions.go.
+	newMentionResolver(r.Context(), h.db, campaignID).resolveAll(current)
 
 	var sb strings.Builder
 	sb.WriteString("Tu es un assistant spécialisé dans l'écriture de scénarios de jeux de rôle (JdR).\n")

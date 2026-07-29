@@ -35,13 +35,15 @@ const (
 
 // ── LLM plumbing ──────────────────────────────────────────────────────────────
 
-// promptContext gathers the world the model writes into: the campaign's system,
-// genre and lore, plus the names it may reuse rather than duplicate.
+// promptContext gathers the world the model writes into: the campaign's system
+// and genre, plus the names it may reuse rather than duplicate.
+//
+// Names only, never descriptions — which is also why no mention ref can leak
+// into a factory prompt the way it could into a synopsis one.
 func (h *ScenarioFactoryHandler) promptContext(ctx context.Context, campaign *db.Campaign) factory.PromptContext {
 	pc := factory.PromptContext{
 		GameName: campaign.GameName,
 		Genre:    campaign.Genre,
-		Lore:     campaign.Lore,
 	}
 	if npcs, err := db.ListCampaignNPCs(ctx, h.db, campaign.ID); err == nil {
 		for _, n := range npcs {
@@ -377,16 +379,14 @@ func (h *ScenarioFactoryHandler) Commit(w http.ResponseWriter, r *http.Request) 
 
 // materialise writes the proposal into the campaign, in dependency order so
 // every link target exists before the link is written.
+//
+// The prose is written last, after every entity has an id, because that is what
+// lets the names in it become real mentions — see mention_linker.go. The pitch
+// used to be written first; it now waits with the scenes for the same reason, so
+// a commit that fails half way leaves an empty synopsis rather than an unlinked
+// one. Acceptable: the draft stays uncommitted and still holds the pitch.
 func (h *ScenarioFactoryHandler) materialise(ctx context.Context, campaignID, scenarioID string, p factory.Proposal) error {
-	// Hook — the pitch becomes the synopsis.
-	hook, _ := json.Marshal(map[string]string{"content": p.Pitch, "status": "draft"})
-	if _, err := db.UpdateSynopsis(ctx, h.db, db.UpdateSynopsisParams{
-		ScenarioID: scenarioID,
-		Hook:       string(hook),
-		NPCs:       "[]",
-	}); err != nil {
-		return err
-	}
+	var created createdEntities
 
 	// Factions — reuse an existing row when the name already exists.
 	existingFactions, err := db.ListCampaignFactions(ctx, h.db, campaignID)
@@ -404,12 +404,13 @@ func (h *ScenarioFactoryHandler) materialise(ctx context.Context, campaignID, sc
 		}
 		id, ok := factionByName[matchKey(f.Name)]
 		if !ok {
-			created, err := db.CreateCampaignFaction(ctx, h.db, campaignID, f.Name, f.Type, f.Description, f.Motivation)
+			row, err := db.CreateCampaignFaction(ctx, h.db, campaignID, f.Name, f.Type, f.Description, f.Motivation)
 			if err != nil {
 				return err
 			}
-			id = created.ID
+			id = row.ID
 			factionByName[matchKey(f.Name)] = id
+			created.factions = append(created.factions, id)
 		}
 		factionIDs[f.Ref] = id
 		if err := db.AddSynopsisFaction(ctx, h.db, scenarioID, id); err != nil {
@@ -433,12 +434,13 @@ func (h *ScenarioFactoryHandler) materialise(ctx context.Context, campaignID, sc
 		}
 		id, ok := locationByName[matchKey(l.Name)]
 		if !ok {
-			created, err := db.CreateCampaignLocation(ctx, h.db, campaignID, l.Name, l.City, l.District, l.Description, l.Atmosphere)
+			row, err := db.CreateCampaignLocation(ctx, h.db, campaignID, l.Name, l.City, l.District, l.Description, l.Atmosphere)
 			if err != nil {
 				return err
 			}
-			id = created.ID
+			id = row.ID
 			locationByName[matchKey(l.Name)] = id
+			created.locations = append(created.locations, id)
 		}
 		locationIDs[l.Ref] = id
 	}
@@ -459,12 +461,13 @@ func (h *ScenarioFactoryHandler) materialise(ctx context.Context, campaignID, sc
 		}
 		id, ok := npcByName[matchKey(n.Name)]
 		if !ok {
-			created, err := db.CreateCampaignNPC(ctx, h.db, campaignID, n.Name, n.Role, n.Description, n.Quote, n.Motivation)
+			row, err := db.CreateCampaignNPC(ctx, h.db, campaignID, n.Name, n.Role, n.Description, n.Quote, n.Motivation)
 			if err != nil {
 				return err
 			}
-			id = created.ID
+			id = row.ID
 			npcByName[matchKey(n.Name)] = id
+			created.npcs = append(created.npcs, id)
 		}
 		npcIDs[n.Ref] = id
 		if err := db.AddSynopsisNPC(ctx, h.db, scenarioID, id, "draft", i); err != nil {
@@ -493,30 +496,57 @@ func (h *ScenarioFactoryHandler) materialise(ctx context.Context, campaignID, sc
 		}
 		id, ok := artefactByName[matchKey(a.Name)]
 		if !ok {
-			created, err := db.CreateCampaignArtefact(ctx, h.db, campaignID, a.Name, a.Description)
+			row, err := db.CreateCampaignArtefact(ctx, h.db, campaignID, a.Name, a.Description)
 			if err != nil {
 				return err
 			}
-			id = created.ID
+			id = row.ID
 			artefactByName[matchKey(a.Name)] = id
+			created.artefacts = append(created.artefacts, id)
 		}
 		artefactIDs[a.Ref] = id
 	}
 
+	// Every entity now has an id, so the names the model wrote into its prose can
+	// become mentions. Built from the campaign as it stands, not from the
+	// proposal: a scene that names a PNJ the GM wrote last month links to it too.
+	linker, err := h.mentionLinker(ctx, campaignID)
+	if err != nil {
+		return err
+	}
+	if err := h.linkCreatedEntityProse(ctx, linker, created); err != nil {
+		return err
+	}
+
+	// Hook — the pitch becomes the synopsis. Written here rather than first
+	// because it is prose, and prose waits for the linker.
+	hook, _ := json.Marshal(map[string]string{"content": linker.link(p.Pitch), "status": "draft"})
+	if _, err := db.UpdateSynopsis(ctx, h.db, db.UpdateSynopsisParams{
+		ScenarioID: scenarioID,
+		Hook:       string(hook),
+		NPCs:       "[]",
+	}); err != nil {
+		return err
+	}
+
 	// Scenes, in list order. A link pointing at an excluded item is dropped
 	// with it — a dangling ref costs a missing link, never a failed commit.
+	//
+	// Only the description is linked. Outcome and notes are the GM's crib sheet
+	// rather than prose to be read out, and chips there earn nothing.
 	sortOrder := 0
 	for _, s := range p.Scenes {
 		if !bool(s.Include) {
 			continue
 		}
+		description := linker.link(s.Description)
 		scene, err := db.CreateScene(ctx, h.db, db.CreateSceneParams{
 			ScenarioID:  scenarioID,
 			Type:        "scene",
 			Status:      s.Status,
 			SortOrder:   sortOrder,
 			Title:       s.Title,
-			Description: s.Description,
+			Description: description,
 			Outcome:     s.Outcome,
 		})
 		if err != nil {
@@ -531,7 +561,7 @@ func (h *ScenarioFactoryHandler) materialise(ctx context.Context, campaignID, sc
 		if _, err := db.UpdateScene(ctx, h.db, scene.ID, db.UpdateSceneParams{
 			Title:       s.Title,
 			Status:      s.Status,
-			Description: s.Description,
+			Description: description,
 			Outcome:     s.Outcome,
 			Notes:       notes,
 			LocationID:  locationIDs[s.LocationRef],
@@ -557,6 +587,115 @@ func (h *ScenarioFactoryHandler) materialise(ctx context.Context, campaignID, sc
 		}
 	}
 
+	return nil
+}
+
+// ── turning the proposal's names into mentions ────────────────────────────────
+
+// createdEntities are the rows this commit brought into being, as opposed to the
+// ones it matched against what the campaign already held. Only these have their
+// prose rewritten: a reused entity's description is the GM's own writing, and a
+// commit has no business editing it.
+type createdEntities struct {
+	npcs, locations, artefacts, factions []string
+}
+
+// mentionLinker collects every mentionable entity in the campaign, newly created
+// ones included, as name → ref.
+func (h *ScenarioFactoryHandler) mentionLinker(ctx context.Context, campaignID string) (*mentionLinker, error) {
+	l := &mentionLinker{}
+
+	npcs, err := db.ListCampaignNPCs(ctx, h.db, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range npcs {
+		l.add(n.Name, npcMentionRef(n.ID))
+	}
+	artefacts, err := db.ListCampaignArtefacts(ctx, h.db, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	for _, a := range artefacts {
+		l.add(a.Name, artefactMentionRef(a.ID))
+	}
+	locations, err := db.ListCampaignLocations(ctx, h.db, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	for _, loc := range locations {
+		l.add(loc.Name, locationMentionRef(loc.ID))
+	}
+	factions, err := db.ListCampaignFactions(ctx, h.db, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range factions {
+		l.add(f.Name, factionMentionRef(f.ID))
+	}
+
+	l.ready()
+	return l, nil
+}
+
+// linkCreatedEntityProse rewrites the descriptions of the entities this commit
+// created, so an artefact the model said belongs to a PNJ says so with a chip.
+//
+// Each write is skipped when linking changed nothing, which is the common case
+// for a short description naming nobody.
+func (h *ScenarioFactoryHandler) linkCreatedEntityProse(ctx context.Context, l *mentionLinker, created createdEntities) error {
+	for _, id := range created.npcs {
+		n, err := db.GetCampaignNPC(ctx, h.db, id)
+		if err != nil || n == nil {
+			continue
+		}
+		linked := l.linkExcept(n.Description, npcMentionRef(id))
+		if linked == n.Description {
+			continue
+		}
+		if _, err := db.UpdateCampaignNPC(ctx, h.db, id, n.Name, n.Role, linked, n.Quote, n.Motivation); err != nil {
+			return err
+		}
+	}
+	for _, id := range created.locations {
+		loc, err := db.GetCampaignLocation(ctx, h.db, id)
+		if err != nil || loc == nil {
+			continue
+		}
+		linked := l.linkExcept(loc.Description, locationMentionRef(id))
+		if linked == loc.Description {
+			continue
+		}
+		if _, err := db.UpdateCampaignLocation(ctx, h.db, id, loc.Name, loc.City, loc.District, linked, loc.Atmosphere, loc.Images); err != nil {
+			return err
+		}
+	}
+	for _, id := range created.artefacts {
+		a, err := db.GetCampaignArtefact(ctx, h.db, id)
+		if err != nil || a == nil {
+			continue
+		}
+		linked := l.linkExcept(a.Description, artefactMentionRef(id))
+		if linked == a.Description {
+			continue
+		}
+		if _, err := db.UpdateCampaignArtefact(ctx, h.db, id, a.Name, linked, a.Images); err != nil {
+			return err
+		}
+	}
+	for _, id := range created.factions {
+		f, err := db.GetCampaignFaction(ctx, h.db, id)
+		if err != nil || f == nil {
+			continue
+		}
+		linked := l.linkExcept(f.Description, factionMentionRef(id))
+		if linked == f.Description {
+			continue
+		}
+		if _, err := db.UpdateCampaignFaction(ctx, h.db, id, f.Name, f.Type, linked, f.Motivation, f.Images); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
