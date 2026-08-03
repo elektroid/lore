@@ -20,16 +20,17 @@ type GameLoreEntity struct {
 	Name        string `json:"name"`
 	Tags        string `json:"tags"`
 	Summary     string `json:"summary"`
+	Excerpt     string `json:"excerpt"`
 	SourceTitle string `json:"source_title"`
 	SourcePage  int    `json:"source_page"`
 	CreatedAt   string `json:"created_at"`
 }
 
-const gameLoreEntityCols = `id, game_id, kind, name, tags, summary, source_title, source_page, created_at`
+const gameLoreEntityCols = `id, game_id, kind, name, tags, summary, excerpt, source_title, source_page, created_at`
 
 func scanGameLoreEntity(row interface{ Scan(...any) error }) (*GameLoreEntity, error) {
 	var e GameLoreEntity
-	err := row.Scan(&e.ID, &e.GameID, &e.Kind, &e.Name, &e.Tags, &e.Summary, &e.SourceTitle, &e.SourcePage, &e.CreatedAt)
+	err := row.Scan(&e.ID, &e.GameID, &e.Kind, &e.Name, &e.Tags, &e.Summary, &e.Excerpt, &e.SourceTitle, &e.SourcePage, &e.CreatedAt)
 	return &e, err
 }
 
@@ -60,6 +61,7 @@ type CreateGameLoreEntityParams struct {
 	Name        string
 	Tags        string
 	Summary     string
+	Excerpt     string
 	SourceTitle string
 	SourcePage  int
 }
@@ -67,18 +69,42 @@ type CreateGameLoreEntityParams struct {
 func CreateGameLoreEntity(ctx context.Context, database *sql.DB, p CreateGameLoreEntityParams) (*GameLoreEntity, error) {
 	id := uuid.New().String()
 	_, err := database.ExecContext(ctx,
-		`INSERT INTO game_lore_entities(id, game_id, kind, name, tags, summary, source_title, source_page)
-		 VALUES(?,?,?,?,?,?,?,?)`,
-		id, p.GameID, p.Kind, p.Name, p.Tags, p.Summary, p.SourceTitle, p.SourcePage)
+		`INSERT INTO game_lore_entities(id, game_id, kind, name, tags, summary, excerpt, source_title, source_page)
+		 VALUES(?,?,?,?,?,?,?,?,?)`,
+		id, p.GameID, p.Kind, p.Name, p.Tags, p.Summary, p.Excerpt, p.SourceTitle, p.SourcePage)
 	if err != nil {
 		return nil, err
 	}
-	e, err := scanGameLoreEntity(database.QueryRowContext(ctx,
+	return scanGameLoreEntity(database.QueryRowContext(ctx,
 		`SELECT `+gameLoreEntityCols+` FROM game_lore_entities WHERE id=?`, id))
+}
+
+// UpsertGameLoreEntity is what the sourcebook indexer uses instead of Create.
+// It matches on (game_id, source_title, kind, name) case-insensitively, which
+// solves two problems with one mechanism: re-indexing the same book updates
+// rows in place instead of piling up duplicates, and the same entity being
+// re-detected from two overlapping page chunks refines one row instead of
+// creating a second.
+func UpsertGameLoreEntity(ctx context.Context, database *sql.DB, p CreateGameLoreEntityParams) (*GameLoreEntity, error) {
+	var existingID string
+	err := database.QueryRowContext(ctx,
+		`SELECT id FROM game_lore_entities
+		 WHERE game_id=? AND source_title=? AND lower(kind)=lower(?) AND lower(name)=lower(?)`,
+		p.GameID, p.SourceTitle, p.Kind, p.Name).Scan(&existingID)
+	switch {
+	case err == sql.ErrNoRows:
+		return CreateGameLoreEntity(ctx, database, p)
+	case err != nil:
+		return nil, err
+	}
+	_, err = database.ExecContext(ctx,
+		`UPDATE game_lore_entities SET kind=?, tags=?, summary=?, excerpt=?, source_page=? WHERE id=?`,
+		p.Kind, p.Tags, p.Summary, p.Excerpt, p.SourcePage, existingID)
 	if err != nil {
 		return nil, err
 	}
-	return e, nil
+	return scanGameLoreEntity(database.QueryRowContext(ctx,
+		`SELECT `+gameLoreEntityCols+` FROM game_lore_entities WHERE id=?`, existingID))
 }
 
 func DeleteGameLoreEntity(ctx context.Context, database *sql.DB, id string) error {

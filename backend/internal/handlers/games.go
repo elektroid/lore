@@ -186,6 +186,7 @@ type gameLoreEntityBody struct {
 	Name        string `json:"name"`
 	Tags        string `json:"tags"`
 	Summary     string `json:"summary"`
+	Excerpt     string `json:"excerpt"`
 	SourceTitle string `json:"source_title"`
 	SourcePage  int    `json:"source_page"`
 }
@@ -216,6 +217,7 @@ func (h *GameHandler) CreateLoreEntity(w http.ResponseWriter, r *http.Request) {
 		Name:        body.Name,
 		Tags:        body.Tags,
 		Summary:     body.Summary,
+		Excerpt:     body.Excerpt,
 		SourceTitle: body.SourceTitle,
 		SourcePage:  body.SourcePage,
 	})

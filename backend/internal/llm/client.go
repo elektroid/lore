@@ -16,6 +16,17 @@ type Config struct {
 	APIKey    string `json:"api_key"`
 	Model     string `json:"model"`
 	MaxTokens int    `json:"max_tokens"`
+	// ReasoningEffort is passed straight through to reasoning models that
+	// accept it (gpt-oss via Ollama does). Left empty, the field is omitted
+	// and the model's own default applies — which for a chunky extraction
+	// prompt can mean spending its whole token budget thinking and never
+	// emitting the answer. Unset by every existing caller; the sourcebook
+	// indexer is what actually needs it, see cmd/index-sourcebook.
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	// Timeout overrides the client's default 120s HTTP timeout. Zero keeps
+	// the default. Batch callers making a handful of slow calls (the
+	// indexer, again) need more room than an interactive request does.
+	Timeout time.Duration `json:"-"`
 }
 
 type Client struct {
@@ -24,9 +35,13 @@ type Client struct {
 }
 
 func NewClient(config Config) *Client {
+	timeout := config.Timeout
+	if timeout == 0 {
+		timeout = 120 * time.Second
+	}
 	return &Client{
 		config: config,
-		http:   &http.Client{Timeout: 120 * time.Second},
+		http:   &http.Client{Timeout: timeout},
 	}
 }
 
@@ -42,9 +57,10 @@ type Message struct {
 }
 
 type completionRequest struct {
-	Model     string    `json:"model"`
-	Messages  []message `json:"messages"`
-	MaxTokens int       `json:"max_tokens"`
+	Model           string    `json:"model"`
+	Messages        []message `json:"messages"`
+	MaxTokens       int       `json:"max_tokens"`
+	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
 }
 
 type completionResponse struct {
@@ -69,7 +85,8 @@ func (c *Client) Complete(ctx context.Context, systemPrompt, userPrompt string) 
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userPrompt},
 		},
-		MaxTokens: maxTokens,
+		MaxTokens:       maxTokens,
+		ReasoningEffort: c.config.ReasoningEffort,
 	}
 
 	body, err := json.Marshal(reqBody)
@@ -121,7 +138,9 @@ func (c *Client) Chat(ctx context.Context, systemPrompt string, history []Messag
 	for _, m := range history {
 		msgs = append(msgs, message{Role: m.Role, Content: m.Content})
 	}
-	body, err := json.Marshal(completionRequest{Model: c.config.Model, Messages: msgs, MaxTokens: maxTokens})
+	body, err := json.Marshal(completionRequest{
+		Model: c.config.Model, Messages: msgs, MaxTokens: maxTokens, ReasoningEffort: c.config.ReasoningEffort,
+	})
 	if err != nil {
 		return "", err
 	}

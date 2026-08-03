@@ -66,6 +66,7 @@ func MigrateAlters(database *sql.DB) {
 		// See docs/adr/0001-runs-separate-story-from-play.md.
 		`ALTER TABLE sessions ADD COLUMN run_id TEXT REFERENCES runs(id) ON DELETE CASCADE`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_run_id ON sessions(run_id)`,
+		`ALTER TABLE game_lore_entities ADD COLUMN excerpt TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, stmt := range alters {
 		database.Exec(stmt) //nolint:errcheck — duplicate column error is expected on re-run
