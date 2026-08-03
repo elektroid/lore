@@ -51,6 +51,17 @@ func GetGame(ctx context.Context, database *sql.DB, id string) (*Game, error) {
 	return &g, err
 }
 
+func GetGameBySlug(ctx context.Context, database *sql.DB, slug string) (*Game, error) {
+	var g Game
+	err := database.QueryRowContext(ctx,
+		`SELECT id, name, slug, genre, visual_style, mistral_agent_id, created_at FROM games WHERE slug = ?`, slug).
+		Scan(&g.ID, &g.Name, &g.Slug, &g.Genre, &g.VisualStyle, &g.MistralAgentID, &g.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &g, err
+}
+
 func CreateGame(ctx context.Context, database *sql.DB, name, slug, genre string) (*Game, error) {
 	id := uuid.New().String()
 	_, err := database.ExecContext(ctx,

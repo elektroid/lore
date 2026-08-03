@@ -8,6 +8,27 @@ CREATE TABLE IF NOT EXISTS games (
     created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Sourcebook knowledge extracted for a game system (not a campaign): "select
+-- Cyberpunk Red" makes the whole indexed ecosystem available to every
+-- campaign that uses it. Deliberately holds no verbatim book text — name,
+-- facet tags and a short paraphrase only — so a row is both cheap to search
+-- (tag filter beats full-text guessing for "a corpo bar") and safe to ship in
+-- a game export (see GameHandler.Export) to a GM running their own instance,
+-- without redistributing the copyrighted sourcebook itself. source_title is
+-- plain text rather than a foreign key so the table stays self-contained on
+-- export/import, independent of whether the recipient has indexed anything.
+CREATE TABLE IF NOT EXISTS game_lore_entities (
+    id            TEXT PRIMARY KEY,
+    game_id       TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    kind          TEXT NOT NULL,             -- 'location' | 'faction' | 'npc_archetype' | 'item' | ...
+    name          TEXT NOT NULL,
+    tags          TEXT NOT NULL DEFAULT '',  -- free-form facets, e.g. "corpo bar city-center arasaka"
+    summary       TEXT NOT NULL DEFAULT '',  -- short paraphrase, not book text
+    source_title  TEXT NOT NULL DEFAULT '',  -- e.g. "Night City 2045"
+    source_page   INTEGER NOT NULL DEFAULT 0,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS campaigns (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
@@ -437,3 +458,5 @@ CREATE INDEX IF NOT EXISTS idx_campaign_members_user_id ON campaign_members(user
 
 CREATE INDEX IF NOT EXISTS idx_player_characters_user_id ON player_characters(user_id);
 CREATE INDEX IF NOT EXISTS idx_player_characters_game_id ON player_characters(game_id);
+
+CREATE INDEX IF NOT EXISTS idx_game_lore_entities_game_id ON game_lore_entities(game_id, kind);
