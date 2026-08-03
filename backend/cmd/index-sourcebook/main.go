@@ -68,6 +68,8 @@ func main() {
 	overlapPages := flag.Int("overlap", 1, "page overlap between consecutive chunks")
 	effort := flag.String("effort", "medium", "reasoning effort: low, medium, or high — see the comment below")
 	tagHints := flag.String("tags", defaultTagHints, "vocabulary hints for the tags field")
+	maxTokens := flag.Int("max-tokens", 8000, "completion token budget — a dense chunk at medium effort can run into this")
+	timeout := flag.Duration("timeout", 8*time.Minute, "per-chunk HTTP timeout — real local-model latency is uneven, pad generously")
 	flag.Parse()
 
 	if *gameSlug == "" || *file == "" || *sourceTitle == "" {
@@ -112,16 +114,19 @@ func main() {
 	// it brief — confirmed empirically: unconstrained effort on a two-page
 	// chunk didn't finish inside 8000 tokens / several minutes. "low" effort
 	// finishes in ~30s but visibly under-extracts (skipped the district
-	// itself and three named factions in testing). "medium" reliably found
-	// everything in ~2 minutes/chunk. That's the default; -effort exists to
-	// trade speed for recall on a case-by-case basis.
+	// itself and three named factions in testing). "medium" found everything
+	// in one test but took 2-5+ minutes and occasionally ran past an 8000
+	// token / 5 minute budget on a dense chunk in another — real local-model
+	// latency is uneven (model reload after idle, content-dependent reasoning
+	// length), hence -max-tokens and -timeout being generous and tunable
+	// rather than hardcoded tight.
 	client := llm.NewClient(llm.Config{
 		BaseURL:         cfg.LLM.BaseURL,
 		APIKey:          cfg.LLM.APIKey,
 		Model:           cfg.LLM.Model,
-		MaxTokens:       6000,
+		MaxTokens:       *maxTokens,
 		ReasoningEffort: *effort,
-		Timeout:         5 * time.Minute,
+		Timeout:         *timeout,
 	})
 
 	stride := *chunkPages - *overlapPages
