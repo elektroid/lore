@@ -30,6 +30,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -67,6 +68,9 @@ func main() {
 	chunkPages := flag.Int("chunk", 2, "pages per LLM call")
 	overlapPages := flag.Int("overlap", 1, "page overlap between consecutive chunks")
 	effort := flag.String("effort", "medium", "reasoning effort: low, medium, or high — see the comment below")
+	model := flag.String("model", "", "override the model from lore.toml, e.g. \"mistral-medium-latest\" (default: whatever lore.toml's [llm] section says)")
+	baseURL := flag.String("base-url", "", "override the OpenAI-compatible base URL from lore.toml, e.g. \"https://api.mistral.ai/v1\"")
+	apiKey := flag.String("api-key", os.Getenv("INDEX_SOURCEBOOK_API_KEY"), "override the API key from lore.toml (or set INDEX_SOURCEBOOK_API_KEY to avoid it showing up in argv/history)")
 	tagHints := flag.String("tags", defaultTagHints, "vocabulary hints for the tags field")
 	maxTokens := flag.Int("max-tokens", 8000, "completion token budget — a dense chunk at medium effort can run into this")
 	timeout := flag.Duration("timeout", 8*time.Minute, "per-chunk HTTP timeout — real local-model latency is uneven, pad generously")
@@ -120,10 +124,22 @@ func main() {
 	// latency is uneven (model reload after idle, content-dependent reasoning
 	// length), hence -max-tokens and -timeout being generous and tunable
 	// rather than hardcoded tight.
+	llmModel := cfg.LLM.Model
+	if *model != "" {
+		llmModel = *model
+	}
+	llmBaseURL := cfg.LLM.BaseURL
+	if *baseURL != "" {
+		llmBaseURL = *baseURL
+	}
+	llmAPIKey := cfg.LLM.APIKey
+	if *apiKey != "" {
+		llmAPIKey = *apiKey
+	}
 	client := llm.NewClient(llm.Config{
-		BaseURL:         cfg.LLM.BaseURL,
-		APIKey:          cfg.LLM.APIKey,
-		Model:           cfg.LLM.Model,
+		BaseURL:         llmBaseURL,
+		APIKey:          llmAPIKey,
+		Model:           llmModel,
 		MaxTokens:       *maxTokens,
 		ReasoningEffort: *effort,
 		Timeout:         *timeout,
