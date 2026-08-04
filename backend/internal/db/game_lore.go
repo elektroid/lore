@@ -115,3 +115,77 @@ func DeleteGameLoreEntity(ctx context.Context, database *sql.DB, id string) erro
 	_, err := database.ExecContext(ctx, `DELETE FROM game_lore_entities WHERE id=?`, id)
 	return err
 }
+
+// FindGameLoreEntityIDByName looks up an entity the same way
+// UpsertGameLoreEntity matches for updates: by (game, source, name)
+// case-insensitively, ignoring kind. Used to resolve relation endpoints,
+// which the extractor gives us as plain names.
+func FindGameLoreEntityIDByName(ctx context.Context, database *sql.DB, gameID, sourceTitle, name string) (string, error) {
+	var id string
+	err := database.QueryRowContext(ctx,
+		`SELECT id FROM game_lore_entities WHERE game_id=? AND source_title=? AND lower(name)=lower(?)`,
+		gameID, sourceTitle, name).Scan(&id)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return id, err
+}
+
+// ── Game lore entity relations ──────────────────────────────────────────────
+
+type GameLoreEntityRelation struct {
+	ID           string `json:"id"`
+	GameID       string `json:"game_id"`
+	FromEntityID string `json:"from_entity_id"`
+	ToEntityID   string `json:"to_entity_id"`
+	Relation     string `json:"relation"`
+	SourceTitle  string `json:"source_title"`
+	SourcePage   int    `json:"source_page"`
+	CreatedAt    string `json:"created_at"`
+}
+
+func ListGameLoreEntityRelations(ctx context.Context, database *sql.DB, gameID string) ([]GameLoreEntityRelation, error) {
+	rows, err := database.QueryContext(ctx,
+		`SELECT id, game_id, from_entity_id, to_entity_id, relation, source_title, source_page, created_at
+		 FROM game_lore_entity_relations WHERE game_id=? ORDER BY relation`, gameID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []GameLoreEntityRelation
+	for rows.Next() {
+		var r GameLoreEntityRelation
+		if err := rows.Scan(&r.ID, &r.GameID, &r.FromEntityID, &r.ToEntityID, &r.Relation, &r.SourceTitle, &r.SourcePage, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		list = append(list, r)
+	}
+	if list == nil {
+		list = []GameLoreEntityRelation{}
+	}
+	return list, rows.Err()
+}
+
+type CreateGameLoreEntityRelationParams struct {
+	GameID       string
+	FromEntityID string
+	ToEntityID   string
+	Relation     string
+	SourceTitle  string
+	SourcePage   int
+}
+
+// UpsertGameLoreEntityRelation relies on the (from_entity_id, relation,
+// to_entity_id) UNIQUE constraint: re-indexing the same book, or the same
+// relation turning up again from an overlapping chunk, refreshes source_page
+// in place instead of piling up duplicate rows.
+func UpsertGameLoreEntityRelation(ctx context.Context, database *sql.DB, p CreateGameLoreEntityRelationParams) error {
+	id := uuid.New().String()
+	_, err := database.ExecContext(ctx,
+		`INSERT INTO game_lore_entity_relations(id, game_id, from_entity_id, to_entity_id, relation, source_title, source_page)
+		 VALUES(?,?,?,?,?,?,?)
+		 ON CONFLICT(from_entity_id, relation, to_entity_id)
+		 DO UPDATE SET source_page=excluded.source_page`,
+		id, p.GameID, p.FromEntityID, p.ToEntityID, p.Relation, p.SourceTitle, p.SourcePage)
+	return err
+}

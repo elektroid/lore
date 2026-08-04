@@ -35,6 +35,27 @@ CREATE TABLE IF NOT EXISTS game_lore_entities (
     created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Typed links between two game_lore_entities, e.g. Emilia Ortega
+-- --manages--> Downtown, or Emilia Ortega --rival_of--> Amanda Polishchuk.
+-- Without this, a fact like "Ortega is Downtown's City Manager" only lived as
+-- unstructured prose inside the NPC's own summary/excerpt — readable, but not
+-- something a query or a prompt-builder could walk. relation is a short
+-- snake_case verb phrase (english, like tags) rather than an enum: the
+-- vocabulary of relationships between a district, a faction, an NPC and an
+-- item is too open-ended to pin down in advance across every game system this
+-- table might end up describing.
+CREATE TABLE IF NOT EXISTS game_lore_entity_relations (
+    id             TEXT PRIMARY KEY,
+    game_id        TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    from_entity_id TEXT NOT NULL REFERENCES game_lore_entities(id) ON DELETE CASCADE,
+    to_entity_id   TEXT NOT NULL REFERENCES game_lore_entities(id) ON DELETE CASCADE,
+    relation       TEXT NOT NULL,             -- e.g. "manages", "rival_of", "member_of", "located_in"
+    source_title   TEXT NOT NULL DEFAULT '',
+    source_page    INTEGER NOT NULL DEFAULT 0,
+    created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(from_entity_id, relation, to_entity_id)
+);
+
 CREATE TABLE IF NOT EXISTS campaigns (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,

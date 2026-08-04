@@ -27,6 +27,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"log"
@@ -147,6 +148,7 @@ func main() {
 
 	stride := *chunkPages - *overlapPages
 	totalEntities := 0
+	totalRelations := 0
 	totalChunks := 0
 
 	for start := from; start <= to; start += stride {
@@ -180,6 +182,7 @@ func main() {
 		}
 
 		names := make([]string, 0, len(result.Entities))
+		chunkIDs := make(map[string]string, len(result.Entities)) // lower(name) -> id, this chunk only
 		for _, e := range result.Entities {
 			if e.Name == "" {
 				continue
@@ -188,7 +191,7 @@ func main() {
 				log.Printf("pages %d-%d: skipping %q — unknown kind %q", start, end, e.Name, e.Kind)
 				continue
 			}
-			if _, err := db.UpsertGameLoreEntity(ctx, database, db.CreateGameLoreEntityParams{
+			stored, err := db.UpsertGameLoreEntity(ctx, database, db.CreateGameLoreEntityParams{
 				GameID:      game.ID,
 				Kind:        e.Kind,
 				Name:        e.Name,
@@ -197,24 +200,75 @@ func main() {
 				Excerpt:     e.Excerpt,
 				SourceTitle: *sourceTitle,
 				SourcePage:  start,
-			}); err != nil {
+			})
+			if err != nil {
 				log.Printf("pages %d-%d: storing %q failed: %v", start, end, e.Name, err)
 				continue
 			}
+			chunkIDs[strings.ToLower(e.Name)] = stored.ID
 			names = append(names, e.Name)
 			totalEntities++
 		}
 
+		chunkRelations := 0
+		for _, r := range result.Relations {
+			if r.From == "" || r.Relation == "" || r.To == "" {
+				continue
+			}
+			fromID, err := resolveEntityID(ctx, database, game.ID, *sourceTitle, chunkIDs, r.From)
+			if err != nil {
+				log.Printf("pages %d-%d: resolving relation %q %s %q failed: %v", start, end, r.From, r.Relation, r.To, err)
+				continue
+			}
+			toID, err := resolveEntityID(ctx, database, game.ID, *sourceTitle, chunkIDs, r.To)
+			if err != nil {
+				log.Printf("pages %d-%d: resolving relation %q %s %q failed: %v", start, end, r.From, r.Relation, r.To, err)
+				continue
+			}
+			if fromID == "" || toID == "" {
+				log.Printf("pages %d-%d: skipping relation %q %s %q — endpoint not found among stored entities", start, end, r.From, r.Relation, r.To)
+				continue
+			}
+			if err := db.UpsertGameLoreEntityRelation(ctx, database, db.CreateGameLoreEntityRelationParams{
+				GameID:       game.ID,
+				FromEntityID: fromID,
+				ToEntityID:   toID,
+				Relation:     r.Relation,
+				SourceTitle:  *sourceTitle,
+				SourcePage:   start,
+			}); err != nil {
+				log.Printf("pages %d-%d: storing relation %q %s %q failed: %v", start, end, r.From, r.Relation, r.To, err)
+				continue
+			}
+			chunkRelations++
+			totalRelations++
+		}
+
 		totalChunks++
-		log.Printf("pages %d-%d: %d entities (%s) [%s]",
-			start, end, len(names), strings.Join(names, ", "), time.Since(t0).Round(time.Second))
+		log.Printf("pages %d-%d: %d entities, %d relations (%s) [%s]",
+			start, end, len(names), chunkRelations, strings.Join(names, ", "), time.Since(t0).Round(time.Second))
 
 		if end >= to {
 			break
 		}
 	}
 
-	fmt.Printf("done: %d chunks, %d entities upserted for %q (%s)\n", totalChunks, totalEntities, *sourceTitle, game.Name)
+	fmt.Printf("done: %d chunks, %d entities, %d relations upserted for %q (%s)\n",
+		totalChunks, totalEntities, totalRelations, *sourceTitle, game.Name)
+}
+
+// resolveEntityID turns a relation endpoint's plain name into an entity ID:
+// first against entities upserted earlier in this same chunk (chunkIDs,
+// keyed lower-case), then against the database for an entity a previous
+// chunk already stored. Returns "" with no error if the name matches
+// nothing — the caller logs and skips rather than treating that as fatal,
+// since the model can name an entity in a relation that wasn't itself
+// judged notable enough to extract as its own row.
+func resolveEntityID(ctx context.Context, database *sql.DB, gameID, sourceTitle string, chunkIDs map[string]string, name string) (string, error) {
+	if id, ok := chunkIDs[strings.ToLower(name)]; ok {
+		return id, nil
+	}
+	return db.FindGameLoreEntityIDByName(ctx, database, gameID, sourceTitle, name)
 }
 
 type extractedEntity struct {
@@ -225,8 +279,19 @@ type extractedEntity struct {
 	Excerpt string `json:"excerpt"`
 }
 
+// extractedRelation is a typed link between two entities named elsewhere in
+// the same result (or, thanks to the DB fallback lookup in the processing
+// loop, an entity stored by an earlier chunk). From/To are plain names, not
+// IDs — the model only ever sees text.
+type extractedRelation struct {
+	From     string `json:"from"`
+	Relation string `json:"relation"`
+	To       string `json:"to"`
+}
+
 type extractionResult struct {
-	Entities []extractedEntity `json:"entities"`
+	Entities  []extractedEntity   `json:"entities"`
+	Relations []extractedRelation `json:"relations"`
 }
 
 func systemPrompt(effort, tagHints string) string {
@@ -246,8 +311,14 @@ Règles strictes :
 - excerpt : recopie 2 à 4 phrases du texte source qui décrivent cet élément, sans les modifier.
 - Si rien de pertinent n'apparaît dans le texte, réponds avec une liste vide.
 
+Extrais aussi les relations explicites entre deux éléments nommés (personnage, faction, lieu, district, objet) :
+- from / to : les noms exacts des deux éléments, tels qu'utilisés dans "entities" (l'élément peut avoir été extrait dans un passage précédent, pas forcément dans ce texte-ci).
+- relation : un court verbe ou une courte expression en anglais, en snake_case, minuscules (ex : "manages", "rival_of", "member_of", "leads", "located_in", "reports_to", "allied_with", "hostile_to"). Choisis le sens le plus naturel ; n'invente pas de relation qui ne serait pas clairement énoncée dans le texte.
+- N'extrais que des relations explicitement affirmées par le texte, jamais déduites ou supposées.
+
 Réponds avec un objet JSON de la forme :
-{"entities": [{"kind": "...", "name": "...", "tags": "...", "summary": "...", "excerpt": "..."}]}`)
+{"entities": [{"kind": "...", "name": "...", "tags": "...", "summary": "...", "excerpt": "..."}],
+ "relations": [{"from": "...", "relation": "...", "to": "..."}]}`)
 	return sb.String()
 }
 
