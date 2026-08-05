@@ -235,6 +235,24 @@ func UpsertGameLoreEntity(ctx context.Context, database *sql.DB, p CreateGameLor
 		`SELECT `+gameLoreEntityCols+` FROM game_lore_entities WHERE id=?`, existingID))
 }
 
+// UpdateGameLoreEntityKind lets an admin correct the extractor's
+// classification by hand (e.g. "The Forlorn Hope" indexed as a faction when
+// it's actually a location) — everything else about the entity, including
+// its dedup/upsert identity (source_title, name), is untouched.
+func UpdateGameLoreEntityKind(ctx context.Context, database *sql.DB, id, kind string) (*GameLoreEntity, error) {
+	res, err := database.ExecContext(ctx, `UPDATE game_lore_entities SET kind=? WHERE id=?`, kind, id)
+	if err != nil {
+		return nil, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return nil, err
+	} else if n == 0 {
+		return nil, nil
+	}
+	return scanGameLoreEntity(database.QueryRowContext(ctx,
+		`SELECT `+gameLoreEntityCols+` FROM game_lore_entities WHERE id=?`, id))
+}
+
 func DeleteGameLoreEntity(ctx context.Context, database *sql.DB, id string) error {
 	_, err := database.ExecContext(ctx, `DELETE FROM game_lore_entities WHERE id=?`, id)
 	return err

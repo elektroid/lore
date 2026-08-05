@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Search, ArrowRight, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import AppShell from '@/components/AppShell'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { api } from '@/api/client'
 import { useDocTitle } from '@/hooks/useDocTitle'
+import { useUser } from '@/stores/auth'
 import type { Game, GameLoreEntity, GameLoreEntitiesPage, GameLoreEntityRelationsResponse } from '@/types/game'
 
 const KIND_LABELS: Record<string, string> = {
@@ -40,9 +41,12 @@ const PAGE_SIZE = 50
 
 // ── Entity detail dialog ────────────────────────────────────────────────────
 
-function EntityDetail({ entityId, gameId, onNavigate }: {
-  entityId: string; gameId: string; onNavigate: (id: string) => void
+function EntityDetail({ entityId, gameId, knownKinds, onNavigate }: {
+  entityId: string; gameId: string; knownKinds: string[]; onNavigate: (id: string) => void
 }) {
+  const queryClient = useQueryClient()
+  const isAdmin = useUser()?.role === 'superuser'
+
   const { data: entity } = useQuery({
     queryKey: ['game-lore-entity', gameId, entityId],
     queryFn: () => api.get<GameLoreEntity>(`/games/${gameId}/lore-entities/${entityId}`),
@@ -52,18 +56,41 @@ function EntityDetail({ entityId, gameId, onNavigate }: {
     queryFn: () => api.get<GameLoreEntityRelationsResponse>(`/games/${gameId}/lore-entities/${entityId}/relations`),
   })
 
+  const updateKind = useMutation({
+    mutationFn: (kind: string) => api.patch<GameLoreEntity>(`/games/${gameId}/lore-entities/${entityId}`, { kind }),
+    onSuccess: updated => {
+      queryClient.setQueryData(['game-lore-entity', gameId, entityId], updated)
+      queryClient.invalidateQueries({ queryKey: ['game-lore-entities', gameId] })
+      queryClient.invalidateQueries({ queryKey: ['game-lore-kinds', gameId] })
+    },
+  })
+
   if (!entity) {
     return <p className="text-sm text-muted-foreground py-8 text-center">Chargement…</p>
   }
 
   const outgoing = relations?.outgoing ?? []
   const incoming = relations?.incoming ?? []
+  const kindOptions = knownKinds.includes(entity.kind) ? knownKinds : [...knownKinds, entity.kind]
 
   return (
     <div className="space-y-4">
       <DialogHeader>
         <div className="flex items-center gap-2 flex-wrap">
-          <KindBadge kind={entity.kind} />
+          {isAdmin ? (
+            <select
+              value={entity.kind}
+              onChange={e => updateKind.mutate(e.target.value)}
+              disabled={updateKind.isPending}
+              className={`text-xs px-2 py-0.5 rounded-full border shrink-0 ${KIND_COLORS[entity.kind] ?? 'bg-muted text-muted-foreground border-border'}`}
+            >
+              {kindOptions.map(k => (
+                <option key={k} value={k}>{kindLabel(k)}</option>
+              ))}
+            </select>
+          ) : (
+            <KindBadge kind={entity.kind} />
+          )}
           <DialogTitle>{entity.name}</DialogTitle>
         </div>
       </DialogHeader>
@@ -282,7 +309,7 @@ export default function LorePage() {
       <Dialog open={!!selectedId} onOpenChange={open => { if (!open) setSelectedId(null) }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           {selectedId && (
-            <EntityDetail entityId={selectedId} gameId={activeGameId} onNavigate={setSelectedId} />
+            <EntityDetail entityId={selectedId} gameId={activeGameId} knownKinds={kinds} onNavigate={setSelectedId} />
           )}
         </DialogContent>
       </Dialog>

@@ -301,6 +301,35 @@ func (h *GameHandler) CreateLoreEntity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, entity)
 }
 
+// UpdateLoreEntityKind corrects an entity's kind by hand — the extractor
+// misclassifies a chunk sometimes (e.g. a location described in prose that
+// mostly talks about the faction occupying it), and merging into an existing
+// entity via UpsertGameLoreEntity only fires on re-indexing, not on demand.
+func (h *GameHandler) UpdateLoreEntityKind(w http.ResponseWriter, r *http.Request) {
+	entityID := chi.URLParam(r, "entityId")
+	var body struct {
+		Kind string `json:"kind"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if body.Kind == "" {
+		writeError(w, http.StatusBadRequest, "kind is required")
+		return
+	}
+	entity, err := db.UpdateGameLoreEntityKind(r.Context(), h.db, entityID, body.Kind)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if entity == nil {
+		writeError(w, http.StatusNotFound, "entity not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, entity)
+}
+
 func (h *GameHandler) DeleteLoreEntity(w http.ResponseWriter, r *http.Request) {
 	entityID := chi.URLParam(r, "entityId")
 	if err := db.DeleteGameLoreEntity(r.Context(), h.db, entityID); err != nil {
