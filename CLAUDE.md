@@ -2,8 +2,10 @@
 
 ## Dev servers — already running
 
-**The dev servers are started by hand in a terminal (`make dev`). Assume they are
-up. Do not start, restart, or kill them.**
+**The dev servers are normally started by hand in a terminal (`make dev`).
+Assume they are up. Do not restart or kill them.** If they're actually down
+(check before assuming — e.g. a curl to `:8080` refuses), it's fine to start
+them yourself with `make dev`, run in the background so the shell stays free.
 
 | | Port | Runner | Notes |
 |---|---|---|---|
