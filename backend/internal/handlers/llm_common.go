@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,6 +18,62 @@ func appendCampaignContext(sb *strings.Builder, campaign *db.Campaign) {
 	}
 	if campaign.Genre != "" {
 		sb.WriteString(fmt.Sprintf("\nGenre: %s.", campaign.Genre))
+	}
+}
+
+// joinMapValues concatenates a "current field values" map (name/role/
+// description/...) into one string — used as the keyword-search query text
+// for appendGameLoreContext, since together those fields describe what's
+// actually being written right now.
+func joinMapValues(m map[string]string) string {
+	parts := make([]string, 0, len(m))
+	for _, v := range m {
+		if v != "" {
+			parts = append(parts, v)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// loreFactsPerCall caps how many indexed sourcebook entities get folded into
+// one LLM call — enough to be useful, small enough that it doesn't crowd out
+// the campaign's own content in the prompt.
+const loreFactsPerCall = 6
+
+// appendGameLoreContext grounds a prompt in whatever's been indexed for the
+// campaign's game system (see cmd/index-sourcebook): a keyword-overlap
+// search against queryText — a GM's brief, an NPC's current name/description,
+// a scene summary, whatever the caller has on hand for "what's this actually
+// about" — surfaces a handful of relevant sourcebook facts. A no-op (nothing
+// appended, no error) when the campaign has no game, the game has no
+// indexed lore, or nothing matches — a campaign using a homebrew or
+// unindexed game system generates exactly as it did before this existed.
+func appendGameLoreContext(ctx context.Context, sb *strings.Builder, database *sql.DB, gameID, queryText string) {
+	if gameID == "" {
+		return
+	}
+	entities, err := db.SearchGameLoreEntities(ctx, database, gameID, queryText, loreFactsPerCall)
+	if err != nil || len(entities) == 0 {
+		return
+	}
+	sb.WriteString("\n\nFaits établis de l'univers, tirés du supplément officiel (reste cohérent avec, sans les recopier mot pour mot) :")
+	for _, e := range entities {
+		summary := e.Summary
+		if summary == "" {
+			summary = e.Excerpt
+		}
+		fmt.Fprintf(sb, "\n- [%s] %s : %s", e.Kind, e.Name, summary)
+		if outgoing, _, err := db.ListGameLoreEntityRelationsFor(ctx, database, e.ID); err == nil && len(outgoing) > 0 {
+			n := len(outgoing)
+			if n > 3 {
+				n = 3
+			}
+			rels := make([]string, n)
+			for i, r := range outgoing[:n] {
+				rels[i] = fmt.Sprintf("%s %s", r.Relation, r.Name)
+			}
+			fmt.Fprintf(sb, " (%s)", strings.Join(rels, ", "))
+		}
 	}
 }
 

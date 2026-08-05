@@ -52,6 +52,7 @@ func (h *EntityHandler) DevelopLocation(w http.ResponseWriter, r *http.Request) 
 	sb.WriteString("Tu réponds UNIQUEMENT avec du JSON valide, sans markdown, sans explication.\n")
 	sb.WriteString("Réponds toujours en français.\n")
 	appendCampaignContext(&sb, campaign)
+	appendGameLoreContext(r.Context(), &sb, h.db, campaign.GameID, joinMapValues(current))
 	appendSteering(&sb, req)
 
 	locJSON, _ := json.Marshal(current)

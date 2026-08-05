@@ -80,6 +80,22 @@ So running the factory on a live campaign extends it — the recurring fixer
 stays one NPC with one set of images — instead of cloning it. The review UI
 marks those items *Réutilisé* so the GM can see it happening.
 
+### Grounded in the sourcebook, when there is one
+
+`PromptContext.LoreFacts` is a second, independent source of "don't invent
+this from nothing": entities indexed from the campaign's game system (see
+`cmd/index-sourcebook`) that keyword-match the GM's brief (outline) or the
+scene being expanded. `ScenarioFactoryHandler.promptContext` builds it via
+`db.SearchGameLoreEntities` — a cheap keyword-overlap search, not semantic,
+since there's no embedding index in this project — and folds in each
+matched entity's top few relations too, so "Downtown" shows up already
+knowing it's `managed_by Chamber of Commerce`.
+
+Unlike `ExistingNPCs`/`ExistingLocations`/`ExistingFactions`, these are
+facts to be *consistent with*, not names to reuse verbatim — a campaign
+using a homebrew or unindexed game system just gets an empty `LoreFacts`
+and generates exactly as before this existed.
+
 ### Names become mentions
 
 By the time a scene is written, commit is holding the uuid of every entity the

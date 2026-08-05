@@ -36,11 +36,15 @@ const (
 // ── LLM plumbing ──────────────────────────────────────────────────────────────
 
 // promptContext gathers the world the model writes into: the campaign's system
-// and genre, plus the names it may reuse rather than duplicate.
+// and genre, the names it may reuse rather than duplicate, and — when
+// queryText matches anything — indexed sourcebook facts to ground the
+// generation in (see db.SearchGameLoreEntities). queryText is the GM's brief
+// for a fresh outline, or a scene's title+summary when expanding one; pass
+// "" to skip lore grounding (e.g. nothing relevant on hand yet).
 //
 // Names only, never descriptions — which is also why no mention ref can leak
 // into a factory prompt the way it could into a synopsis one.
-func (h *ScenarioFactoryHandler) promptContext(ctx context.Context, campaign *db.Campaign) factory.PromptContext {
+func (h *ScenarioFactoryHandler) promptContext(ctx context.Context, campaign *db.Campaign, queryText string) factory.PromptContext {
 	pc := factory.PromptContext{
 		GameName: campaign.GameName,
 		Genre:    campaign.Genre,
@@ -63,6 +67,29 @@ func (h *ScenarioFactoryHandler) promptContext(ctx context.Context, campaign *db
 		for _, f := range facs {
 			if f.Name != "" {
 				pc.ExistingFactions = append(pc.ExistingFactions, f.Name)
+			}
+		}
+	}
+	if campaign.GameID != "" && queryText != "" {
+		if entities, err := db.SearchGameLoreEntities(ctx, h.db, campaign.GameID, queryText, 6); err == nil {
+			for _, e := range entities {
+				summary := e.Summary
+				if summary == "" {
+					summary = e.Excerpt
+				}
+				fact := fmt.Sprintf("[%s] %s : %s", e.Kind, e.Name, summary)
+				if outgoing, _, err := db.ListGameLoreEntityRelationsFor(ctx, h.db, e.ID); err == nil && len(outgoing) > 0 {
+					n := len(outgoing)
+					if n > 3 {
+						n = 3
+					}
+					rels := make([]string, n)
+					for i, r := range outgoing[:n] {
+						rels[i] = fmt.Sprintf("%s %s", r.Relation, r.Name)
+					}
+					fact += fmt.Sprintf(" (%s)", strings.Join(rels, ", "))
+				}
+				pc.LoreFacts = append(pc.LoreFacts, fact)
 			}
 		}
 	}
@@ -98,7 +125,7 @@ func (h *ScenarioFactoryHandler) outline(ctx context.Context, campaign *db.Campa
 	if err != nil {
 		return factory.Proposal{}, err
 	}
-	sysPrompt := factory.SystemPrompt(h.promptContext(ctx, campaign))
+	sysPrompt := factory.SystemPrompt(h.promptContext(ctx, campaign, brief))
 	userPrompt := factory.OutlinePrompt(brief, sceneCount, instruction)
 
 	proposal, err := llm.Decode[factory.Proposal](ctx, client, sysPrompt, userPrompt)
@@ -300,7 +327,7 @@ func (h *ScenarioFactoryHandler) ExpandScene(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	sysPrompt := factory.SystemPrompt(h.promptContext(r.Context(), campaign))
+	sysPrompt := factory.SystemPrompt(h.promptContext(r.Context(), campaign, scene.Title+" "+scene.Summary))
 	userPrompt := factory.ExpandPrompt(&proposal, scene, body.Instruction, body.Fields)
 
 	result, err := llm.Decode[expandResult](r.Context(), client, sysPrompt, userPrompt)

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -20,7 +21,7 @@ type BrainstormHandler struct {
 
 // ── system prompt ─────────────────────────────────────────────────────────────
 
-func buildBrainstormSystemPrompt(campaign *db.Campaign, scenario *db.Scenario, sc synopsisCtx) string {
+func buildBrainstormSystemPrompt(ctx context.Context, database *sql.DB, campaign *db.Campaign, scenario *db.Scenario, sc synopsisCtx, latestMessage string) string {
 	var sb strings.Builder
 	sb.WriteString("You are a creative assistant for tabletop RPG game masters. ")
 	sb.WriteString("You help brainstorm and develop scenarios in a conversational way.\n")
@@ -56,6 +57,8 @@ func buildBrainstormSystemPrompt(campaign *db.Campaign, scenario *db.Scenario, s
 			}
 		}
 	}
+
+	appendGameLoreContext(ctx, &sb, database, campaign.GameID, sc.Hook.Content+" "+latestMessage)
 
 	return sb.String()
 }
@@ -199,7 +202,7 @@ func (h *BrainstormHandler) SendMessage(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	systemPrompt := buildBrainstormSystemPrompt(campaign, scenario, sc)
+	systemPrompt := buildBrainstormSystemPrompt(r.Context(), h.db, campaign, scenario, sc, body.Text)
 
 	// Load full history for multi-turn
 	history, err := db.ListBrainstormMessages(r.Context(), h.db, threadID)

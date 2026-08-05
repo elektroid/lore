@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -55,7 +56,7 @@ func parseSynopsisCtx(s *db.Synopsis) synopsisCtx {
 
 // ── system prompt ─────────────────────────────────────────────────────────
 
-func buildSystemPrompt(campaign *db.Campaign) string {
+func buildSystemPrompt(ctx context.Context, database *sql.DB, campaign *db.Campaign, sc synopsisCtx) string {
 	var sb strings.Builder
 	sb.WriteString("Tu es un assistant spécialisé dans l'écriture de scénarios de jeux de rôle (JdR).\n")
 	sb.WriteString("Tu réponds UNIQUEMENT avec du JSON valide, sans markdown, sans explication, sans aucun texte avant ou après le JSON.\n")
@@ -63,8 +64,26 @@ func buildSystemPrompt(campaign *db.Campaign) string {
 	sb.WriteString("Ne modifie jamais les éléments dont le statut est \"confirmed\".")
 
 	appendCampaignContext(&sb, campaign)
+	appendGameLoreContext(ctx, &sb, database, campaign.GameID, synopsisQueryText(sc))
 
 	return sb.String()
+}
+
+// synopsisQueryText concatenates whatever the synopsis has established so
+// far — hook, NPC names/roles, scene titles — as the keyword-search query
+// for grounding new content in the same world the GM is already writing.
+func synopsisQueryText(sc synopsisCtx) string {
+	var parts []string
+	if sc.Hook.Content != "" {
+		parts = append(parts, sc.Hook.Content)
+	}
+	for _, n := range sc.NPCs {
+		parts = append(parts, n.Name, n.Role)
+	}
+	for _, s := range sc.Scenes {
+		parts = append(parts, s.Title)
+	}
+	return strings.Join(parts, " ")
 }
 
 // ── shared infra ─────────────────────────────────────────────────────────
@@ -120,7 +139,7 @@ func (h *SynopsisHandler) llmContext(r *http.Request, scenarioID string) (*llm.C
 		}
 	}
 
-	return llm.NewClient(cfg), synopsis, sc, buildSystemPrompt(campaign), nil
+	return llm.NewClient(cfg), synopsis, sc, buildSystemPrompt(r.Context(), h.db, campaign, sc), nil
 }
 
 func (h *SynopsisHandler) snapshotBefore(ctx context.Context, synopsis *db.Synopsis, label string) {

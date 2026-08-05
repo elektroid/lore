@@ -54,6 +54,7 @@ func (h *EntityHandler) DevelopNPCSuggestion(w http.ResponseWriter, r *http.Requ
 	sb.WriteString("Tu réponds UNIQUEMENT avec du JSON valide, sans markdown, sans explication.\n")
 	sb.WriteString("Réponds toujours en français.\n")
 	appendCampaignContext(&sb, campaign)
+	appendGameLoreContext(r.Context(), &sb, h.db, campaign.GameID, joinMapValues(current))
 	appendSteering(&sb, req)
 
 	npcJSON, _ := json.Marshal(current)

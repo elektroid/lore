@@ -16,6 +16,10 @@ type PromptContext struct {
 	ExistingNPCs      []string
 	ExistingLocations []string
 	ExistingFactions  []string
+	// LoreFacts are sourcebook facts for GameName, pre-formatted by the
+	// caller (kind, name, summary, a couple of its relations) — see
+	// db.SearchGameLoreEntities. Nil when the game has no indexed lore.
+	LoreFacts []string
 }
 
 // SystemPrompt frames every factory call: JSON only, French, and the world.
@@ -39,6 +43,14 @@ func SystemPrompt(ctx PromptContext) string {
 		sb.WriteString("\n\nTu peux réutiliser ces éléments existants : reprends alors leur nom EXACTEMENT " +
 			"tel qu'il est écrit ci-dessus, et n'invente pas de variante orthographique.")
 	}
+
+	if len(ctx.LoreFacts) > 0 {
+		sb.WriteString("\n\nFaits établis de l'univers, tirés du supplément officiel (reste cohérent avec, sans les recopier mot pour mot) :")
+		for _, f := range ctx.LoreFacts {
+			fmt.Fprintf(&sb, "\n- %s", f)
+		}
+	}
+
 	return sb.String()
 }
 

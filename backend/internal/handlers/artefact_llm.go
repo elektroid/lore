@@ -55,6 +55,7 @@ func (h *ImageLLMHandler) DevelopArtefact(w http.ResponseWriter, r *http.Request
 	sb.WriteString("Respond ONLY with valid JSON, no markdown, no explanation.\n")
 	sb.WriteString("Always respond in French.\n")
 	appendCampaignContext(&sb, campaign)
+	appendGameLoreContext(r.Context(), &sb, h.db, campaign.GameID, joinMapValues(current))
 	appendSteering(&sb, req)
 
 	artefactJSON, _ := json.Marshal(current)
