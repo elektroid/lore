@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -53,6 +54,88 @@ func ListGameLoreEntities(ctx context.Context, database *sql.DB, gameID string) 
 		list = []GameLoreEntity{}
 	}
 	return list, rows.Err()
+}
+
+// ListGameLoreEntitiesPage is what the browse UI uses instead of
+// ListGameLoreEntities: a game can carry thousands of rows (Night City 2045
+// alone indexed 2000+), so the client filters/paginates against the
+// database rather than pulling everything over the wire every time. kind
+// and query are both optional (empty string = no filter on that field);
+// query matches name/tags/summary via a case-insensitive substring search.
+func ListGameLoreEntitiesPage(ctx context.Context, database *sql.DB, gameID, kind, query string, limit, offset int) ([]GameLoreEntity, int, error) {
+	where := `game_id=?`
+	args := []any{gameID}
+	if kind != "" {
+		where += ` AND kind=?`
+		args = append(args, kind)
+	}
+	if query != "" {
+		where += ` AND (name LIKE ? ESCAPE '\' OR tags LIKE ? ESCAPE '\' OR summary LIKE ? ESCAPE '\')`
+		like := `%` + escapeLike(query) + `%`
+		args = append(args, like, like, like)
+	}
+
+	var total int
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM game_lore_entities WHERE `+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	pageArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := database.QueryContext(ctx,
+		`SELECT `+gameLoreEntityCols+` FROM game_lore_entities WHERE `+where+` ORDER BY kind, name LIMIT ? OFFSET ?`, pageArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var list []GameLoreEntity
+	for rows.Next() {
+		e, err := scanGameLoreEntity(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		list = append(list, *e)
+	}
+	if list == nil {
+		list = []GameLoreEntity{}
+	}
+	return list, total, rows.Err()
+}
+
+// escapeLike escapes SQLite LIKE wildcards in user input so a search for
+// e.g. "50%" or "under_ground" doesn't get interpreted as a pattern.
+func escapeLike(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
+// CountGameLoreEntitiesByKind powers the browse UI's filter chips ("Faction
+// (281)") without pulling every row just to count them client-side.
+func CountGameLoreEntitiesByKind(ctx context.Context, database *sql.DB, gameID string) (map[string]int, error) {
+	rows, err := database.QueryContext(ctx,
+		`SELECT kind, COUNT(*) FROM game_lore_entities WHERE game_id=? GROUP BY kind`, gameID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	for rows.Next() {
+		var kind string
+		var n int
+		if err := rows.Scan(&kind, &n); err != nil {
+			return nil, err
+		}
+		counts[kind] = n
+	}
+	return counts, rows.Err()
+}
+
+func GetGameLoreEntity(ctx context.Context, database *sql.DB, id string) (*GameLoreEntity, error) {
+	e, err := scanGameLoreEntity(database.QueryRowContext(ctx,
+		`SELECT `+gameLoreEntityCols+` FROM game_lore_entities WHERE id=?`, id))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return e, err
 }
 
 type CreateGameLoreEntityParams struct {
@@ -129,6 +212,65 @@ func FindGameLoreEntityIDByName(ctx context.Context, database *sql.DB, gameID, s
 		return "", nil
 	}
 	return id, err
+}
+
+// RelatedEntityLink is one relation shown from a single entity's point of
+// view, with the *other* end's name/kind embedded so the browse UI's detail
+// view can render and link to it without ever having loaded the full entity
+// list — needed now that ListGameLoreEntitiesPage no longer does that.
+type RelatedEntityLink struct {
+	RelationID string `json:"relation_id"`
+	Relation   string `json:"relation"`
+	EntityID   string `json:"entity_id"`
+	Name       string `json:"name"`
+	Kind       string `json:"kind"`
+}
+
+// ListGameLoreEntityRelationsFor returns this entity's relations split by
+// direction: outgoing (this entity is from_entity_id) and incoming (this
+// entity is to_entity_id).
+func ListGameLoreEntityRelationsFor(ctx context.Context, database *sql.DB, entityID string) (outgoing, incoming []RelatedEntityLink, err error) {
+	outRows, err := database.QueryContext(ctx,
+		`SELECT r.id, r.relation, e.id, e.name, e.kind
+		 FROM game_lore_entity_relations r JOIN game_lore_entities e ON e.id = r.to_entity_id
+		 WHERE r.from_entity_id=? ORDER BY r.relation`, entityID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer outRows.Close()
+	for outRows.Next() {
+		var l RelatedEntityLink
+		if err := outRows.Scan(&l.RelationID, &l.Relation, &l.EntityID, &l.Name, &l.Kind); err != nil {
+			return nil, nil, err
+		}
+		outgoing = append(outgoing, l)
+	}
+	if err := outRows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	inRows, err := database.QueryContext(ctx,
+		`SELECT r.id, r.relation, e.id, e.name, e.kind
+		 FROM game_lore_entity_relations r JOIN game_lore_entities e ON e.id = r.from_entity_id
+		 WHERE r.to_entity_id=? ORDER BY r.relation`, entityID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer inRows.Close()
+	for inRows.Next() {
+		var l RelatedEntityLink
+		if err := inRows.Scan(&l.RelationID, &l.Relation, &l.EntityID, &l.Name, &l.Kind); err != nil {
+			return nil, nil, err
+		}
+		incoming = append(incoming, l)
+	}
+	if outgoing == nil {
+		outgoing = []RelatedEntityLink{}
+	}
+	if incoming == nil {
+		incoming = []RelatedEntityLink{}
+	}
+	return outgoing, incoming, inRows.Err()
 }
 
 // ── Game lore entity relations ──────────────────────────────────────────────

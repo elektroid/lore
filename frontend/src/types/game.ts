@@ -36,3 +36,23 @@ export interface GameLoreEntityRelation {
   source_page: number
   created_at: string
 }
+
+export interface GameLoreEntitiesPage {
+  entities: GameLoreEntity[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface RelatedEntityLink {
+  relation_id: string
+  relation: string
+  entity_id: string
+  name: string
+  kind: string
+}
+
+export interface GameLoreEntityRelationsResponse {
+  outgoing: RelatedEntityLink[]
+  incoming: RelatedEntityLink[]
+}

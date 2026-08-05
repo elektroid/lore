@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -171,14 +172,83 @@ func (h *GameHandler) ListDocuments(w http.ResponseWriter, r *http.Request) {
 // NPC archetypes, ...). Reading is open like the rest of the game catalogue;
 // writing is the administrator's, same as everything else on a game.
 
+type lorePage struct {
+	Entities []db.GameLoreEntity `json:"entities"`
+	Total    int                 `json:"total"`
+	Page     int                 `json:"page"`
+	PageSize int                 `json:"page_size"`
+}
+
+// ListLoreEntities paginates server-side — a game's lore can run into the
+// thousands of rows (Night City 2045 alone is 2000+), so ?page/?page_size
+// and the ?kind/?q filters are pushed down to SQL rather than shipping
+// everything to the client and filtering there.
 func (h *GameHandler) ListLoreEntities(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	entities, err := db.ListGameLoreEntities(r.Context(), h.db, id)
+	kind := r.URL.Query().Get("kind")
+	q := r.URL.Query().Get("q")
+
+	page := 1
+	if v := r.URL.Query().Get("page"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			page = n
+		}
+	}
+	pageSize := 50
+	if v := r.URL.Query().Get("page_size"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			pageSize = n
+		}
+	}
+
+	entities, total, err := db.ListGameLoreEntitiesPage(r.Context(), h.db, id, kind, q, pageSize, (page-1)*pageSize)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, entities)
+	writeJSON(w, http.StatusOK, lorePage{Entities: entities, Total: total, Page: page, PageSize: pageSize})
+}
+
+// GetLoreEntity fetches a single entity by ID — used when the browse UI
+// navigates to an entity via a relation link that may point outside the
+// currently loaded page.
+func (h *GameHandler) GetLoreEntity(w http.ResponseWriter, r *http.Request) {
+	entityID := chi.URLParam(r, "entityId")
+	entity, err := db.GetGameLoreEntity(r.Context(), h.db, entityID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if entity == nil {
+		writeError(w, http.StatusNotFound, "entity not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, entity)
+}
+
+// ListLoreEntityKinds powers the browse UI's filter chips with counts
+// ("Faction (281)") without pulling every row just to count them.
+func (h *GameHandler) ListLoreEntityKinds(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	counts, err := db.CountGameLoreEntitiesByKind(r.Context(), h.db, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, counts)
+}
+
+// GetLoreEntityRelations returns one entity's relations, split by direction,
+// with the other end's name/kind embedded so the client never needs the
+// full (thousands-of-rows) entity list just to render a detail view.
+func (h *GameHandler) GetLoreEntityRelations(w http.ResponseWriter, r *http.Request) {
+	entityID := chi.URLParam(r, "entityId")
+	outgoing, incoming, err := db.ListGameLoreEntityRelationsFor(r.Context(), h.db, entityID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"outgoing": outgoing, "incoming": incoming})
 }
 
 type gameLoreEntityBody struct {

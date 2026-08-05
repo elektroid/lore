@@ -1,12 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search, ArrowRight, ArrowLeft } from 'lucide-react'
+import { Search, ArrowRight, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import AppShell from '@/components/AppShell'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { api } from '@/api/client'
 import { useDocTitle } from '@/hooks/useDocTitle'
-import type { Game, GameLoreEntity, GameLoreEntityRelation } from '@/types/game'
+import type { Game, GameLoreEntity, GameLoreEntitiesPage, GameLoreEntityRelationsResponse } from '@/types/game'
 
 const KIND_LABELS: Record<string, string> = {
   district: 'District',
@@ -36,20 +36,28 @@ function KindBadge({ kind }: { kind: string }) {
   )
 }
 
-const PAGE_SIZE = 100
+const PAGE_SIZE = 50
 
 // ── Entity detail dialog ────────────────────────────────────────────────────
 
-function EntityDetail({
-  entity, entitiesById, relations, onNavigate,
-}: {
-  entity: GameLoreEntity
-  entitiesById: Map<string, GameLoreEntity>
-  relations: GameLoreEntityRelation[]
-  onNavigate: (id: string) => void
+function EntityDetail({ entityId, gameId, onNavigate }: {
+  entityId: string; gameId: string; onNavigate: (id: string) => void
 }) {
-  const outgoing = relations.filter(r => r.from_entity_id === entity.id)
-  const incoming = relations.filter(r => r.to_entity_id === entity.id)
+  const { data: entity } = useQuery({
+    queryKey: ['game-lore-entity', gameId, entityId],
+    queryFn: () => api.get<GameLoreEntity>(`/games/${gameId}/lore-entities/${entityId}`),
+  })
+  const { data: relations } = useQuery({
+    queryKey: ['game-lore-entity-relations', gameId, entityId],
+    queryFn: () => api.get<GameLoreEntityRelationsResponse>(`/games/${gameId}/lore-entities/${entityId}/relations`),
+  })
+
+  if (!entity) {
+    return <p className="text-sm text-muted-foreground py-8 text-center">Chargement…</p>
+  }
+
+  const outgoing = relations?.outgoing ?? []
+  const incoming = relations?.incoming ?? []
 
   return (
     <div className="space-y-4">
@@ -82,38 +90,30 @@ function EntityDetail({
 
       {(outgoing.length > 0 || incoming.length > 0) && (
         <div className="space-y-2 pt-2 border-t">
-          {outgoing.map(r => {
-            const target = entitiesById.get(r.to_entity_id)
-            if (!target) return null
-            return (
-              <button
-                key={r.id}
-                onClick={() => onNavigate(target.id)}
-                className="w-full flex items-center gap-2 text-sm text-left hover:bg-muted rounded px-2 py-1 -mx-2"
-              >
-                <span className="text-muted-foreground shrink-0">{r.relation}</span>
-                <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
-                <KindBadge kind={target.kind} />
-                <span className="truncate">{target.name}</span>
-              </button>
-            )
-          })}
-          {incoming.map(r => {
-            const source = entitiesById.get(r.from_entity_id)
-            if (!source) return null
-            return (
-              <button
-                key={r.id}
-                onClick={() => onNavigate(source.id)}
-                className="w-full flex items-center gap-2 text-sm text-left hover:bg-muted rounded px-2 py-1 -mx-2"
-              >
-                <KindBadge kind={source.kind} />
-                <span className="truncate">{source.name}</span>
-                <ArrowLeft className="h-3 w-3 text-muted-foreground shrink-0" />
-                <span className="text-muted-foreground shrink-0">{r.relation}</span>
-              </button>
-            )
-          })}
+          {outgoing.map(l => (
+            <button
+              key={l.relation_id}
+              onClick={() => onNavigate(l.entity_id)}
+              className="w-full flex items-center gap-2 text-sm text-left hover:bg-muted rounded px-2 py-1 -mx-2"
+            >
+              <span className="text-muted-foreground shrink-0">{l.relation}</span>
+              <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+              <KindBadge kind={l.kind} />
+              <span className="truncate">{l.name}</span>
+            </button>
+          ))}
+          {incoming.map(l => (
+            <button
+              key={l.relation_id}
+              onClick={() => onNavigate(l.entity_id)}
+              className="w-full flex items-center gap-2 text-sm text-left hover:bg-muted rounded px-2 py-1 -mx-2"
+            >
+              <KindBadge kind={l.kind} />
+              <span className="truncate">{l.name}</span>
+              <ArrowLeft className="h-3 w-3 text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground shrink-0">{l.relation}</span>
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -133,66 +133,49 @@ export default function LorePage() {
   const [gameId, setGameId] = useState<string>('')
   const activeGameId = gameId || games[0]?.id || ''
 
-  const { data: entities = [], isLoading: entitiesLoading } = useQuery({
-    queryKey: ['game-lore-entities', activeGameId],
-    queryFn: () => api.get<GameLoreEntity[]>(`/games/${activeGameId}/lore-entities`),
+  const { data: kindCounts = {} } = useQuery({
+    queryKey: ['game-lore-kinds', activeGameId],
+    queryFn: () => api.get<Record<string, number>>(`/games/${activeGameId}/lore-entity-kinds`),
     enabled: !!activeGameId,
   })
-
-  const { data: relations = [] } = useQuery({
-    queryKey: ['game-lore-relations', activeGameId],
-    queryFn: () => api.get<GameLoreEntityRelation[]>(`/games/${activeGameId}/lore-relations`),
-    enabled: !!activeGameId,
-  })
-
-  const entitiesById = useMemo(() => {
-    const m = new Map<string, GameLoreEntity>()
-    for (const e of entities) m.set(e.id, e)
-    return m
-  }, [entities])
-
-  const kindCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
-    for (const e of entities) counts[e.kind] = (counts[e.kind] ?? 0) + 1
-    return counts
-  }, [entities])
-
-  const kinds = useMemo(
-    () => Object.keys(kindCounts).sort((a, b) => kindLabel(a).localeCompare(kindLabel(b))),
-    [kindCounts],
-  )
+  const kinds = Object.keys(kindCounts).sort((a, b) => kindLabel(a).localeCompare(kindLabel(b)))
+  const totalEntities = Object.values(kindCounts).reduce((a, b) => a + b, 0)
 
   const [activeKind, setActiveKind] = useState<string>('')
   const [query, setQuery] = useState('')
-  const [visible, setVisible] = useState(PAGE_SIZE)
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  const q = query.trim().toLowerCase()
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query.trim()), 250)
+    return () => clearTimeout(t)
+  }, [query])
 
-  const filtered = useMemo(() => {
-    if (q) {
-      return entities.filter(e =>
-        e.name.toLowerCase().includes(q) ||
-        e.tags.toLowerCase().includes(q) ||
-        e.summary.toLowerCase().includes(q)
-      )
-    }
-    const kind = activeKind || kinds[0]
-    return entities.filter(e => e.kind === kind)
-  }, [entities, q, activeKind, kinds])
+  const { data, isLoading } = useQuery({
+    queryKey: ['game-lore-entities', activeGameId, activeKind, debouncedQuery, page],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) })
+      if (activeKind) params.set('kind', activeKind)
+      if (debouncedQuery) params.set('q', debouncedQuery)
+      return api.get<GameLoreEntitiesPage>(`/games/${activeGameId}/lore-entities?${params.toString()}`)
+    },
+    enabled: !!activeGameId,
+  })
 
-  const shown = filtered.slice(0, visible)
-  const selected = selectedId ? entitiesById.get(selectedId) ?? null : null
+  const entities = data?.entities ?? []
+  const total = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
     <AppShell crumbs={[{ label: 'Connaissances' }]}>
       <main className="max-w-4xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
           <h1 className="text-2xl font-bold">Connaissances de jeu</h1>
-          {games.length > 1 && (
+          {games.length > 0 && (
             <select
               value={activeGameId}
-              onChange={e => { setGameId(e.target.value); setActiveKind(''); setQuery(''); setVisible(PAGE_SIZE) }}
+              onChange={e => { setGameId(e.target.value); setActiveKind(''); setQuery(''); setDebouncedQuery(''); setPage(1) }}
               className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
             >
               {games.map(g => (
@@ -212,20 +195,30 @@ export default function LorePage() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 value={query}
-                onChange={e => { setQuery(e.target.value); setVisible(PAGE_SIZE) }}
+                onChange={e => { setQuery(e.target.value); setPage(1) }}
                 placeholder="Rechercher un nom, un tag…"
                 className="pl-8"
               />
             </div>
 
-            {!q && (
+            {kinds.length > 0 && (
               <div className="flex gap-1.5 mb-4 flex-wrap">
+                <button
+                  onClick={() => { setActiveKind(''); setPage(1) }}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                    activeKind === ''
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'text-muted-foreground border-border hover:bg-muted'
+                  }`}
+                >
+                  Tous <span className="opacity-70">({totalEntities})</span>
+                </button>
                 {kinds.map(k => (
                   <button
                     key={k}
-                    onClick={() => { setActiveKind(k); setVisible(PAGE_SIZE) }}
+                    onClick={() => { setActiveKind(k); setPage(1) }}
                     className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                      (activeKind || kinds[0]) === k
+                      activeKind === k
                         ? 'bg-primary text-primary-foreground border-primary'
                         : 'text-muted-foreground border-border hover:bg-muted'
                     }`}
@@ -236,14 +229,14 @@ export default function LorePage() {
               </div>
             )}
 
-            {entitiesLoading && <p className="text-sm text-muted-foreground">Chargement…</p>}
+            {isLoading && <p className="text-sm text-muted-foreground">Chargement…</p>}
 
-            {!entitiesLoading && filtered.length === 0 && (
+            {!isLoading && entities.length === 0 && (
               <p className="text-sm text-muted-foreground">Aucun résultat.</p>
             )}
 
             <ul className="divide-y">
-              {shown.map(e => (
+              {entities.map(e => (
                 <li key={e.id}>
                   <button
                     onClick={() => setSelectedId(e.id)}
@@ -261,27 +254,35 @@ export default function LorePage() {
               ))}
             </ul>
 
-            {filtered.length > visible && (
-              <button
-                onClick={() => setVisible(v => v + PAGE_SIZE)}
-                className="mt-4 text-sm text-muted-foreground hover:text-foreground"
-              >
-                Afficher {Math.min(PAGE_SIZE, filtered.length - visible)} de plus… ({filtered.length - visible} restants)
-              </button>
+            {total > 0 && (
+              <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
+                <span>Page {page} sur {totalPages} ({total} résultats)</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                    className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                    className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
             )}
           </>
         )}
       </main>
 
-      <Dialog open={!!selected} onOpenChange={open => { if (!open) setSelectedId(null) }}>
+      <Dialog open={!!selectedId} onOpenChange={open => { if (!open) setSelectedId(null) }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          {selected && (
-            <EntityDetail
-              entity={selected}
-              entitiesById={entitiesById}
-              relations={relations}
-              onNavigate={setSelectedId}
-            />
+          {selectedId && (
+            <EntityDetail entityId={selectedId} gameId={activeGameId} onNavigate={setSelectedId} />
           )}
         </DialogContent>
       </Dialog>
