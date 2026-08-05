@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"math"
 	"sort"
 	"strings"
 
@@ -511,10 +512,32 @@ var stopWords = map[string]bool{
 	"pas": true, "cette": true, "ces": true, "vers": true, "chez": true,
 }
 
+// stemPrefixLen is how many runes of a long word extractKeywords keeps.
+// The sourcebook's entity names/tags are English, GM briefs are typically
+// French, and the extractor's own summaries are French — so "university",
+// "université" and "universitaire" need to match each other even though
+// none is a substring of another. Real stemming would need a language-
+// aware library; truncating to a shared root is the cheap version, and
+// French/English happen to share a lot of Latinate vocabulary that keeps a
+// common prefix across the two languages' inflections (université ↔
+// universitaire ↔ university all start "univers"). It will occasionally
+// glue together two unrelated words that happen to share a 7-letter
+// prefix — an acceptable false-positive rate for "extra grounding context",
+// not something anything downstream treats as authoritative.
+const stemPrefixLen = 7
+
+func stem(word string) string {
+	r := []rune(word)
+	if len(r) > stemPrefixLen {
+		return string(r[:stemPrefixLen])
+	}
+	return word
+}
+
 // extractKeywords lowercases queryText, splits on anything that isn't a
-// letter or digit, and keeps distinct tokens of at least 4 characters that
+// letter or digit, keeps distinct tokens of at least 4 characters that
 // aren't stop words — short enough to still catch "gang", "corp", long
-// enough to skip most filler.
+// enough to skip most filler — and stems anything longer (see stem).
 func extractKeywords(queryText string) []string {
 	fields := strings.FieldsFunc(strings.ToLower(queryText), func(r rune) bool {
 		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r >= 'à' && r <= 'ÿ')
@@ -522,13 +545,42 @@ func extractKeywords(queryText string) []string {
 	seen := map[string]bool{}
 	var keywords []string
 	for _, f := range fields {
-		if len(f) < 4 || stopWords[f] || seen[f] {
+		if len(f) < 4 || stopWords[f] {
+			continue
+		}
+		f = stem(f)
+		if seen[f] {
 			continue
 		}
 		seen[f] = true
 		keywords = append(keywords, f)
 	}
 	return keywords
+}
+
+// haystackPunctuation gets replaced with spaces before word-boundary
+// matching, so punctuation-joined text ("l'université", "gang/faction")
+// doesn't hide a word start from matchesKeyword.
+var haystackPunctuation = strings.NewReplacer(
+	"'", " ", "’", " ", "-", " ", ",", " ", ".", " ", "(", " ", ")", " ", "\"", " ", "/", " ",
+)
+
+// wordBoundaryHaystack lowercases s, normalizes punctuation to spaces, and
+// pads the ends — so matchesKeyword's " "+keyword check can find a keyword
+// at the very first or last word too.
+func wordBoundaryHaystack(s string) string {
+	return " " + haystackPunctuation.Replace(strings.ToLower(s)) + " "
+}
+
+// matchesKeyword requires keyword to start where a word starts in haystack
+// (haystack must already be wordBoundaryHaystack-normalized) — a bare
+// substring check let a short stemmed keyword like "pere" match inside an
+// unrelated longer word (e.g. the middle of some other term), which then
+// scored as a "rare and therefore relevant" hit when it was really just
+// coincidental. The keyword itself can still be a prefix of a longer haystack
+// word, which is what makes the stemming in extractKeywords work at all.
+func matchesKeyword(haystack, keyword string) bool {
+	return strings.Contains(haystack, " "+keyword)
 }
 
 // SearchGameLoreEntities ranks entities by how many distinct keywords from
@@ -569,17 +621,49 @@ func SearchGameLoreEntities(ctx context.Context, database *sql.DB, gameID, query
 		return nil, err
 	}
 
+	// Plain "one point per matched keyword" let generic words that show up
+	// in most candidates (a game called "Night City" makes "night" and
+	// "city" match nearly everything) drown out the keyword that actually
+	// singles an entity out. Weight each keyword by how rare it is across
+	// *this query's own candidate set* instead — a classic IDF: a keyword
+	// only 2 of 300 candidates contain is worth far more than one all 250
+	// of them contain. No corpus-wide stats needed, just this candidate set.
+	//
+	// Matching also requires the keyword to land on a word boundary (not
+	// just anywhere in the haystack) — a raw substring check let short
+	// stemmed keywords like "pere" match inside an unrelated longer word
+	// and pick up an inflated score for being "rare", when really it was
+	// just a coincidental substring hit, not a rare-and-relevant one.
+	haystacks := make([]string, len(candidates))
+	for i, e := range candidates {
+		haystacks[i] = wordBoundaryHaystack(e.Name + " " + e.Tags + " " + e.Summary)
+	}
+	docFreq := make(map[string]int, len(keywords))
+	for _, k := range keywords {
+		for _, h := range haystacks {
+			if matchesKeyword(h, k) {
+				docFreq[k]++
+			}
+		}
+	}
+	n := float64(len(candidates))
+	idf := make(map[string]float64, len(keywords))
+	for _, k := range keywords {
+		if df := docFreq[k]; df > 0 {
+			idf[k] = math.Log(1 + n/float64(df))
+		}
+	}
+
 	type scored struct {
 		entity GameLoreEntity
-		score  int
+		score  float64
 	}
 	results := make([]scored, 0, len(candidates))
-	for _, e := range candidates {
-		haystack := strings.ToLower(e.Name + " " + e.Tags + " " + e.Summary)
-		score := 0
+	for i, e := range candidates {
+		score := 0.0
 		for _, k := range keywords {
-			if strings.Contains(haystack, k) {
-				score++
+			if matchesKeyword(haystacks[i], k) {
+				score += idf[k]
 			}
 		}
 		if score > 0 {

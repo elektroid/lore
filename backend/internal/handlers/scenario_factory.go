@@ -71,25 +71,69 @@ func (h *ScenarioFactoryHandler) promptContext(ctx context.Context, campaign *db
 		}
 	}
 	if campaign.GameID != "" && queryText != "" {
-		if entities, err := db.SearchGameLoreEntities(ctx, h.db, campaign.GameID, queryText, 6); err == nil {
-			for _, e := range entities {
-				summary := e.Summary
-				if summary == "" {
-					summary = e.Excerpt
-				}
-				fact := fmt.Sprintf("[%s] %s : %s", e.Kind, e.Name, summary)
-				if outgoing, _, err := db.ListGameLoreEntityRelationsFor(ctx, h.db, e.ID); err == nil && len(outgoing) > 0 {
-					n := len(outgoing)
-					if n > 3 {
-						n = 3
+		// The keyword search is a cheap heuristic (see SearchGameLoreEntities),
+		// not precise ranking — the entity that should actually be #1 for a
+		// given brief sometimes lands 4th. Casting a wider net for the
+		// name-reuse lists below costs nothing (they're just names), so pull
+		// more than the loreFactsLimit actually rendered as full facts.
+		const loreFactsLimit = 6
+		const reuseNamesLimit = 15
+		entities, err := db.SearchGameLoreEntities(ctx, h.db, campaign.GameID, queryText, reuseNamesLimit)
+		if err == nil {
+			existingNames := map[string]bool{}
+			for _, n := range pc.ExistingNPCs {
+				existingNames[n] = true
+			}
+			for _, n := range pc.ExistingLocations {
+				existingNames[n] = true
+			}
+			for _, n := range pc.ExistingFactions {
+				existingNames[n] = true
+			}
+			for i, e := range entities {
+				if i < loreFactsLimit {
+					summary := e.Summary
+					if summary == "" {
+						summary = e.Excerpt
 					}
-					rels := make([]string, n)
-					for i, r := range outgoing[:n] {
-						rels[i] = fmt.Sprintf("%s %s", r.Relation, r.Name)
+					fact := fmt.Sprintf("[%s] %s : %s", e.Kind, e.Name, summary)
+					if outgoing, _, err := db.ListGameLoreEntityRelationsFor(ctx, h.db, e.ID); err == nil && len(outgoing) > 0 {
+						n := len(outgoing)
+						if n > 3 {
+							n = 3
+						}
+						rels := make([]string, n)
+						for i, r := range outgoing[:n] {
+							rels[i] = fmt.Sprintf("%s %s", r.Relation, r.Name)
+						}
+						fact += fmt.Sprintf(" (%s)", strings.Join(rels, ", "))
 					}
-					fact += fmt.Sprintf(" (%s)", strings.Join(rels, ", "))
+					pc.LoreFacts = append(pc.LoreFacts, fact)
 				}
-				pc.LoreFacts = append(pc.LoreFacts, fact)
+
+				// Beyond the narrative-facts block, a matched district/
+				// location/faction/npc also earns a spot in the SAME
+				// "reuse this exact name" list as the campaign's own
+				// entities — that instruction is what stopped the model
+				// from inventing "Université de Night City" instead of
+				// using the sourcebook's own "University District" once
+				// it actually got surfaced. LoreFacts alone, phrased as
+				// background to "stay consistent with", wasn't a strong
+				// enough signal to prevent that.
+				if existingNames[e.Name] {
+					continue
+				}
+				switch e.Kind {
+				case "district", "location":
+					pc.ExistingLocations = append(pc.ExistingLocations, e.Name)
+					existingNames[e.Name] = true
+				case "faction":
+					pc.ExistingFactions = append(pc.ExistingFactions, e.Name)
+					existingNames[e.Name] = true
+				case "npc_archetype":
+					pc.ExistingNPCs = append(pc.ExistingNPCs, e.Name)
+					existingNames[e.Name] = true
+				}
 			}
 		}
 	}
