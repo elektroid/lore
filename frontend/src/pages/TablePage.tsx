@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Dices, WifiOff } from 'lucide-react'
+import { Dices, Loader2, WifiOff } from 'lucide-react'
 import RollFeed from '@/components/play/RollFeed'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import { useTableStream } from '@/hooks/useTableStream'
 import type { Roll } from '@/types/table'
+
+// The Excalidraw bundle (~1.5MB) is only fetched once a GM actually projects
+// a whiteboard — most sessions never load it.
+const WhiteboardStage = lazy(() =>
+  import('@/components/play/Whiteboard').then(m => ({ default: m.WhiteboardStage })))
 
 const FLASH_MS = 4500
 const CURSOR_IDLE_MS = 3000
@@ -49,6 +54,17 @@ export default function TablePage() {
   return (
     <div className={`fixed inset-0 bg-black text-white overflow-hidden ${cursorHidden ? 'cursor-none' : ''}`}>
 
+      {/* ── Persistent header — the two facts this dashboard always carries,
+          whatever is currently projected. See docs/play-table.md. ────────── */}
+      {snapshot && (
+        <div className="absolute top-4 left-5 z-20 pointer-events-none max-w-[50vw]">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-white/40 truncate">
+            {snapshot.campaign_name}
+          </p>
+          <p className="text-xs text-white/25 truncate">{snapshot.scenario_name}</p>
+        </div>
+      )}
+
       {/* ── Projection ─────────────────────────────────────────────────────── */}
       {projection?.kind === 'image' && projection.url && (
         <div className="absolute inset-0">
@@ -83,6 +99,16 @@ export default function TablePage() {
             <p className="mt-6 text-2xl text-white/50">{projection.subtitle}</p>
           )}
         </div>
+      )}
+
+      {projection?.kind === 'draw' && projection.scene && (
+        <Suspense fallback={
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-white/40" />
+          </div>
+        }>
+          <WhiteboardStage scene={projection.scene} />
+        </Suspense>
       )}
 
       {(!projection || projection.kind === '') && (

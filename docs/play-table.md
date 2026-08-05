@@ -40,7 +40,45 @@ A projection is one of:
 - `image` — an entity image (location, NPC, artefact, faction) with an optional caption
 - `text` — a title card: a big line and a small line. For in-fiction messages,
   chapter titles, "Trois semaines plus tard…"
+- `draw` — a live Excalidraw whiteboard: a battle map, a sketch of the room, an
+  improvised diagram. See "The whiteboard" below.
 - *(empty)* — the idle card: session name, quiet, nothing spoiled
+
+Independently of which of these is live, the campaign's title and the current
+scenario's name sit in a small, permanent corner label — the one thing this
+screen always carries regardless of what the GM has put on it. It is
+deliberately unobtrusive: the projection itself is still the point.
+
+### The whiteboard
+
+The GM's console has a fourth projection source, "Tableau", alongside the
+scene images, the campaign library, and the text card: a full [Excalidraw](https://excalidraw.com)
+canvas the GM can sketch on.
+
+Two things make it different from the other three:
+
+- **It is play state, exactly like an image or a text card.** A battle map
+  only means something for the evening it was drawn — see
+  [runs.md](runs.md) and [ADR-0001](adr/0001-runs-separate-story-from-play.md).
+  It lives inline in `sessions.projection`, never on the campaign or the
+  scenario, and a new session starts with a blank canvas.
+- **It keeps updating after it goes live.** An image or a text card is a
+  single act — pick it, it's on screen. The whiteboard is not: once it is the
+  live projection, every further stroke autosaves (debounced ~800ms) and
+  broadcasts, so the GM can move a token or extend a map while the players
+  watch, the same way a real dry-erase board works. Before it is projected,
+  drawing is entirely local — nothing reaches the table until the GM clicks
+  "Projeter le tableau".
+
+The table screen renders the same canvas read-only (`viewModeEnabled` +
+`zenModeEnabled`, `pointer-events-none`) and receives updates the same way as
+everything else here — a fresh `projection` SSE frame — so it never falls out
+of sync with what the GM is drawing.
+
+Excalidraw is a large, optional dependency (roughly 370KB gzipped for its
+core, more if the GM uses its built-in Mermaid-diagram insert). It is loaded
+with `React.lazy`, so no session that never opens the whiteboard pays for it —
+see the frontend map below.
 
 ### Dice: who rolls what, and who sees it
 
@@ -199,12 +237,18 @@ trap.
 ```json
 { "kind": "image", "url": "/uploads/…", "title": "Chapelle rouillée", "subtitle": "Quartier bas" }
 { "kind": "text",  "title": "Six mois plus tard", "subtitle": "" }
+{ "kind": "draw",  "scene": "{\"type\":\"excalidraw\",\"elements\":[…],\"appState\":{…},\"files\":{…}}" }
 { "kind": "" }
 ```
 
 The projection stores a **URL, not an entity reference**. Deliberate: the table
 surface must never need entity read access, and a projection should not silently
 change or vanish because the GM edited a location mid-session.
+
+`scene` is the untouched output of Excalidraw's own `serializeAsJSON` — the
+backend treats it as an opaque blob (`json.Valid` and a size cap are the only
+checks, `maxSceneLen` = 2MB) and never parses it. Restoring it back into an
+`<Excalidraw>` element is `restore()`'s job, on both the console and the table.
 
 ### Dice notation
 
@@ -231,7 +275,7 @@ Under `/api/scenarios/{id}/sessions/{sessionId}`:
 | Method | Path | Body | Result |
 |---|---|---|---|
 | `POST` | `/table-token` | — | `{ table_token }` — creates or regenerates |
-| `PUT` | `/projection` | `{ kind, url, title, subtitle }` | broadcasts `projection` |
+| `PUT` | `/projection` | `{ kind, url, title, subtitle, scene }` (`scene` only for `kind: "draw"`) | broadcasts `projection` |
 | `DELETE` | `/projection` | — | broadcasts an empty `projection` |
 | `GET` | `/rolls` | — | `Roll[]`, newest first, **including secret** |
 | `POST` | `/rolls` | `{ notation, label, secret }` | the roll; broadcasts unless `secret` |
@@ -259,7 +303,11 @@ pages/PlayerSeatPage.tsx   /table/:token/player   seat claim + roller + feed
 components/play/
   DiceRoller.tsx           notation input + quick dice, shared by GM and players
   RollFeed.tsx             the roll list, shared by all three surfaces
-  ProjectionPanel.tsx      GM: image tray, what's live, clear, text card
+  ProjectionPanel.tsx      GM: image tray, what's live, clear, text card, whiteboard tab
+  Whiteboard.tsx           WhiteboardEditor (GM) + WhiteboardStage (table) — the
+                           only file that imports @excalidraw/excalidraw; both
+                           call sites reach it through React.lazy so the bundle
+                           is fetched on first use, never eagerly
   GMDiceTray.tsx           GM: roller + secret toggle + the full log
   TableShareDialog.tsx     GM: the links, copy buttons, regenerate
 hooks/useTableStream.ts    EventSource + reconnect, returns the snapshot
@@ -296,3 +344,11 @@ scene detail: projection tray on the left, dice on the right.
   behind Redis or similar. Lore runs as a single Go process today.
 - **No projection history.** The GM cannot go "back" to the previous image; the
   tray makes re-projecting a click, so this is a convenience gap, not a hole.
+- **The whiteboard is GM-only and single-canvas.** One scene per session, no
+  layers, no per-player drawing rights — deliberately, this is a projector,
+  not a virtual tabletop.
+- **A whiteboard draft is lost on navigation.** Local edits made before the
+  first "Projeter le tableau" click survive tab-switching inside the console
+  (the editor stays mounted, just hidden) but not leaving `PlayPage` — the same
+  trade the text card already makes. Once projected, every stroke is saved
+  server-side, so this only affects an unprojected sketch.

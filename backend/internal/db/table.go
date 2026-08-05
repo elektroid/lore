@@ -14,11 +14,17 @@ import (
 // It stores a resolved image URL rather than an entity reference: the table
 // surface must never need entity read access, and what is on screen should not
 // change because the GM edited a location mid-session.
+//
+// Scene is only set for kind "draw": the serialized Excalidraw scene (elements
+// + a trimmed appState), opaque to the backend. Play state — a battle map is
+// exactly that — lives on the session like every other projection, never on
+// authored material. See docs/play-table.md.
 type Projection struct {
-	Kind     string `json:"kind"` // "" (idle) | "image" | "text"
+	Kind     string `json:"kind"` // "" (idle) | "image" | "text" | "draw"
 	URL      string `json:"url"`
 	Title    string `json:"title"`
 	Subtitle string `json:"subtitle"`
+	Scene    string `json:"scene,omitempty"`
 }
 
 // ParseProjection decodes a sessions.projection column, tolerating legacy or
@@ -31,7 +37,7 @@ func ParseProjection(raw string) Projection {
 	if err := json.Unmarshal([]byte(raw), &p); err != nil {
 		return Projection{}
 	}
-	if p.Kind != "image" && p.Kind != "text" {
+	if p.Kind != "image" && p.Kind != "text" && p.Kind != "draw" {
 		p.Kind = ""
 	}
 	return p

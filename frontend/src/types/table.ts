@@ -1,16 +1,18 @@
 // Live table surface — projection screen and player seats.
 // See docs/play-table.md.
 
-export type ProjectionKind = '' | 'image' | 'text'
+export type ProjectionKind = '' | 'image' | 'text' | 'draw'
 
 export interface Projection {
   kind: ProjectionKind
   url: string
   title: string
   subtitle: string
+  /** kind 'draw' only — a serialized Excalidraw scene (elements + trimmed appState). */
+  scene?: string
 }
 
-export const EMPTY_PROJECTION: Projection = { kind: '', url: '', title: '', subtitle: '' }
+export const EMPTY_PROJECTION: Projection = { kind: '', url: '', title: '', subtitle: '', scene: '' }
 
 export interface Roll {
   id: string

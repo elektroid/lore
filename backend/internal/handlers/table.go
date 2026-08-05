@@ -39,6 +39,7 @@ const (
 	maxTitleLen    = 200
 	maxSubtitleLen = 200
 	maxURLLen      = 500
+	maxSceneLen    = 2_000_000 // an Excalidraw scene, JSON-serialized
 	rollFeedLimit  = 50
 	playerRollGap  = 500 * time.Millisecond
 )
@@ -348,6 +349,15 @@ func sanitizeProjection(p db.Projection) (db.Projection, error) {
 			!strings.HasPrefix(out.URL, "https://") {
 			return db.Projection{}, fmt.Errorf("URL d'image invalide")
 		}
+	case "draw":
+		out.URL = ""
+		if len(p.Scene) > maxSceneLen {
+			return db.Projection{}, fmt.Errorf("tableau trop volumineux")
+		}
+		if p.Scene == "" || !json.Valid([]byte(p.Scene)) {
+			return db.Projection{}, fmt.Errorf("tableau invalide")
+		}
+		out.Scene = p.Scene
 	default:
 		return db.Projection{}, fmt.Errorf("type de projection invalide")
 	}

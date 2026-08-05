@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Image as ImageIcon, MonitorOff, MonitorPlay, Search, Type } from 'lucide-react'
+import { Image as ImageIcon, Loader2, MonitorOff, MonitorPlay, PenLine, Search, Type } from 'lucide-react'
 import { api } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,6 +9,10 @@ import type {
 } from '@/types/entities'
 import type { Scene } from '@/types/synopsis'
 import type { Projection } from '@/types/table'
+
+// The Excalidraw bundle (~1.5MB) is only fetched when the GM opens this tab.
+const WhiteboardEditor = lazy(() =>
+  import('@/components/play/Whiteboard').then(m => ({ default: m.WhiteboardEditor })))
 
 /** One projectable image, already resolved to a URL and a caption. */
 interface Shot {
@@ -35,7 +39,7 @@ function shotsOf(rawImages: string, title: string, subtitle: string, ns: string)
     }))
 }
 
-type Tab = 'scene' | 'campaign' | 'text'
+type Tab = 'scene' | 'campaign' | 'text' | 'draw'
 
 /**
  * The GM's side of the table screen: pick an image, it appears in the room.
@@ -57,6 +61,11 @@ export default function ProjectionPanel({
   const [search, setSearch] = useState('')
   const [cardTitle, setCardTitle] = useState('')
   const [cardSubtitle, setCardSubtitle] = useState('')
+  // Once opened, the whiteboard stays mounted (just hidden) across tab
+  // switches — an in-progress, not-yet-projected sketch is component state,
+  // and unmounting it the way the other tabs' one-field forms tolerate would
+  // silently throw away a drawing.
+  const [drawOpened, setDrawOpened] = useState(false)
 
   // The scene's own location, needed for its images — scenes only carry a name.
   const { data: sceneLocation } = useQuery({
@@ -138,17 +147,21 @@ export default function ProjectionPanel({
           <img src={current.url} alt="" className="h-12 w-16 rounded object-cover shrink-0" />
         ) : (
           <div className="h-12 w-16 rounded bg-muted flex items-center justify-center shrink-0">
-            {current.kind === 'text'
-              ? <Type className="h-4 w-4 text-muted-foreground" />
-              : <MonitorOff className="h-4 w-4 text-muted-foreground/50" />}
+            {current.kind === 'text' && <Type className="h-4 w-4 text-muted-foreground" />}
+            {current.kind === 'draw' && <PenLine className="h-4 w-4 text-muted-foreground" />}
+            {current.kind !== 'text' && current.kind !== 'draw' && <MonitorOff className="h-4 w-4 text-muted-foreground/50" />}
           </div>
         )}
         <div className="min-w-0">
           {live ? (
-            <>
-              <p className="text-sm font-medium truncate">{current.title || 'Sans titre'}</p>
-              <p className="text-xs text-muted-foreground truncate">{current.subtitle || '—'}</p>
-            </>
+            current.kind === 'draw' ? (
+              <p className="text-sm font-medium">Tableau</p>
+            ) : (
+              <>
+                <p className="text-sm font-medium truncate">{current.title || 'Sans titre'}</p>
+                <p className="text-xs text-muted-foreground truncate">{current.subtitle || '—'}</p>
+              </>
+            )
           ) : (
             <p className="text-sm text-muted-foreground italic">Écran éteint</p>
           )}
@@ -161,10 +174,11 @@ export default function ProjectionPanel({
           ['scene', 'Scène', ImageIcon],
           ['campaign', 'Campagne', Search],
           ['text', 'Carton texte', Type],
+          ['draw', 'Tableau', PenLine],
         ] as const).map(([id, label, Icon]) => (
           <button
             key={id}
-            onClick={() => setTab(id)}
+            onClick={() => { setTab(id); if (id === 'draw') setDrawOpened(true) }}
             className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors ${
               tab === id ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50'
             }`}
@@ -230,6 +244,23 @@ export default function ProjectionPanel({
           >
             Projeter le carton
           </Button>
+        </div>
+      )}
+
+      {drawOpened && (
+        <div className={tab === 'draw' ? '' : 'hidden'}>
+          <Suspense fallback={
+            <div className="h-[440px] flex items-center justify-center text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+            </div>
+          }>
+            <WhiteboardEditor
+              scene={current.kind === 'draw' ? (current.scene ?? '') : ''}
+              live={current.kind === 'draw'}
+              pending={pending}
+              onProject={sceneJson => onProject({ kind: 'draw', url: '', title: '', subtitle: '', scene: sceneJson })}
+            />
+          </Suspense>
         </div>
       )}
     </div>
