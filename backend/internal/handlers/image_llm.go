@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,8 +35,34 @@ type PendingImage struct {
 	URL string `json:"url"`
 }
 
-func (h *ImageLLMHandler) readMistralConfig(ctx context.Context) (MistralConfig, error) {
-	return loadMistralConfig(ctx, h.db, h.encKey)
+func (h *ImageLLMHandler) readImageConfig(ctx context.Context) (ImageConfig, error) {
+	return loadImageConfig(ctx, h.db, h.encKey)
+}
+
+// appendVisualStyle folds the game's visual style into the prompt text for
+// providers with no other channel for it. Mistral gets it baked into the
+// per-game agent's instructions instead (see ensureGameAgent), so it's a
+// no-op there — adding it twice wouldn't be wrong, just redundant.
+func appendVisualStyle(prompt string, cfg ImageConfig, game *db.Game) string {
+	if cfg.Provider == "openrouter" && game != nil && game.VisualStyle != "" {
+		return prompt + "\n\nVisual style: " + game.VisualStyle
+	}
+	return prompt
+}
+
+// requireImageProviderConfigured checks that whichever provider is selected
+// actually has the credentials it needs before spending a request on it.
+func requireImageProviderConfigured(cfg ImageConfig) error {
+	if cfg.Provider == "openrouter" {
+		if cfg.OpenRouterAPIKey == "" || cfg.OpenRouterModel == "" {
+			return errors.New("OpenRouter API key/model not configured — configure it in Settings")
+		}
+		return nil
+	}
+	if cfg.MistralAPIKey == "" {
+		return errors.New("Mistral API key not configured — configure it in Settings")
+	}
+	return nil
 }
 
 // getGameForCampaign returns the Game for a campaign, or nil if no game is set.
@@ -100,16 +127,26 @@ func (h *ImageLLMHandler) ensureGameAgent(ctx context.Context, game *db.Game, ap
 	return resp.ID, nil
 }
 
-func (h *ImageLLMHandler) spawnImages(ctx context.Context, agentID, entityType, entityID, pendingDir, prompt, apiKey string, count int) ([]PendingImage, error) {
+// spawnImages fans out cfg.ImageCount concurrent generations, dispatching to
+// the configured provider. agentID is only meaningful for the Mistral
+// provider (see ensureGameAgent) and ignored otherwise.
+func (h *ImageLLMHandler) spawnImages(ctx context.Context, cfg ImageConfig, agentID, entityType, entityID, pendingDir, prompt string) ([]PendingImage, error) {
 	type genResult struct {
 		img *PendingImage
 		err error
 	}
+	count := cfg.ImageCount
 	ch := make(chan genResult, count)
 
 	for i := 0; i < count; i++ {
 		go func() {
-			img, err := h.generateOne(ctx, agentID, entityType, entityID, pendingDir, prompt, apiKey)
+			var img *PendingImage
+			var err error
+			if cfg.Provider == "openrouter" {
+				img, err = h.generateOneOpenRouter(ctx, entityType, entityID, pendingDir, prompt, cfg.OpenRouterAPIKey, cfg.OpenRouterModel)
+			} else {
+				img, err = h.generateOneMistral(ctx, agentID, entityType, entityID, pendingDir, prompt, cfg.MistralAPIKey)
+			}
 			ch <- genResult{img: img, err: err}
 		}()
 	}
@@ -135,7 +172,7 @@ func (h *ImageLLMHandler) spawnImages(ctx context.Context, agentID, entityType, 
 	return candidates, nil
 }
 
-func (h *ImageLLMHandler) generateOne(ctx context.Context, agentID, entityType, entityID, pendingDir, prompt, apiKey string) (*PendingImage, error) {
+func (h *ImageLLMHandler) generateOneMistral(ctx context.Context, agentID, entityType, entityID, pendingDir, prompt, apiKey string) (*PendingImage, error) {
 	convBody, _ := json.Marshal(map[string]any{
 		"agent_id": agentID,
 		"inputs":   prompt,
@@ -153,6 +190,66 @@ func (h *ImageLLMHandler) generateOne(ctx context.Context, agentID, entityType, 
 	imgBytes, err := h.mistralDownloadFile(ctx, fileID, apiKey)
 	if err != nil {
 		return nil, fmt.Errorf("download file %s: %w", fileID, err)
+	}
+
+	id := uuid.New().String()
+	dest := filepath.Join(pendingDir, id+".png")
+	if err := os.WriteFile(dest, imgBytes, 0644); err != nil {
+		return nil, fmt.Errorf("write file: %w", err)
+	}
+
+	return &PendingImage{
+		ID:  id,
+		URL: fmt.Sprintf("/uploads/%s/%s/pending/%s.png", entityType, entityID, id),
+	}, nil
+}
+
+// generateOneOpenRouter calls OpenRouter's dedicated Images API
+// (POST /images — distinct from /chat/completions), which is stateless and
+// returns the PNG inline as base64, unlike Mistral's agent/conversation/
+// tool-file dance.
+func (h *ImageLLMHandler) generateOneOpenRouter(ctx context.Context, entityType, entityID, pendingDir, prompt, apiKey, model string) (*PendingImage, error) {
+	reqBody, _ := json.Marshal(map[string]any{
+		"model":      model,
+		"prompt":     prompt,
+		"n":          1,
+		"resolution": "1K",
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://openrouter.ai/api/v1/images", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, ErrRateLimit
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, data)
+	}
+
+	var envelope struct {
+		Data []struct {
+			B64JSON string `json:"b64_json"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil || len(envelope.Data) == 0 {
+		return nil, fmt.Errorf("no image in response: %.200s", data)
+	}
+	imgBytes, err := base64.StdEncoding.DecodeString(envelope.Data[0].B64JSON)
+	if err != nil {
+		return nil, fmt.Errorf("decode base64 image: %w", err)
 	}
 
 	id := uuid.New().String()

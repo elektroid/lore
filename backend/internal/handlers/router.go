@@ -89,9 +89,10 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 			// Reads are open: the app shows whether an LLM is configured, and
 			// the key is masked on the way out. Writes are instance-wide.
 			r.Get("/llm", settings.GetLLM)
-			r.Get("/mistral", settings.GetMistral)
+			r.Get("/images", settings.GetImageConfig)
 			r.With(requireSuperuser).Put("/llm", settings.PutLLM)
-			r.With(requireSuperuser).Put("/mistral", settings.PutMistral)
+			r.With(requireSuperuser).Put("/images", settings.PutImageConfig)
+			r.With(requireSuperuser).Post("/llm/models", settings.ListLLMModels)
 		})
 
 		games := &GameHandler{db: database, externalMaterialDir: externalMaterialDir}

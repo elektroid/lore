@@ -28,23 +28,27 @@ func loadLLMConfig(ctx context.Context, database *sql.DB, encKey string) (llm.Co
 	return cfg, nil
 }
 
-// loadMistralConfig reads mistral_config from settings and decrypts the api_key.
-func loadMistralConfig(ctx context.Context, database *sql.DB, encKey string) (MistralConfig, error) {
-	raw, err := db.GetSetting(ctx, database, "mistral_config")
+// loadImageConfig reads image_config from settings (migrating once from the
+// legacy mistral_config key, see readRawImageConfig) and decrypts both
+// providers' API keys.
+func loadImageConfig(ctx context.Context, database *sql.DB, encKey string) (ImageConfig, error) {
+	cfg, err := readRawImageConfig(ctx, database)
 	if err != nil {
-		return MistralConfig{}, err
+		return ImageConfig{}, err
 	}
-	var cfg MistralConfig
-	json.Unmarshal([]byte(raw), &cfg) //nolint:errcheck
-	if cfg.ImageCount == 0 {
-		cfg.ImageCount = 3
-	}
-	if cfg.APIKey != "" {
-		plain, err := crypto.Decrypt(encKey, cfg.APIKey)
+	if cfg.MistralAPIKey != "" {
+		plain, err := crypto.Decrypt(encKey, cfg.MistralAPIKey)
 		if err != nil {
-			return MistralConfig{}, err
+			return ImageConfig{}, err
 		}
-		cfg.APIKey = plain
+		cfg.MistralAPIKey = plain
+	}
+	if cfg.OpenRouterAPIKey != "" {
+		plain, err := crypto.Decrypt(encKey, cfg.OpenRouterAPIKey)
+		if err != nil {
+			return ImageConfig{}, err
+		}
+		cfg.OpenRouterAPIKey = plain
 	}
 	return cfg, nil
 }

@@ -12,9 +12,13 @@ import (
 )
 
 type Config struct {
-	BaseURL   string `json:"base_url"`
-	APIKey    string `json:"api_key"`
-	Model     string `json:"model"`
+	BaseURL string `json:"base_url"`
+	APIKey  string `json:"api_key"`
+	Model   string `json:"model"`
+	// Provider is a UI hint (see Providers) identifying which preset produced
+	// BaseURL — "mistral", "ollama", "openrouter" or "custom". Not used by the
+	// client itself; BaseURL alone drives the actual request.
+	Provider  string `json:"provider,omitempty"`
 	MaxTokens int    `json:"max_tokens"`
 	// ReasoningEffort is passed straight through to reasoning models that
 	// accept it (gpt-oss via Ollama does). Left empty, the field is omitted
@@ -125,6 +129,45 @@ func (c *Client) Complete(ctx context.Context, systemPrompt, userPrompt string) 
 		return m.Content, nil
 	}
 	return m.Reasoning, nil
+}
+
+// ModelInfo is one entry from a provider's GET /models listing.
+type ModelInfo struct {
+	ID string `json:"id"`
+}
+
+type modelsResponse struct {
+	Data []ModelInfo `json:"data"`
+}
+
+// ListModels queries the OpenAI-compatible GET {BaseURL}/models endpoint,
+// which Mistral, Ollama and OpenRouter all implement. Used by the settings UI
+// to populate a model picker instead of asking for free-text model IDs.
+func (c *Client) ListModels(ctx context.Context) ([]ModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.config.BaseURL+"/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	if c.config.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("requête liste des modèles: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("liste des modèles a retourné %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var result modelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("décodage liste des modèles: %w", err)
+	}
+	return result.Data, nil
 }
 
 // Chat sends a full message history and returns the assistant reply.

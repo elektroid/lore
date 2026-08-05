@@ -26,13 +26,13 @@ func (h *ImageLLMHandler) GenerateNPCImages(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	mistralCfg, err := h.readMistralConfig(r.Context())
+	imgCfg, err := h.readImageConfig(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "error reading Mistral config")
+		writeError(w, http.StatusInternalServerError, "error reading image config")
 		return
 	}
-	if mistralCfg.APIKey == "" {
-		writeError(w, http.StatusBadRequest, "Mistral API key not configured — configure it in Settings")
+	if err := requireImageProviderConfigured(imgCfg); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -49,19 +49,22 @@ func (h *ImageLLMHandler) GenerateNPCImages(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	agentID, err := h.ensureGameAgent(r.Context(), game, mistralCfg.APIKey)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Mistral agent error: "+err.Error())
-		return
+	var agentID string
+	if imgCfg.Provider != "openrouter" {
+		agentID, err = h.ensureGameAgent(r.Context(), game, imgCfg.MistralAPIKey)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Mistral agent error: "+err.Error())
+			return
+		}
 	}
 
 	mentions := newMentionResolver(r.Context(), h.db, campaignID)
-	prompt := buildNPCImagePrompt(npc.Name, npc.Role, mentions.resolve(npc.Description))
+	prompt := appendVisualStyle(buildNPCImagePrompt(npc.Name, npc.Role, mentions.resolve(npc.Description)), imgCfg, game)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 
-	candidates, err := h.spawnImages(ctx, agentID, "npcs", npcID, pendingDir, prompt, mistralCfg.APIKey, mistralCfg.ImageCount)
+	candidates, err := h.spawnImages(ctx, imgCfg, agentID, "npcs", npcID, pendingDir, prompt)
 	if err != nil {
 		writeError(w, http.StatusTooManyRequests, err.Error())
 		return
@@ -137,13 +140,13 @@ func (h *ImageLLMHandler) GenerateLocationImages(w http.ResponseWriter, r *http.
 		return
 	}
 
-	mistralCfg, err := h.readMistralConfig(r.Context())
+	imgCfg, err := h.readImageConfig(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "error reading Mistral config")
+		writeError(w, http.StatusInternalServerError, "error reading image config")
 		return
 	}
-	if mistralCfg.APIKey == "" {
-		writeError(w, http.StatusBadRequest, "Mistral API key not configured — configure it in Settings")
+	if err := requireImageProviderConfigured(imgCfg); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -160,19 +163,22 @@ func (h *ImageLLMHandler) GenerateLocationImages(w http.ResponseWriter, r *http.
 		return
 	}
 
-	agentID, err := h.ensureGameAgent(r.Context(), game, mistralCfg.APIKey)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Mistral agent error: "+err.Error())
-		return
+	var agentID string
+	if imgCfg.Provider != "openrouter" {
+		agentID, err = h.ensureGameAgent(r.Context(), game, imgCfg.MistralAPIKey)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Mistral agent error: "+err.Error())
+			return
+		}
 	}
 
 	mentions := newMentionResolver(r.Context(), h.db, campaignID)
-	prompt := buildLocationImagePrompt(location.Name, location.Atmosphere, mentions.resolve(location.Description))
+	prompt := appendVisualStyle(buildLocationImagePrompt(location.Name, location.Atmosphere, mentions.resolve(location.Description)), imgCfg, game)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 
-	candidates, err := h.spawnImages(ctx, agentID, "locations", locationID, pendingDir, prompt, mistralCfg.APIKey, mistralCfg.ImageCount)
+	candidates, err := h.spawnImages(ctx, imgCfg, agentID, "locations", locationID, pendingDir, prompt)
 	if err != nil {
 		writeError(w, http.StatusTooManyRequests, err.Error())
 		return
@@ -248,13 +254,13 @@ func (h *ImageLLMHandler) GenerateFactionImages(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	mistralCfg, err := h.readMistralConfig(r.Context())
+	imgCfg, err := h.readImageConfig(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "error reading Mistral config")
+		writeError(w, http.StatusInternalServerError, "error reading image config")
 		return
 	}
-	if mistralCfg.APIKey == "" {
-		writeError(w, http.StatusBadRequest, "Mistral API key not configured — configure it in Settings")
+	if err := requireImageProviderConfigured(imgCfg); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -271,19 +277,22 @@ func (h *ImageLLMHandler) GenerateFactionImages(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	agentID, err := h.ensureGameAgent(r.Context(), game, mistralCfg.APIKey)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Mistral agent error: "+err.Error())
-		return
+	var agentID string
+	if imgCfg.Provider != "openrouter" {
+		agentID, err = h.ensureGameAgent(r.Context(), game, imgCfg.MistralAPIKey)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Mistral agent error: "+err.Error())
+			return
+		}
 	}
 
 	mentions := newMentionResolver(r.Context(), h.db, campaignID)
-	prompt := buildFactionImagePrompt(faction.Name, faction.Type, mentions.resolve(faction.Description))
+	prompt := appendVisualStyle(buildFactionImagePrompt(faction.Name, faction.Type, mentions.resolve(faction.Description)), imgCfg, game)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 
-	candidates, err := h.spawnImages(ctx, agentID, "factions", factionID, pendingDir, prompt, mistralCfg.APIKey, mistralCfg.ImageCount)
+	candidates, err := h.spawnImages(ctx, imgCfg, agentID, "factions", factionID, pendingDir, prompt)
 	if err != nil {
 		writeError(w, http.StatusTooManyRequests, err.Error())
 		return

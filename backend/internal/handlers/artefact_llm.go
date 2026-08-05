@@ -93,13 +93,13 @@ func (h *ImageLLMHandler) GenerateArtefactImages(w http.ResponseWriter, r *http.
 		return
 	}
 
-	mistralCfg, err := h.readMistralConfig(r.Context())
+	imgCfg, err := h.readImageConfig(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "error reading Mistral config")
+		writeError(w, http.StatusInternalServerError, "error reading image config")
 		return
 	}
-	if mistralCfg.APIKey == "" {
-		writeError(w, http.StatusBadRequest, "Mistral API key not configured — configure it in Settings")
+	if err := requireImageProviderConfigured(imgCfg); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -116,19 +116,22 @@ func (h *ImageLLMHandler) GenerateArtefactImages(w http.ResponseWriter, r *http.
 		return
 	}
 
-	agentID, err := h.ensureGameAgent(r.Context(), game, mistralCfg.APIKey)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Mistral agent error: "+err.Error())
-		return
+	var agentID string
+	if imgCfg.Provider != "openrouter" {
+		agentID, err = h.ensureGameAgent(r.Context(), game, imgCfg.MistralAPIKey)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Mistral agent error: "+err.Error())
+			return
+		}
 	}
 
 	mentions := newMentionResolver(r.Context(), h.db, campaignID)
-	prompt := buildArtefactImagePrompt(artefact.Name, mentions.resolve(artefact.Description))
+	prompt := appendVisualStyle(buildArtefactImagePrompt(artefact.Name, mentions.resolve(artefact.Description)), imgCfg, game)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 
-	candidates, err := h.spawnImages(ctx, agentID, "artefacts", artefactID, pendingDir, prompt, mistralCfg.APIKey, mistralCfg.ImageCount)
+	candidates, err := h.spawnImages(ctx, imgCfg, agentID, "artefacts", artefactID, pendingDir, prompt)
 	if err != nil {
 		writeError(w, http.StatusTooManyRequests, err.Error())
 		return

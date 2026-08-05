@@ -16,31 +16,65 @@ interface LLMConfig {
   base_url: string
   api_key: string
   model: string
+  provider?: string
   max_tokens: number
 }
 
-interface MistralConfig {
-  api_key: string
+interface ImageConfig {
+  provider: string // 'mistral' | 'openrouter'
+  mistral_api_key: string
+  openrouter_api_key: string
+  openrouter_model: string
   image_count: number
 }
 
+interface ModelInfo {
+  id: string
+}
+
 const defaultLLM: LLMConfig = { base_url: '', api_key: '', model: '', max_tokens: 2000 }
-const defaultMistral: MistralConfig = { api_key: '', image_count: 3 }
+const defaultImage: ImageConfig = {
+  provider: 'mistral',
+  mistral_api_key: '',
+  openrouter_api_key: '',
+  openrouter_model: '',
+  image_count: 3,
+}
 
 // Masked placeholder returned by the API in place of a stored key (see backend crypto.MaskedKey).
 const MASKED_KEY = '••••••••'
 // Sentinel telling the backend to reuse the already-saved Mistral (image) key (see backend mistralKeySentinel).
 const MISTRAL_KEY_SENTINEL = '__use_mistral_key__'
 
-const MISTRAL_BASE_URL = 'https://api.mistral.ai/v1'
 // Generous enough for synopsis/NPC/artefact generation without running into the 8000 cap.
 const MISTRAL_DEFAULT_MAX_TOKENS = 4096
+
+// Mirrors backend llm.Providers — presets only prefill the form, any base_url works.
+const LLM_PROVIDERS = [
+  { id: 'mistral', label: 'Mistral', base_url: 'https://api.mistral.ai/v1' },
+  { id: 'ollama', label: 'Ollama (local)', base_url: 'http://localhost:11434/v1' },
+  { id: 'openrouter', label: 'OpenRouter', base_url: 'https://openrouter.ai/api/v1' },
+  { id: 'custom', label: 'Personnalisé', base_url: '' },
+]
 
 const MISTRAL_MODELS = [
   { value: 'mistral-large-latest', label: 'Mistral Large — le plus capable' },
   { value: 'mistral-medium-latest', label: 'Mistral Medium — équilibré' },
   { value: 'mistral-small-latest', label: 'Mistral Small — rapide et économique' },
 ]
+
+// Only listing models actually verified against OpenRouter's dedicated
+// Images API (POST /images) — a different endpoint from chat completions,
+// so not every "image-capable" chat model works here. Free text covers the rest.
+const OPENROUTER_IMAGE_MODELS = [
+  { value: 'qwen/qwen-image-3-pro', label: 'Qwen Image 3 Pro' },
+]
+
+function detectProvider(baseUrl: string): string {
+  const trimmed = baseUrl.trim()
+  const match = LLM_PROVIDERS.find(p => p.id !== 'custom' && p.base_url === trimmed)
+  return match ? match.id : 'custom'
+}
 
 function MistralLogo({ className }: { className?: string }) {
   return (
@@ -382,34 +416,39 @@ export default function SettingsPage() {
     queryKey: ['settings', 'llm'],
     queryFn: () => api.get<LLMConfig>('/settings/llm'),
   })
-  const { data: mistralData, isLoading: mistralLoading } = useQuery({
-    queryKey: ['settings', 'mistral'],
-    queryFn: () => api.get<MistralConfig>('/settings/mistral'),
+  const { data: imageData, isLoading: imageLoading } = useQuery({
+    queryKey: ['settings', 'images'],
+    queryFn: () => api.get<ImageConfig>('/settings/images'),
   })
 
   const [llm, setLlm] = useState<LLMConfig>(defaultLLM)
-  const [mistral, setMistral] = useState<MistralConfig>(defaultMistral)
+  const [image, setImage] = useState<ImageConfig>(defaultImage)
   const [llmSaved, setLlmSaved] = useState(false)
-  const [mistralSaved, setMistralSaved] = useState(false)
+  const [imageSaved, setImageSaved] = useState(false)
+  const [modelOptions, setModelOptions] = useState<string[]>([])
 
   useEffect(() => { if (llmData) setLlm(llmData) }, [llmData])
-  useEffect(() => { if (mistralData) setMistral(mistralData) }, [mistralData])
+  useEffect(() => { if (imageData) setImage(imageData) }, [imageData])
 
   const llmDirty = JSON.stringify(llm) !== JSON.stringify(llmData ?? defaultLLM)
-  const mistralDirty = JSON.stringify(mistral) !== JSON.stringify(mistralData ?? defaultMistral)
+  const imageDirty = JSON.stringify(image) !== JSON.stringify(imageData ?? defaultImage)
 
   const saveLLM = useMutation({
     mutationFn: (c: LLMConfig) => api.put<LLMConfig>('/settings/llm', c),
     onSuccess: (updated) => { setLlm(updated); setLlmSaved(true); setTimeout(() => setLlmSaved(false), 2000) },
   })
-  const saveMistral = useMutation({
-    mutationFn: (c: MistralConfig) => api.put<MistralConfig>('/settings/mistral', c),
-    onSuccess: (updated) => { setMistral(updated); setMistralSaved(true); setTimeout(() => setMistralSaved(false), 2000) },
+  const saveImage = useMutation({
+    mutationFn: (c: ImageConfig) => api.put<ImageConfig>('/settings/images', c),
+    onSuccess: (updated) => { setImage(updated); setImageSaved(true); setTimeout(() => setImageSaved(false), 2000) },
+  })
+  const listModels = useMutation({
+    mutationFn: () => api.post<ModelInfo[]>('/settings/llm/models', { base_url: llm.base_url, api_key: llm.api_key }),
+    onSuccess: (models) => setModelOptions(models.map(m => m.id).sort()),
   })
 
-  const { guardDialog } = useUnsavedGuard(llmDirty || mistralDirty, async () => {
+  const { guardDialog } = useUnsavedGuard(llmDirty || imageDirty, async () => {
     if (llmDirty) await saveLLM.mutateAsync(llm)
-    if (mistralDirty) await saveMistral.mutateAsync(mistral)
+    if (imageDirty) await saveImage.mutateAsync(image)
   })
 
   function llmField(key: keyof LLMConfig) {
@@ -420,26 +459,34 @@ export default function SettingsPage() {
     }
   }
 
-  function mistralField(key: keyof MistralConfig) {
+  function imageField(key: keyof ImageConfig) {
     return (e: React.ChangeEvent<HTMLInputElement>) => {
-      setMistralSaved(false)
+      setImageSaved(false)
       const value = key === 'image_count' ? Number(e.target.value) : e.target.value
-      setMistral(c => ({ ...c, [key]: value }))
+      setImage(c => ({ ...c, [key]: value }))
     }
   }
 
-  const isMistral = llm.base_url.trim() === MISTRAL_BASE_URL
-  const hasMistralKey = mistral.api_key.trim() !== ''
+  const llmProvider = llm.provider && LLM_PROVIDERS.some(p => p.id === llm.provider) ? llm.provider : detectProvider(llm.base_url)
+  const hasMistralImageKey = image.mistral_api_key.trim() !== ''
   const usingSharedMistralKey = llm.api_key === MISTRAL_KEY_SENTINEL
 
-  function useMistral() {
+  function selectLLMProvider(id: string) {
     setLlmSaved(false)
+    setModelOptions([])
+    const preset = LLM_PROVIDERS.find(p => p.id === id)
+    if (!preset) return
     setLlm(c => ({
       ...c,
-      base_url: MISTRAL_BASE_URL,
-      model: MISTRAL_MODELS.some(m => m.value === c.model) ? c.model : MISTRAL_MODELS[0].value,
-      api_key: !hasMistralKey ? c.api_key : mistral.api_key === MASKED_KEY ? MISTRAL_KEY_SENTINEL : mistral.api_key,
-      max_tokens: c.max_tokens >= 100 ? c.max_tokens : MISTRAL_DEFAULT_MAX_TOKENS,
+      provider: id,
+      base_url: preset.base_url || c.base_url,
+      // A model id from the previous provider is very unlikely to be valid on
+      // the new one — clear it rather than silently carrying it forward.
+      model: id === 'mistral' ? (MISTRAL_MODELS.some(m => m.value === c.model) ? c.model : MISTRAL_MODELS[0].value) : '',
+      api_key: id === 'mistral' && hasMistralImageKey
+        ? (image.mistral_api_key === MASKED_KEY ? MISTRAL_KEY_SENTINEL : image.mistral_api_key)
+        : c.api_key,
+      max_tokens: id === 'mistral' && c.max_tokens < 100 ? MISTRAL_DEFAULT_MAX_TOKENS : c.max_tokens,
     }))
   }
 
@@ -468,9 +515,9 @@ export default function SettingsPage() {
         <div className="border-t pt-10">
           <form onSubmit={e => { e.preventDefault(); saveLLM.mutate(llm) }} className="space-y-6">
             <div>
-              <h2 className="text-lg font-semibold">Configuration LLM</h2>
+              <h2 className="text-lg font-semibold">LLM (texte)</h2>
               <p className="text-xs text-muted-foreground mt-1">
-                Compatible avec toute API OpenAI-standard (Anthropic, Mistral, Ollama…)
+                Utilisé pour la rédaction assistée : PNJ, lieux, factions, scènes, brainstorm…
               </p>
             </div>
 
@@ -478,18 +525,27 @@ export default function SettingsPage() {
               <p className="text-sm text-muted-foreground">Chargement…</p>
             ) : (
               <div className="space-y-4">
-                <button
-                  type="button"
-                  onClick={useMistral}
-                  className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent transition-colors"
-                  title="Pré-remplir avec l'API Mistral"
-                >
-                  <MistralLogo className="h-5 w-5 rounded-sm shrink-0" />
-                  Utiliser Mistral
-                  {hasMistralKey && (
-                    <span className="text-xs text-muted-foreground">(clé des images réutilisée)</span>
+                <div className="space-y-2">
+                  <Label htmlFor="llm_provider">Fournisseur</Label>
+                  <div className="flex items-center gap-2">
+                    {llmProvider === 'mistral' && <MistralLogo className="h-5 w-5 rounded-sm shrink-0" />}
+                    <select
+                      id="llm_provider"
+                      value={llmProvider}
+                      onChange={e => selectLLMProvider(e.target.value)}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      {LLM_PROVIDERS.map(p => (
+                        <option key={p.id} value={p.id}>{p.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {llmProvider === 'mistral' && hasMistralImageKey && (
+                    <p className="text-xs text-muted-foreground">
+                      La clé API Mistral de la section « Génération d'images » ci-dessous est réutilisée automatiquement.
+                    </p>
                   )}
-                </button>
+                </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="base_url">Base URL</Label>
@@ -505,20 +561,43 @@ export default function SettingsPage() {
                   <Input
                     id="api_key"
                     type="password"
-                    placeholder="sk-…"
+                    placeholder={llmProvider === 'ollama' ? 'ollama (souvent inutile en local)' : 'sk-…'}
                     value={llm.api_key}
                     onChange={llmField('api_key')}
                   />
                   {usingSharedMistralKey && (
                     <p className="text-xs text-muted-foreground">
-                      Réutilise la clé API Mistral de la section « Configuration Mistral » ci-dessous.
+                      Réutilise la clé API Mistral de la section « Génération d'images » ci-dessous.
                     </p>
                   )}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="model">Modèle</Label>
-                    {isMistral ? (
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="model">Modèle</Label>
+                      <Button
+                        type="button" size="sm" variant="ghost" className="h-5 px-2 text-xs"
+                        disabled={!llm.base_url.trim() || listModels.isPending}
+                        onClick={() => listModels.mutate()}
+                      >
+                        {listModels.isPending ? 'Chargement…' : 'Charger les modèles'}
+                      </Button>
+                    </div>
+                    {modelOptions.length > 0 ? (
+                      <select
+                        id="model"
+                        value={llm.model}
+                        onChange={e => { setLlmSaved(false); setLlm(c => ({ ...c, model: e.target.value })) }}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        {!modelOptions.includes(llm.model) && llm.model && (
+                          <option value={llm.model}>{llm.model}</option>
+                        )}
+                        {modelOptions.map(id => (
+                          <option key={id} value={id}>{id}</option>
+                        ))}
+                      </select>
+                    ) : llmProvider === 'mistral' ? (
                       <select
                         id="model"
                         value={llm.model}
@@ -539,6 +618,9 @@ export default function SettingsPage() {
                         value={llm.model}
                         onChange={llmField('model')}
                       />
+                    )}
+                    {listModels.isError && (
+                      <p className="text-xs text-destructive">{(listModels.error as Error).message}</p>
                     )}
                   </div>
                   <div className="space-y-2">
@@ -574,28 +656,95 @@ export default function SettingsPage() {
         </div>
 
         <div className="border-t pt-10">
-          <form onSubmit={e => { e.preventDefault(); saveMistral.mutate(mistral) }} className="space-y-6">
+          <form onSubmit={e => { e.preventDefault(); saveImage.mutate(image) }} className="space-y-6">
             <div>
-              <h2 className="text-lg font-semibold">Configuration Mistral</h2>
+              <h2 className="text-lg font-semibold">Génération d'images</h2>
               <p className="text-xs text-muted-foreground mt-1">
-                Clé API Mistral pour la génération d'images d'artefacts.
+                Portraits, lieux, emblèmes et artefacts illustrés — section distincte du LLM de texte ci-dessus.
               </p>
             </div>
 
-            {mistralLoading ? (
+            {imageLoading ? (
               <p className="text-sm text-muted-foreground">Chargement…</p>
             ) : (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="mistral_api_key">Clé API Mistral</Label>
-                  <Input
-                    id="mistral_api_key"
-                    type="password"
-                    placeholder="…"
-                    value={mistral.api_key}
-                    onChange={mistralField('api_key')}
-                  />
+                  <Label htmlFor="image_provider">Fournisseur</Label>
+                  <div className="flex items-center gap-2">
+                    {image.provider === 'mistral' && <MistralLogo className="h-5 w-5 rounded-sm shrink-0" />}
+                    <select
+                      id="image_provider"
+                      value={image.provider}
+                      onChange={e => {
+                        setImageSaved(false)
+                        const provider = e.target.value
+                        setImage(c => ({
+                          ...c,
+                          provider,
+                          // Pre-fill so the select's own default (its first
+                          // <option>) always matches the stored state —
+                          // otherwise it *looks* set but saves as "".
+                          openrouter_model: provider === 'openrouter' && !c.openrouter_model
+                            ? OPENROUTER_IMAGE_MODELS[0].value
+                            : c.openrouter_model,
+                        }))
+                      }}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      <option value="mistral">Mistral</option>
+                      <option value="openrouter">OpenRouter</option>
+                    </select>
+                  </div>
                 </div>
+
+                {image.provider === 'openrouter' ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="openrouter_api_key">Clé API OpenRouter</Label>
+                      <Input
+                        id="openrouter_api_key"
+                        type="password"
+                        placeholder="sk-or-…"
+                        value={image.openrouter_api_key}
+                        onChange={imageField('openrouter_api_key')}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="openrouter_model">Modèle</Label>
+                      <select
+                        id="openrouter_model"
+                        value={image.openrouter_model}
+                        onChange={e => { setImageSaved(false); setImage(c => ({ ...c, openrouter_model: e.target.value })) }}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        {!image.openrouter_model && <option value="">— choisir —</option>}
+                        {!OPENROUTER_IMAGE_MODELS.some(m => m.value === image.openrouter_model) && image.openrouter_model && (
+                          <option value={image.openrouter_model}>{image.openrouter_model}</option>
+                        )}
+                        {OPENROUTER_IMAGE_MODELS.map(m => (
+                          <option key={m.value} value={m.value}>{m.label}</option>
+                        ))}
+                      </select>
+                      <Input
+                        placeholder="ou un autre id de modèle (ex : bytedance-seed/seedream-4.5)"
+                        value={OPENROUTER_IMAGE_MODELS.some(m => m.value === image.openrouter_model) ? '' : image.openrouter_model}
+                        onChange={imageField('openrouter_model')}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="mistral_api_key">Clé API Mistral</Label>
+                    <Input
+                      id="mistral_api_key"
+                      type="password"
+                      placeholder="…"
+                      value={image.mistral_api_key}
+                      onChange={imageField('mistral_api_key')}
+                    />
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <Label htmlFor="image_count">Nombre d'images générées</Label>
                   <Input
@@ -603,25 +752,25 @@ export default function SettingsPage() {
                     type="number"
                     min={1}
                     max={6}
-                    value={mistral.image_count}
-                    onChange={mistralField('image_count')}
+                    value={image.image_count}
+                    onChange={imageField('image_count')}
                   />
                 </div>
               </div>
             )}
 
             <div className="flex items-center gap-3">
-              {saveMistral.error && (
-                <p className="text-destructive text-sm flex-1">{(saveMistral.error as Error).message}</p>
+              {saveImage.error && (
+                <p className="text-destructive text-sm flex-1">{(saveImage.error as Error).message}</p>
               )}
-              {mistralSaved && <p className="text-sm text-muted-foreground flex-1">Enregistré.</p>}
+              {imageSaved && <p className="text-sm text-muted-foreground flex-1">Enregistré.</p>}
               <Button
                 type="submit"
-                disabled={!mistralDirty || saveMistral.isPending}
-                variant={mistralDirty ? 'default' : 'outline'}
+                disabled={!imageDirty || saveImage.isPending}
+                variant={imageDirty ? 'default' : 'outline'}
                 className="ml-auto"
               >
-                {saveMistral.isPending ? 'Enregistrement…' : 'Enregistrer'}
+                {saveImage.isPending ? 'Enregistrement…' : 'Enregistrer'}
               </Button>
             </div>
           </form>
