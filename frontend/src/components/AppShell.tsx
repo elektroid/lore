@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users } from 'lucide-react'
+import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users, BookOpen } from 'lucide-react'
 import { useUIStore, type Theme } from '@/stores/ui'
 import { useUser } from '@/stores/auth'
 
@@ -48,6 +48,13 @@ export default function AppShell({ crumbs = [], children }: AppShellProps) {
           </span>
         ))}
         <div className="ml-auto flex items-center gap-1">
+          <Link
+            to="/lore"
+            title="Connaissances de jeu"
+            className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+          </Link>
           <Link
             to="/profile"
             title="Mon profil"

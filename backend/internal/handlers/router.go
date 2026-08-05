@@ -118,6 +118,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 				r.Get("/lore-entities", games.ListLoreEntities)
 				r.With(requireSuperuser).Post("/lore-entities", games.CreateLoreEntity)
 				r.With(requireSuperuser).Delete("/lore-entities/{entityId}", games.DeleteLoreEntity)
+				r.Get("/lore-relations", games.ListLoreRelations)
 			})
 		})
 

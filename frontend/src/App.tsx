@@ -7,6 +7,7 @@ import ScenarioFactoryPage from '@/pages/ScenarioFactoryPage'
 import SettingsPage from '@/pages/SettingsPage'
 import ProfilePage from '@/pages/ProfilePage'
 import AdminPage from '@/pages/AdminPage'
+import LorePage from '@/pages/LorePage'
 import SynopsisPage from '@/pages/SynopsisPage'
 import PrintPage from '@/pages/PrintPage'
 import PlayPage from '@/pages/PlayPage'
@@ -96,6 +97,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <AdminPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lore"
+          element={
+            <ProtectedRoute>
+              <LorePage />
             </ProtectedRoute>
           }
         />

@@ -237,6 +237,21 @@ func (h *GameHandler) DeleteLoreEntity(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ListLoreRelations returns every typed link between two of this game's lore
+// entities (e.g. "Emilia Ortega" --manages--> "Downtown"). Endpoints are IDs
+// only — the client already has the full entity list (ListLoreEntities) to
+// resolve names/kinds against, so this stays a plain, cheap table dump rather
+// than a join.
+func (h *GameHandler) ListLoreRelations(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	relations, err := db.ListGameLoreEntityRelations(r.Context(), h.db, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, relations)
+}
+
 // ── Export / import ──────────────────────────────────────────────────────────
 //
 // A game's export bundles its catalogue metadata and its extracted lore
