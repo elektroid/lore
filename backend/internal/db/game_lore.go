@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -330,4 +331,273 @@ func UpsertGameLoreEntityRelation(ctx context.Context, database *sql.DB, p Creat
 		 DO UPDATE SET source_page=excluded.source_page`,
 		id, p.GameID, p.FromEntityID, p.ToEntityID, p.Relation, p.SourceTitle, p.SourcePage)
 	return err
+}
+
+// ── Dedup: merging entities the extractor forked into near-duplicates ──────
+//
+// The extractor names an entity however the source text happens to name it
+// on a given page — "Ortega", "Emilia Ortega" and "City Manager Ortega" are
+// all the same NPC, but UpsertGameLoreEntity only collapses *exact*
+// (case-insensitive) name matches, so name variants fork into separate rows.
+// See cmd/dedup-lore-entities for the clustering/LLM-verification pass that
+// decides which rows are actually the same entity; this is just the merge
+// primitive it calls once it has decided.
+
+// MergeGameLoreEntities folds duplicateIDs into canonicalID: tags are
+// unioned, summary/excerpt fall back to the richest non-empty value across
+// the group, every relation touching a duplicate is re-pointed at the
+// canonical (dropped instead if that would collide with the canonical's own
+// (from, relation, to) UNIQUE constraint, or would become a self-loop), and
+// the duplicate rows are deleted. Runs as one transaction so a failure
+// midway leaves the group untouched rather than half-merged.
+func MergeGameLoreEntities(ctx context.Context, database *sql.DB, canonicalID string, duplicateIDs []string) error {
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	canonical, err := scanGameLoreEntity(tx.QueryRowContext(ctx,
+		`SELECT `+gameLoreEntityCols+` FROM game_lore_entities WHERE id=?`, canonicalID))
+	if err != nil {
+		return err
+	}
+
+	tagSet := map[string]bool{}
+	for _, t := range strings.Fields(canonical.Tags) {
+		tagSet[t] = true
+	}
+	summary, excerpt := canonical.Summary, canonical.Excerpt
+
+	for _, dupID := range duplicateIDs {
+		if dupID == canonicalID {
+			continue
+		}
+		dup, err := scanGameLoreEntity(tx.QueryRowContext(ctx,
+			`SELECT `+gameLoreEntityCols+` FROM game_lore_entities WHERE id=?`, dupID))
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		for _, t := range strings.Fields(dup.Tags) {
+			tagSet[t] = true
+		}
+		if len(dup.Summary) > len(summary) {
+			summary = dup.Summary
+		}
+		if excerpt == "" {
+			excerpt = dup.Excerpt
+		}
+
+		if err := repointRelationEndpoint(ctx, tx, "from_entity_id", dupID, canonicalID); err != nil {
+			return err
+		}
+		if err := repointRelationEndpoint(ctx, tx, "to_entity_id", dupID, canonicalID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM game_lore_entities WHERE id=?`, dupID); err != nil {
+			return err
+		}
+	}
+
+	// A relation that used to run between two members of this cluster (e.g.
+	// a stray "Ortega" -> "Emilia Ortega" row) becomes a self-loop once both
+	// ends repoint to the same canonical ID — drop it.
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM game_lore_entity_relations WHERE from_entity_id=? AND to_entity_id=?`,
+		canonicalID, canonicalID); err != nil {
+		return err
+	}
+
+	tags := make([]string, 0, len(tagSet))
+	for t := range tagSet {
+		tags = append(tags, t)
+	}
+	sort.Strings(tags)
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE game_lore_entities SET tags=?, summary=?, excerpt=? WHERE id=?`,
+		strings.Join(tags, " "), summary, excerpt, canonicalID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// repointRelationEndpoint moves every relation's col (from_entity_id or
+// to_entity_id) that points at fromID over to toID, one row at a time: a row
+// that would collide with another relation's (from, relation, to) after the
+// move gets deleted instead of erroring the whole merge, since the canonical
+// already carries the equivalent fact.
+func repointRelationEndpoint(ctx context.Context, tx *sql.Tx, col, fromID, toID string) error {
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id, from_entity_id, to_entity_id, relation FROM game_lore_entity_relations WHERE `+col+`=?`, fromID)
+	if err != nil {
+		return err
+	}
+	type relRow struct{ id, from, to, relation string }
+	var list []relRow
+	for rows.Next() {
+		var r relRow
+		if err := rows.Scan(&r.id, &r.from, &r.to, &r.relation); err != nil {
+			rows.Close()
+			return err
+		}
+		list = append(list, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, r := range list {
+		newFrom, newTo := r.from, r.to
+		if col == "from_entity_id" {
+			newFrom = toID
+		} else {
+			newTo = toID
+		}
+		if newFrom == newTo {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM game_lore_entity_relations WHERE id=?`, r.id); err != nil {
+				return err
+			}
+			continue
+		}
+		var exists int
+		if err := tx.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM game_lore_entity_relations WHERE from_entity_id=? AND relation=? AND to_entity_id=? AND id<>?`,
+			newFrom, r.relation, newTo, r.id).Scan(&exists); err != nil {
+			return err
+		}
+		if exists > 0 {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM game_lore_entity_relations WHERE id=?`, r.id); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE game_lore_entity_relations SET from_entity_id=?, to_entity_id=? WHERE id=?`,
+			newFrom, newTo, r.id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ── Grounding LLM prompts in indexed sourcebook facts ───────────────────────
+//
+// Story-writing features (scenario factory, synopsis/NPC/faction/location/
+// artefact suggestions, brainstorm chat) can draw on whatever's been indexed
+// for the campaign's game system, so a generated NPC's faction or a scene's
+// district isn't invented from nothing when the sourcebook already has an
+// answer. There's no embedding index in this project, so retrieval is a
+// keyword-overlap search rather than semantic — good enough to surface "the
+// Downtown district" when a brief mentions "corpo bar downtown", not a
+// general-purpose search engine.
+
+// stopWords are filtered out of query text before keyword search — short
+// function words in French (prompts are authored in French) and English
+// (sourcebook content is English) that would otherwise match almost every
+// entity and drown out the words that actually distinguish one from another.
+var stopWords = map[string]bool{
+	"the": true, "and": true, "for": true, "with": true, "from": true, "that": true,
+	"this": true, "have": true, "will": true, "your": true, "into": true, "their": true,
+	"about": true, "which": true, "there": true, "where": true, "when": true,
+	"le": true, "la": true, "les": true, "un": true, "une": true, "des": true,
+	"de": true, "du": true, "et": true, "est": true, "sont": true, "dans": true,
+	"pour": true, "avec": true, "sur": true, "qui": true, "que": true, "quoi": true,
+	"son": true, "sa": true, "ses": true, "leur": true, "leurs": true, "plus": true,
+	"pas": true, "cette": true, "ces": true, "vers": true, "chez": true,
+}
+
+// extractKeywords lowercases queryText, splits on anything that isn't a
+// letter or digit, and keeps distinct tokens of at least 4 characters that
+// aren't stop words — short enough to still catch "gang", "corp", long
+// enough to skip most filler.
+func extractKeywords(queryText string) []string {
+	fields := strings.FieldsFunc(strings.ToLower(queryText), func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r >= 'à' && r <= 'ÿ')
+	})
+	seen := map[string]bool{}
+	var keywords []string
+	for _, f := range fields {
+		if len(f) < 4 || stopWords[f] || seen[f] {
+			continue
+		}
+		seen[f] = true
+		keywords = append(keywords, f)
+	}
+	return keywords
+}
+
+// SearchGameLoreEntities ranks entities by how many distinct keywords from
+// queryText appear in their name/tags/summary, descending, and returns the
+// top `limit`. Returns an empty slice (not an error) when queryText yields
+// no usable keywords or nothing matches — callers should treat this as "no
+// grounding available" and proceed without it, never as a hard failure.
+func SearchGameLoreEntities(ctx context.Context, database *sql.DB, gameID, queryText string, limit int) ([]GameLoreEntity, error) {
+	keywords := extractKeywords(queryText)
+	if len(keywords) == 0 {
+		return []GameLoreEntity{}, nil
+	}
+
+	where := make([]string, 0, len(keywords))
+	args := []any{gameID}
+	for _, k := range keywords {
+		like := `%` + escapeLike(k) + `%`
+		where = append(where, `(name LIKE ? ESCAPE '\' OR tags LIKE ? ESCAPE '\' OR summary LIKE ? ESCAPE '\')`)
+		args = append(args, like, like, like)
+	}
+	query := `SELECT ` + gameLoreEntityCols + ` FROM game_lore_entities WHERE game_id=? AND (` +
+		strings.Join(where, " OR ") + `) LIMIT 300`
+
+	rows, err := database.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var candidates []GameLoreEntity
+	for rows.Next() {
+		e, err := scanGameLoreEntity(rows)
+		if err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, *e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	type scored struct {
+		entity GameLoreEntity
+		score  int
+	}
+	results := make([]scored, 0, len(candidates))
+	for _, e := range candidates {
+		haystack := strings.ToLower(e.Name + " " + e.Tags + " " + e.Summary)
+		score := 0
+		for _, k := range keywords {
+			if strings.Contains(haystack, k) {
+				score++
+			}
+		}
+		if score > 0 {
+			results = append(results, scored{e, score})
+		}
+	}
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].score != results[j].score {
+			return results[i].score > results[j].score
+		}
+		return results[i].entity.Name < results[j].entity.Name
+	})
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	out := make([]GameLoreEntity, len(results))
+	for i, r := range results {
+		out[i] = r.entity
+	}
+	return out, nil
 }
