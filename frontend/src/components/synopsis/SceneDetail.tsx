@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import type { Scene, SceneStatus } from '@/types/synopsis'
 import { SCENE_STATUS_LABELS } from '@/types/synopsis'
 import type { CampaignNPC, CampaignLocation, LocationImage, CampaignArtefact } from '@/types/entities'
+import type { Campaign } from '@/types/campaign'
+import type { GameLoreEntity, GameLoreEntitiesPage } from '@/types/game'
 import { api } from '@/api/client'
 import { patchCachedListItem } from '@/api/cache'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
@@ -67,14 +69,39 @@ function LocationPicker({
   campaignId: string; open: boolean; onClose: () => void; onPick: (loc: CampaignLocation) => void
 }) {
   const [search, setSearch] = useState('')
+  const [loreSearch, setLoreSearch] = useState('')
+  const [debouncedLoreSearch, setDebouncedLoreSearch] = useState('')
   const [newName, setNewName] = useState('')
-  const [mode, setMode] = useState<'pick' | 'create'>('pick')
+  const [mode, setMode] = useState<'pick' | 'lore' | 'create'>('pick')
   const qc = useQueryClient()
+
+  const { data: campaign } = useQuery({
+    queryKey: ['campaign', campaignId],
+    queryFn: () => api.get<Campaign>(`/campaigns/${campaignId}`),
+    enabled: open,
+  })
 
   const { data: locations = [] } = useQuery({
     queryKey: ['campaign-locations', campaignId],
     queryFn: () => api.get<CampaignLocation[]>(`/campaigns/${campaignId}/locations`),
     enabled: open,
+  })
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedLoreSearch(loreSearch.trim()), 250)
+    return () => clearTimeout(t)
+  }, [loreSearch])
+
+  const gameId = campaign?.game_id ?? ''
+  const { data: loreResults = [] } = useQuery({
+    queryKey: ['game-lore-locations', gameId, debouncedLoreSearch],
+    queryFn: () => {
+      const params = new URLSearchParams({ kind: 'location', page_size: '20' })
+      if (debouncedLoreSearch) params.set('q', debouncedLoreSearch)
+      return api.get<GameLoreEntitiesPage>(`/games/${gameId}/lore-entities?${params.toString()}`)
+        .then(p => p.entities)
+    },
+    enabled: open && mode === 'lore' && !!gameId,
   })
 
   const create = useMutation({
@@ -83,12 +110,20 @@ function LocationPicker({
     onSuccess: (loc) => { qc.invalidateQueries({ queryKey: ['campaign-locations', campaignId] }); onPick(loc) },
   })
 
+  const importLore = useMutation({
+    mutationFn: (entity: GameLoreEntity) =>
+      api.post<CampaignLocation>(`/campaigns/${campaignId}/locations`, {
+        name: entity.name, description: entity.summary || entity.excerpt, atmosphere: '',
+      }),
+    onSuccess: (loc) => { qc.invalidateQueries({ queryKey: ['campaign-locations', campaignId] }); onPick(loc) },
+  })
+
   const filtered = locations.filter(l =>
     l.name.toLowerCase().includes(search.toLowerCase()) ||
     l.atmosphere.toLowerCase().includes(search.toLowerCase()),
   )
 
-  function close() { setSearch(''); setNewName(''); setMode('pick'); onClose() }
+  function close() { setSearch(''); setLoreSearch(''); setNewName(''); setMode('pick'); onClose() }
 
   return (
     <Dialog open={open} onOpenChange={o => !o && close()}>
@@ -96,6 +131,9 @@ function LocationPicker({
         <DialogHeader><DialogTitle>Choisir un lieu</DialogTitle></DialogHeader>
         <div className="flex gap-2 border-b pb-3">
           <Button size="sm" variant={mode === 'pick' ? 'default' : 'ghost'} className="h-7 text-xs" onClick={() => setMode('pick')}>Depuis la campagne</Button>
+          {gameId && (
+            <Button size="sm" variant={mode === 'lore' ? 'default' : 'ghost'} className="h-7 text-xs" onClick={() => setMode('lore')}>Depuis le lore</Button>
+          )}
           <Button size="sm" variant={mode === 'create' ? 'default' : 'ghost'} className="h-7 text-xs" onClick={() => setMode('create')}>Nouveau lieu</Button>
         </div>
         {mode === 'pick' && (
@@ -115,6 +153,32 @@ function LocationPicker({
                     <button onClick={() => { onPick(loc); close() }} className="w-full text-left rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors">
                       <p className="font-medium">{loc.name}</p>
                       {loc.atmosphere && <p className="text-xs text-muted-foreground">{loc.atmosphere}</p>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        {mode === 'lore' && (
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input value={loreSearch} onChange={e => setLoreSearch(e.target.value)} placeholder="Rechercher dans le lore…" className="h-8 pl-8 text-sm" autoFocus />
+            </div>
+            {loreResults.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-2">Aucun résultat.</p>
+            ) : (
+              <ul className="space-y-1 max-h-56 overflow-y-auto">
+                {loreResults.map(e => (
+                  <li key={e.id}>
+                    <button
+                      onClick={() => importLore.mutate(e)}
+                      disabled={importLore.isPending}
+                      className="w-full text-left rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors disabled:opacity-50"
+                    >
+                      <p className="font-medium">{e.name}</p>
+                      {e.summary && <p className="text-xs text-muted-foreground line-clamp-1">{e.summary}</p>}
                     </button>
                   </li>
                 ))}

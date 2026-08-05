@@ -63,7 +63,12 @@ func ListGameLoreEntities(ctx context.Context, database *sql.DB, gameID string) 
 // alone indexed 2000+), so the client filters/paginates against the
 // database rather than pulling everything over the wire every time. kind
 // and query are both optional (empty string = no filter on that field);
-// query matches name/tags/summary via a case-insensitive substring search.
+// query matches name/tags/summary the same way SearchGameLoreEntities does
+// — word-boundary, not a raw substring (see matchesKeyword) — so a search
+// for "port" doesn't surface "sportif". That check isn't expressible as a
+// plain SQL LIKE, so when query is set this pulls every game_id[/kind]
+// candidate row (still bounded — thousands, not the whole table) and
+// filters/paginates in Go instead of pushing LIMIT/OFFSET down to SQL.
 func ListGameLoreEntitiesPage(ctx context.Context, database *sql.DB, gameID, kind, query string, limit, offset int) ([]GameLoreEntity, int, error) {
 	where := `game_id=?`
 	args := []any{gameID}
@@ -71,36 +76,70 @@ func ListGameLoreEntitiesPage(ctx context.Context, database *sql.DB, gameID, kin
 		where += ` AND kind=?`
 		args = append(args, kind)
 	}
-	if query != "" {
-		where += ` AND (name LIKE ? ESCAPE '\' OR tags LIKE ? ESCAPE '\' OR summary LIKE ? ESCAPE '\')`
-		like := `%` + escapeLike(query) + `%`
-		args = append(args, like, like, like)
+
+	if query == "" {
+		var total int
+		if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM game_lore_entities WHERE `+where, args...).Scan(&total); err != nil {
+			return nil, 0, err
+		}
+		pageArgs := append(append([]any{}, args...), limit, offset)
+		rows, err := database.QueryContext(ctx,
+			`SELECT `+gameLoreEntityCols+` FROM game_lore_entities WHERE `+where+` ORDER BY kind, name LIMIT ? OFFSET ?`, pageArgs...)
+		if err != nil {
+			return nil, 0, err
+		}
+		defer rows.Close()
+		list, err := scanGameLoreEntityRows(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		return list, total, nil
 	}
 
-	var total int
-	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM game_lore_entities WHERE `+where, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-
-	pageArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := database.QueryContext(ctx,
-		`SELECT `+gameLoreEntityCols+` FROM game_lore_entities WHERE `+where+` ORDER BY kind, name LIMIT ? OFFSET ?`, pageArgs...)
+		`SELECT `+gameLoreEntityCols+` FROM game_lore_entities WHERE `+where+` ORDER BY kind, name`, args...)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
+	all, err := scanGameLoreEntityRows(rows)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	needle := " " + strings.ToLower(query)
+	matched := make([]GameLoreEntity, 0, len(all))
+	for _, e := range all {
+		haystack := wordBoundaryHaystack(e.Name + " " + e.Tags + " " + e.Summary)
+		if strings.Contains(haystack, needle) {
+			matched = append(matched, e)
+		}
+	}
+
+	total := len(matched)
+	if offset >= total {
+		return []GameLoreEntity{}, total, nil
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return matched[offset:end], total, nil
+}
+
+func scanGameLoreEntityRows(rows *sql.Rows) ([]GameLoreEntity, error) {
 	var list []GameLoreEntity
 	for rows.Next() {
 		e, err := scanGameLoreEntity(rows)
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		list = append(list, *e)
 	}
 	if list == nil {
 		list = []GameLoreEntity{}
 	}
-	return list, total, rows.Err()
+	return list, rows.Err()
 }
 
 // escapeLike escapes SQLite LIKE wildcards in user input so a search for
