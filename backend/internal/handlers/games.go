@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"archive/zip"
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -324,13 +327,20 @@ func (h *GameHandler) ListLoreRelations(w http.ResponseWriter, r *http.Request) 
 
 // ── Export / import ──────────────────────────────────────────────────────────
 //
-// A game's export bundles its catalogue metadata and its extracted lore
-// entities — never the sourcebook PDFs or the raw page text pulled from them
-// (see the comment on game_lore_entities in schema.sql). That's what makes it
-// safe to hand to another gamemaster running their own instance: "install
-// Cyberpunk Red" imports the game and its structured knowledge, and the GM
-// supplies their own copy of the actual sourcebook locally if they want
-// full-text search on top of it.
+// A game's export bundles its catalogue metadata, its extracted lore entities
+// and the typed relations between them — never the sourcebook PDFs or the raw
+// page text pulled from them (see the comment on game_lore_entities in
+// schema.sql). That's what makes it safe to hand to another gamemaster
+// running their own instance: "install Cyberpunk Red" imports the game and
+// its structured knowledge, and the GM supplies their own copy of the actual
+// sourcebook locally if they want full-text search on top of it.
+//
+// The wire format is a zip (manifest.json inside) rather than bare JSON so a
+// download is a single double-click-to-install artifact — and so a later
+// addition (a cover image, a bundled PDF a GM has the rights to redistribute)
+// has somewhere to live without changing the container format again.
+
+const gameExportManifestName = "manifest.json"
 
 type gameExportMeta struct {
 	Name        string `json:"name"`
@@ -339,7 +349,11 @@ type gameExportMeta struct {
 	VisualStyle string `json:"visual_style"`
 }
 
+// ID is export-local, not the source instance's real row ID — it exists only
+// so Relations below can reference "the third entity in this file" without
+// caring what ID it happens to get on the importing instance.
 type gameLoreEntityExport struct {
+	ID          string `json:"id"`
 	Kind        string `json:"kind"`
 	Name        string `json:"name"`
 	Tags        string `json:"tags"`
@@ -348,11 +362,20 @@ type gameLoreEntityExport struct {
 	SourcePage  int    `json:"source_page"`
 }
 
+type gameLoreEntityRelationExport struct {
+	FromEntityID string `json:"from_entity_id"`
+	ToEntityID   string `json:"to_entity_id"`
+	Relation     string `json:"relation"`
+	SourceTitle  string `json:"source_title"`
+	SourcePage   int    `json:"source_page"`
+}
+
 type gameExportDoc struct {
-	ExportedAt   string                 `json:"exported_at"`
-	Version      int                    `json:"version"`
-	Game         gameExportMeta         `json:"game"`
-	LoreEntities []gameLoreEntityExport `json:"lore_entities"`
+	ExportedAt   string                         `json:"exported_at"`
+	Version      int                            `json:"version"`
+	Game         gameExportMeta                 `json:"game"`
+	LoreEntities []gameLoreEntityExport         `json:"lore_entities"`
+	Relations    []gameLoreEntityRelationExport `json:"relations"`
 }
 
 func (h *GameHandler) Export(w http.ResponseWriter, r *http.Request) {
@@ -377,6 +400,7 @@ func (h *GameHandler) Export(w http.ResponseWriter, r *http.Request) {
 	exported := make([]gameLoreEntityExport, 0, len(entities))
 	for _, e := range entities {
 		exported = append(exported, gameLoreEntityExport{
+			ID:          e.ID,
 			Kind:        e.Kind,
 			Name:        e.Name,
 			Tags:        e.Tags,
@@ -386,9 +410,25 @@ func (h *GameHandler) Export(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	relations, err := db.ListGameLoreEntityRelations(ctx, h.db, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	exportedRelations := make([]gameLoreEntityRelationExport, 0, len(relations))
+	for _, rel := range relations {
+		exportedRelations = append(exportedRelations, gameLoreEntityRelationExport{
+			FromEntityID: rel.FromEntityID,
+			ToEntityID:   rel.ToEntityID,
+			Relation:     rel.Relation,
+			SourceTitle:  rel.SourceTitle,
+			SourcePage:   rel.SourcePage,
+		})
+	}
+
 	doc := gameExportDoc{
 		ExportedAt: time.Now().UTC().Format(time.RFC3339),
-		Version:    1,
+		Version:    2,
 		Game: gameExportMeta{
 			Name:        game.Name,
 			Slug:        game.Slug,
@@ -396,20 +436,81 @@ func (h *GameHandler) Export(w http.ResponseWriter, r *http.Request) {
 			VisualStyle: game.VisualStyle,
 		},
 		LoreEntities: exported,
+		Relations:    exportedRelations,
 	}
 
-	filename := fmt.Sprintf("lore-game-%s.json", safeFilename(game.Slug))
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	manifest, err := json.Marshal(doc)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	zf, err := zw.Create(gameExportManifestName)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := zf.Write(manifest); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := zw.Close(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	filename := fmt.Sprintf("lore-game-%s.zip", safeFilename(game.Slug))
+	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	json.NewEncoder(w).Encode(doc) //nolint:errcheck
+	w.Write(buf.Bytes()) //nolint:errcheck
 }
+
+// maxGameImportSize caps the uploaded zip the same way image uploads are
+// capped elsewhere (see uploads.go) — a manifest of even a few thousand lore
+// entities is a few MB of JSON, so this leaves generous headroom.
+const maxGameImportSize = 32 << 20
 
 func (h *GameHandler) Import(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	if err := r.ParseMultipartForm(maxGameImportSize); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid upload")
+		return
+	}
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "missing file")
+		return
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, maxGameImportSize+1))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if len(data) > maxGameImportSize {
+		writeError(w, http.StatusBadRequest, "file too large")
+		return
+	}
+
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "not a valid zip file")
+		return
+	}
+	manifestFile, err := zr.Open(gameExportManifestName)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("zip is missing %s", gameExportManifestName))
+		return
+	}
+	defer manifestFile.Close()
+
 	var doc gameExportDoc
-	if err := json.NewDecoder(r.Body).Decode(&doc); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if err := json.NewDecoder(manifestFile).Decode(&doc); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid manifest")
 		return
 	}
 	if doc.Game.Name == "" || doc.Game.Slug == "" {
@@ -439,11 +540,15 @@ func (h *GameHandler) Import(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Maps the manifest's export-local entity IDs to the IDs this instance
+	// just minted, so Relations below (which only knows the old IDs) can be
+	// re-pointed at the new rows.
+	idMap := make(map[string]string, len(doc.LoreEntities))
 	for _, e := range doc.LoreEntities {
 		if e.Kind == "" || e.Name == "" {
 			continue
 		}
-		if _, err := db.CreateGameLoreEntity(ctx, h.db, db.CreateGameLoreEntityParams{
+		entity, err := db.CreateGameLoreEntity(ctx, h.db, db.CreateGameLoreEntityParams{
 			GameID:      game.ID,
 			Kind:        e.Kind,
 			Name:        e.Name,
@@ -451,6 +556,32 @@ func (h *GameHandler) Import(w http.ResponseWriter, r *http.Request) {
 			Summary:     e.Summary,
 			SourceTitle: e.SourceTitle,
 			SourcePage:  e.SourcePage,
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if e.ID != "" {
+			idMap[e.ID] = entity.ID
+		}
+	}
+
+	for _, rel := range doc.Relations {
+		fromID, ok := idMap[rel.FromEntityID]
+		if !ok {
+			continue
+		}
+		toID, ok := idMap[rel.ToEntityID]
+		if !ok {
+			continue
+		}
+		if err := db.UpsertGameLoreEntityRelation(ctx, h.db, db.CreateGameLoreEntityRelationParams{
+			GameID:       game.ID,
+			FromEntityID: fromID,
+			ToEntityID:   toID,
+			Relation:     rel.Relation,
+			SourceTitle:  rel.SourceTitle,
+			SourcePage:   rel.SourcePage,
 		}); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return

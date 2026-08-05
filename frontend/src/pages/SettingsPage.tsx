@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard'
-import { Plus, Pencil, Trash2, X, FolderOpen, Sparkles } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, FolderOpen, Sparkles, Download, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -125,6 +125,16 @@ function GamesSection() {
     queryFn: () => api.get<Game[]>('/games'),
   })
 
+  const importInputRef = useRef<HTMLInputElement>(null)
+  const importGame = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return api.upload<Game>('/games/import', form)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['games'] }),
+  })
+
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
   const [newSlug, setNewSlug] = useState('')
@@ -182,10 +192,36 @@ function GamesSection() {
             Systèmes de jeu disponibles pour vos campagnes.
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-          <Plus className="h-3.5 w-3.5 mr-1" />Ajouter
-        </Button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".zip"
+            className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) importGame.mutate(file)
+            }}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={importGame.isPending}
+            onClick={() => importInputRef.current?.click()}
+          >
+            <Upload className="h-3.5 w-3.5 mr-1" />
+            {importGame.isPending ? 'Import…' : 'Importer'}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
+            <Plus className="h-3.5 w-3.5 mr-1" />Ajouter
+          </Button>
+        </div>
       </div>
+
+      {importGame.isError && (
+        <p className="text-xs text-destructive">{(importGame.error as Error).message}</p>
+      )}
 
       {games.length === 0 && !adding && (
         <p className="text-xs text-muted-foreground italic">Aucun jeu configuré.</p>
@@ -263,6 +299,13 @@ function GamesSection() {
                 >
                   <FolderOpen className="h-3.5 w-3.5" />
                 </button>
+                <a
+                  href={`/api/games/${g.id}/export`}
+                  className="opacity-0 group-hover:opacity-100 text-muted-foreground/60 hover:text-muted-foreground transition-opacity"
+                  title="Exporter (.zip)"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </a>
                 <button
                   onClick={() => { setEditingId(g.id); setEditName(g.name); setEditSlug(g.slug); setEditGenre(g.genre ?? ''); setEditVisualStyle(g.visual_style ?? ''); setOrigVisualStyle(g.visual_style ?? '') }}
                   className="opacity-0 group-hover:opacity-100 text-muted-foreground/60 hover:text-muted-foreground transition-opacity"

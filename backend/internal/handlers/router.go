@@ -103,9 +103,9 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 			// guard goes on the individual verbs rather than a nested group.
 			r.Get("/", games.List)
 			r.With(requireSuperuser).Post("/", games.Create)
-			// Import creates a new game from another instance's export — an
-			// admin action, and a literal segment so it doesn't collide with
-			// the /{id} route below.
+			// Import creates a new game from another instance's exported zip
+			// (multipart upload, field "file") — an admin action, and a
+			// literal segment so it doesn't collide with the /{id} route below.
 			r.With(requireSuperuser).Post("/import", games.Import)
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", games.Get)
