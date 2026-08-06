@@ -1,7 +1,8 @@
-import { Link } from 'react-router-dom'
-import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users, BookOpen } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users, BookOpen, LogOut } from 'lucide-react'
 import { useUIStore, type Theme } from '@/stores/ui'
-import { useUser } from '@/stores/auth'
+import { useAuthStore, useUser } from '@/stores/auth'
+import { logout as logoutRequest } from '@/api/auth'
 
 interface Crumb {
   label: string
@@ -24,6 +25,17 @@ export default function AppShell({ crumbs = [], children }: AppShellProps) {
   const theme = useUIStore((s) => s.theme)
   const setTheme = useUIStore((s) => s.setTheme)
   const user = useUser()
+  const clearAuth = useAuthStore((s) => s.logout)
+  const navigate = useNavigate()
+
+  async function handleLogout() {
+    try {
+      await logoutRequest()
+    } finally {
+      clearAuth()
+      navigate('/login')
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -80,6 +92,13 @@ export default function AppShell({ crumbs = [], children }: AppShellProps) {
               <Settings className="h-3.5 w-3.5" />
             </Link>
           )}
+          <button
+            onClick={handleLogout}
+            title="Se déconnecter"
+            className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+          </button>
           <div className="w-px h-4 bg-border mx-1" />
           {themes.map((t) => (
             <button
