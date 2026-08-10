@@ -48,7 +48,7 @@ export default function ProfilePage() {
     },
   })
 
-  const dirty = name !== (user?.name ?? '') || email !== (user?.email ?? '') || currentPassword !== ''
+  const dirty = name !== (user?.name ?? '') || email !== (user?.email ?? '') || newPassword !== ''
   const { guardDialog } = useUnsavedGuard(dirty, async () => {
     if (newPassword && newPassword !== confirmPassword) throw new Error('mismatch')
     const req: UpdateMeRequest = { name, email }
