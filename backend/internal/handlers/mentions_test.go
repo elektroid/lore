@@ -23,7 +23,7 @@ func TestResolveMentionsCoversEveryEntityKind(t *testing.T) {
 		t.Fatalf("campaign: %v", err)
 	}
 
-	npc, err := db.CreateCampaignNPC(ctx, database, campaign.ID, "Rache Bartmoss", "netrunner légendaire", "", "", "")
+	npc, err := db.CreateCampaignNPC(ctx, database, campaign.ID, "Rache Bartmoss", "netrunner légendaire", "", "", "", "")
 	if err != nil {
 		t.Fatalf("npc: %v", err)
 	}

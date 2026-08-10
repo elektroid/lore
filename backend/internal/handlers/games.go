@@ -48,10 +48,11 @@ func (h *GameHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 type gameBody struct {
-	Name        string `json:"name"`
-	Slug        string `json:"slug"`
-	Genre       string `json:"genre"`
-	Description string `json:"description"`
+	Name            string  `json:"name"`
+	Slug            string  `json:"slug"`
+	Genre           string  `json:"genre"`
+	Description     string  `json:"description"`
+	SheetTemplateID *string `json:"sheet_template_id"`
 }
 
 func (h *GameHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +65,7 @@ func (h *GameHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name and slug are required")
 		return
 	}
-	game, err := db.CreateGame(r.Context(), h.db, body.Name, body.Slug, body.Genre, body.Description)
+	game, err := db.CreateGame(r.Context(), h.db, body.Name, body.Slug, body.Genre, body.Description, body.SheetTemplateID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -83,7 +84,7 @@ func (h *GameHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name and slug are required")
 		return
 	}
-	game, err := db.UpdateGame(r.Context(), h.db, id, body.Name, body.Slug, body.Genre, body.Description)
+	game, err := db.UpdateGame(r.Context(), h.db, id, body.Name, body.Slug, body.Genre, body.Description, body.SheetTemplateID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -560,7 +561,10 @@ func (h *GameHandler) Import(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	game, err := db.CreateGame(ctx, h.db, doc.Game.Name, doc.Game.Slug, doc.Game.Genre, doc.Game.Description)
+	// Sheet templates aren't part of the export payload — an imported game
+	// starts with none, same as any newly created one; the admin attaches one
+	// afterward if it applies.
+	game, err := db.CreateGame(ctx, h.db, doc.Game.Name, doc.Game.Slug, doc.Game.Genre, doc.Game.Description, nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

@@ -10,30 +10,47 @@ import (
 )
 
 type Game struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	Slug            string `json:"slug"`
-	Genre           string `json:"genre"`
-	Description     string `json:"description"`
-	VisualStyle     string `json:"visual_style"`
-	MistralAgentID  string `json:"mistral_agent_id"`
-	CreatedAt       string `json:"created_at"`
+	ID                string  `json:"id"`
+	Name              string  `json:"name"`
+	Slug              string  `json:"slug"`
+	Genre             string  `json:"genre"`
+	Description       string  `json:"description"`
+	VisualStyle       string  `json:"visual_style"`
+	MistralAgentID    string  `json:"mistral_agent_id"`
+	SheetTemplateID   *string `json:"sheet_template_id"`
+	SheetTemplateName string  `json:"sheet_template_name"`
+	CreatedAt         string  `json:"created_at"`
+}
+
+const gameSelectCols = `g.id, g.name, g.slug, g.genre, g.description, g.visual_style, g.mistral_agent_id,
+	       g.sheet_template_id, COALESCE(st.name, ''), g.created_at`
+
+const gameSelectFrom = `FROM games g LEFT JOIN sheet_templates st ON st.id = g.sheet_template_id`
+
+func scanGame(row interface{ Scan(...any) error }) (*Game, error) {
+	var g Game
+	err := row.Scan(&g.ID, &g.Name, &g.Slug, &g.Genre, &g.Description, &g.VisualStyle, &g.MistralAgentID,
+		&g.SheetTemplateID, &g.SheetTemplateName, &g.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &g, err
 }
 
 func ListGames(ctx context.Context, database *sql.DB) ([]Game, error) {
 	rows, err := database.QueryContext(ctx,
-		`SELECT id, name, slug, genre, description, visual_style, mistral_agent_id, created_at FROM games ORDER BY name`)
+		`SELECT `+gameSelectCols+` `+gameSelectFrom+` ORDER BY g.name`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var list []Game
 	for rows.Next() {
-		var g Game
-		if err := rows.Scan(&g.ID, &g.Name, &g.Slug, &g.Genre, &g.Description, &g.VisualStyle, &g.MistralAgentID, &g.CreatedAt); err != nil {
+		g, err := scanGame(rows)
+		if err != nil {
 			return nil, err
 		}
-		list = append(list, g)
+		list = append(list, *g)
 	}
 	if list == nil {
 		list = []Game{}
@@ -42,40 +59,32 @@ func ListGames(ctx context.Context, database *sql.DB) ([]Game, error) {
 }
 
 func GetGame(ctx context.Context, database *sql.DB, id string) (*Game, error) {
-	var g Game
-	err := database.QueryRowContext(ctx,
-		`SELECT id, name, slug, genre, description, visual_style, mistral_agent_id, created_at FROM games WHERE id = ?`, id).
-		Scan(&g.ID, &g.Name, &g.Slug, &g.Genre, &g.Description, &g.VisualStyle, &g.MistralAgentID, &g.CreatedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	return &g, err
+	row := database.QueryRowContext(ctx,
+		`SELECT `+gameSelectCols+` `+gameSelectFrom+` WHERE g.id = ?`, id)
+	return scanGame(row)
 }
 
 func GetGameBySlug(ctx context.Context, database *sql.DB, slug string) (*Game, error) {
-	var g Game
-	err := database.QueryRowContext(ctx,
-		`SELECT id, name, slug, genre, description, visual_style, mistral_agent_id, created_at FROM games WHERE slug = ?`, slug).
-		Scan(&g.ID, &g.Name, &g.Slug, &g.Genre, &g.Description, &g.VisualStyle, &g.MistralAgentID, &g.CreatedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	return &g, err
+	row := database.QueryRowContext(ctx,
+		`SELECT `+gameSelectCols+` `+gameSelectFrom+` WHERE g.slug = ?`, slug)
+	return scanGame(row)
 }
 
-func CreateGame(ctx context.Context, database *sql.DB, name, slug, genre, description string) (*Game, error) {
+func CreateGame(ctx context.Context, database *sql.DB, name, slug, genre, description string, sheetTemplateID *string) (*Game, error) {
 	id := uuid.New().String()
 	_, err := database.ExecContext(ctx,
-		`INSERT INTO games (id, name, slug, genre, description) VALUES (?, ?, ?, ?, ?)`, id, name, slug, genre, description)
+		`INSERT INTO games (id, name, slug, genre, description, sheet_template_id) VALUES (?, ?, ?, ?, ?, ?)`,
+		id, name, slug, genre, description, sheetTemplateID)
 	if err != nil {
 		return nil, err
 	}
 	return GetGame(ctx, database, id)
 }
 
-func UpdateGame(ctx context.Context, database *sql.DB, id, name, slug, genre, description string) (*Game, error) {
+func UpdateGame(ctx context.Context, database *sql.DB, id, name, slug, genre, description string, sheetTemplateID *string) (*Game, error) {
 	_, err := database.ExecContext(ctx,
-		`UPDATE games SET name=?, slug=?, genre=?, description=? WHERE id=?`, name, slug, genre, description, id)
+		`UPDATE games SET name=?, slug=?, genre=?, description=?, sheet_template_id=? WHERE id=?`,
+		name, slug, genre, description, sheetTemplateID, id)
 	if err != nil {
 		return nil, err
 	}

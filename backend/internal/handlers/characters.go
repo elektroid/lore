@@ -43,6 +43,7 @@ type createCharacterRequest struct {
 	Name          string `json:"name"`
 	Description   string `json:"description"`
 	PersonalStory string `json:"personal_story"`
+	Sheet         string `json:"sheet"`
 }
 
 func (h *CharacterHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +70,7 @@ func (h *CharacterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Name:          req.Name,
 		Description:   req.Description,
 		PersonalStory: req.PersonalStory,
+		Sheet:         req.Sheet,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -109,6 +111,7 @@ type updateCharacterRequest struct {
 	Name          string `json:"name"`
 	Description   string `json:"description"`
 	PersonalStory string `json:"personal_story"`
+	Sheet         string `json:"sheet"`
 }
 
 func (h *CharacterHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -130,6 +133,7 @@ func (h *CharacterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Name:          req.Name,
 		Description:   req.Description,
 		PersonalStory: req.PersonalStory,
+		Sheet:         req.Sheet,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

@@ -143,6 +143,19 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 			})
 		})
 
+		sheetTemplates := &SheetTemplateHandler{db: database}
+		r.Route("/sheet-templates", func(r chi.Router) {
+			// Same split as /games: reading is needed by any character/NPC
+			// editor to render a sheet, writing is the administrator's.
+			r.Get("/", sheetTemplates.List)
+			r.With(requireSuperuser).Post("/", sheetTemplates.Create)
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", sheetTemplates.Get)
+				r.With(requireSuperuser).Put("/", sheetTemplates.Update)
+				r.With(requireSuperuser).Delete("/", sheetTemplates.Delete)
+			})
+		})
+
 		campaigns := &CampaignHandler{db: database}
 		archivedCampaigns := &ArchivedCampaignHandler{db: database}
 		runs := &RunHandler{db: database}

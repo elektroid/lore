@@ -46,6 +46,7 @@ type npcBody struct {
 	Description string `json:"description"`
 	Quote       string `json:"quote"`
 	Motivation  string `json:"motivation"`
+	Sheet       string `json:"sheet"`
 }
 
 func (h *EntityHandler) CreateNPC(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +55,7 @@ func (h *EntityHandler) CreateNPC(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "corps invalide")
 		return
 	}
-	npc, err := db.CreateCampaignNPC(r.Context(), h.db, chi.URLParam(r, "id"), b.Name, b.Role, b.Description, b.Quote, b.Motivation)
+	npc, err := db.CreateCampaignNPC(r.Context(), h.db, chi.URLParam(r, "id"), b.Name, b.Role, b.Description, b.Quote, b.Motivation, b.Sheet)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -68,7 +69,7 @@ func (h *EntityHandler) UpdateNPC(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "corps invalide")
 		return
 	}
-	npc, err := db.UpdateCampaignNPC(r.Context(), h.db, chi.URLParam(r, "npcId"), b.Name, b.Role, b.Description, b.Quote, b.Motivation)
+	npc, err := db.UpdateCampaignNPC(r.Context(), h.db, chi.URLParam(r, "npcId"), b.Name, b.Role, b.Description, b.Quote, b.Motivation, b.Sheet)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

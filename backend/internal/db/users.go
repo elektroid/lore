@@ -186,7 +186,7 @@ func ListCampaignMemberCharacters(ctx context.Context, database *sql.DB, campaig
 		SELECT u.id, u.name, u.email,
 		       COALESCE(pc.id,''), COALESCE(pc.game_id,''), COALESCE(g.name,''),
 		       COALESCE(pc.name,''), COALESCE(pc.description,''), COALESCE(pc.personal_story,''),
-		       COALESCE(pc.created_at,''), COALESCE(pc.updated_at,'')
+		       COALESCE(pc.sheet,'{}'), COALESCE(pc.created_at,''), COALESCE(pc.updated_at,'')
 		FROM campaign_members cm
 		JOIN users u ON u.id = cm.user_id
 		LEFT JOIN player_characters pc ON pc.user_id = u.id AND pc.game_id = ?
@@ -207,7 +207,7 @@ func ListCampaignMemberCharacters(ctx context.Context, database *sql.DB, campaig
 			&userID, &userName, &userEmail,
 			&pc.ID, &pc.GameID, &pc.GameName,
 			&pc.Name, &pc.Description, &pc.PersonalStory,
-			&pc.CreatedAt, &pc.UpdatedAt,
+			&pc.Sheet, &pc.CreatedAt, &pc.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -281,6 +281,9 @@ type PlayerCharacter struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	PersonalStory string `json:"personal_story"`
+	// Values for game_id's sheet_template, resolved live — see the comment
+	// on player_characters.sheet in schema.sql.
+	Sheet       string `json:"sheet"`
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
 }
@@ -292,6 +295,7 @@ type CreatePlayerCharacterParams struct {
 	Name        string
 	Description string
 	PersonalStory string
+	Sheet       string
 }
 
 // UpdatePlayerCharacterParams parameters for updating a player character
@@ -299,12 +303,13 @@ type UpdatePlayerCharacterParams struct {
 	Name           string
 	Description   string
 	PersonalStory string
+	Sheet         string
 }
 
 // ListPlayerCharacters returns all characters for a user
 func ListPlayerCharacters(ctx context.Context, database *sql.DB, userID string) ([]PlayerCharacter, error) {
 	rows, err := database.QueryContext(ctx, `
-		SELECT pc.id, pc.user_id, pc.game_id, g.name as game_name, pc.name, pc.description, pc.personal_story, pc.created_at, pc.updated_at
+		SELECT pc.id, pc.user_id, pc.game_id, g.name as game_name, pc.name, pc.description, pc.personal_story, pc.sheet, pc.created_at, pc.updated_at
 		FROM player_characters pc
 		LEFT JOIN games g ON g.id = pc.game_id
 		WHERE pc.user_id = ?
@@ -317,7 +322,7 @@ func ListPlayerCharacters(ctx context.Context, database *sql.DB, userID string) 
 	chars := []PlayerCharacter{}
 	for rows.Next() {
 		c := PlayerCharacter{}
-		if err := rows.Scan(&c.ID, &c.UserID, &c.GameID, &c.GameName, &c.Name, &c.Description, &c.PersonalStory, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.UserID, &c.GameID, &c.GameName, &c.Name, &c.Description, &c.PersonalStory, &c.Sheet, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		chars = append(chars, c)
@@ -345,13 +350,13 @@ func CharacterBelongsToUser(ctx context.Context, database *sql.DB, characterID, 
 // GetPlayerCharacter returns a single character by ID
 func GetPlayerCharacter(ctx context.Context, database *sql.DB, id, userID string) (*PlayerCharacter, error) {
 	row := database.QueryRowContext(ctx, `
-		SELECT pc.id, pc.user_id, pc.game_id, g.name as game_name, pc.name, pc.description, pc.personal_story, pc.created_at, pc.updated_at
+		SELECT pc.id, pc.user_id, pc.game_id, g.name as game_name, pc.name, pc.description, pc.personal_story, pc.sheet, pc.created_at, pc.updated_at
 		FROM player_characters pc
 		LEFT JOIN games g ON g.id = pc.game_id
 		WHERE pc.id = ? AND pc.user_id = ?`, id, userID)
 
 	c := &PlayerCharacter{}
-	err := row.Scan(&c.ID, &c.UserID, &c.GameID, &c.GameName, &c.Name, &c.Description, &c.PersonalStory, &c.CreatedAt, &c.UpdatedAt)
+	err := row.Scan(&c.ID, &c.UserID, &c.GameID, &c.GameName, &c.Name, &c.Description, &c.PersonalStory, &c.Sheet, &c.CreatedAt, &c.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -361,9 +366,13 @@ func GetPlayerCharacter(ctx context.Context, database *sql.DB, id, userID string
 // CreatePlayerCharacter creates a new player character
 func CreatePlayerCharacter(ctx context.Context, database *sql.DB, p CreatePlayerCharacterParams) (*PlayerCharacter, error) {
 	id := uuid.New().String()
+	sheet := p.Sheet
+	if sheet == "" {
+		sheet = "{}"
+	}
 	_, err := database.ExecContext(ctx,
-		`INSERT INTO player_characters (id, user_id, game_id, name, description, personal_story) VALUES (?, ?, ?, ?, ?, ?)`,
-		id, p.UserID, p.GameID, p.Name, p.Description, p.PersonalStory)
+		`INSERT INTO player_characters (id, user_id, game_id, name, description, personal_story, sheet) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		id, p.UserID, p.GameID, p.Name, p.Description, p.PersonalStory, sheet)
 	if err != nil {
 		return nil, err
 	}
@@ -372,9 +381,13 @@ func CreatePlayerCharacter(ctx context.Context, database *sql.DB, p CreatePlayer
 
 // UpdatePlayerCharacter updates a player character
 func UpdatePlayerCharacter(ctx context.Context, database *sql.DB, id, userID string, p UpdatePlayerCharacterParams) (*PlayerCharacter, error) {
+	sheet := p.Sheet
+	if sheet == "" {
+		sheet = "{}"
+	}
 	_, err := database.ExecContext(ctx,
-		`UPDATE player_characters SET name = ?, description = ?, personal_story = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`,
-		p.Name, p.Description, p.PersonalStory, id, userID)
+		`UPDATE player_characters SET name = ?, description = ?, personal_story = ?, sheet = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`,
+		p.Name, p.Description, p.PersonalStory, sheet, id, userID)
 	if err != nil {
 		return nil, err
 	}

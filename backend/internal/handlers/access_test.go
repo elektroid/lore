@@ -89,7 +89,7 @@ func TestChildBelongsToScopesByParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	npc, err := db.CreateCampaignNPC(ctx, database, alice.ID, "Vanya", "fixer", "", "", "")
+	npc, err := db.CreateCampaignNPC(ctx, database, alice.ID, "Vanya", "fixer", "", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestCrossTenantChildIsNotFound(t *testing.T) {
 		Name: "Alice", OwnerID: mkUser(t, database, "alice@test.local")})
 	bob, _ := db.CreateCampaign(ctx, database, db.CreateCampaignParams{
 		Name: "Bob", OwnerID: mkUser(t, database, "bob@test.local")})
-	npc, _ := db.CreateCampaignNPC(ctx, database, alice.ID, "Vanya", "fixer", "", "", "")
+	npc, _ := db.CreateCampaignNPC(ctx, database, alice.ID, "Vanya", "fixer", "", "", "", "")
 	if npc == nil {
 		t.Fatal("could not create the NPC the test is about")
 	}

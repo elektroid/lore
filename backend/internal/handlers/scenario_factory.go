@@ -532,7 +532,7 @@ func (h *ScenarioFactoryHandler) materialise(ctx context.Context, campaignID, sc
 		}
 		id, ok := npcByName[matchKey(n.Name)]
 		if !ok {
-			row, err := db.CreateCampaignNPC(ctx, h.db, campaignID, n.Name, n.Role, n.Description, n.Quote, n.Motivation)
+			row, err := db.CreateCampaignNPC(ctx, h.db, campaignID, n.Name, n.Role, n.Description, n.Quote, n.Motivation, "")
 			if err != nil {
 				return err
 			}
@@ -724,7 +724,7 @@ func (h *ScenarioFactoryHandler) linkCreatedEntityProse(ctx context.Context, l *
 		if linked == n.Description {
 			continue
 		}
-		if _, err := db.UpdateCampaignNPC(ctx, h.db, id, n.Name, n.Role, linked, n.Quote, n.Motivation); err != nil {
+		if _, err := db.UpdateCampaignNPC(ctx, h.db, id, n.Name, n.Role, linked, n.Quote, n.Motivation, n.Sheet); err != nil {
 			return err
 		}
 	}

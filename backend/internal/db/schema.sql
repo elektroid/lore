@@ -1,3 +1,19 @@
+-- A reusable character-sheet definition: sections of fields (stats, a
+-- role/class picker, a skill list, computed values) an admin builds once per
+-- ruleset. `schema` is opaque JSON here — the shape (sections/fields/scope/
+-- formulas) is a frontend concern (see frontend/src/types/sheetTemplate.ts),
+-- same treatment campaigns.llm_config gets. A game points at one (see
+-- games.sheet_template_id below); many games can share the same template,
+-- which is the point — "DnD classic" and "DnD simplified" are two templates
+-- in this table, not two hardcoded components.
+CREATE TABLE IF NOT EXISTS sheet_templates (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    schema      TEXT NOT NULL DEFAULT '{"sections":[]}',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS games (
     id                TEXT PRIMARY KEY,
     name              TEXT NOT NULL,
@@ -6,6 +22,10 @@ CREATE TABLE IF NOT EXISTS games (
     description       TEXT NOT NULL DEFAULT '',
     visual_style      TEXT NOT NULL DEFAULT '',
     mistral_agent_id  TEXT NOT NULL DEFAULT '',
+    -- Nullable on purpose: a game with no template keeps the pre-template
+    -- behavior (name/description only, no stat block). See MigrateAlters for
+    -- how this column reaches an existing database.
+    sheet_template_id TEXT REFERENCES sheet_templates(id) ON DELETE SET NULL,
     created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -150,6 +170,10 @@ CREATE TABLE IF NOT EXISTS campaign_npcs (
     description TEXT NOT NULL DEFAULT '',
     quote       TEXT NOT NULL DEFAULT '',
     motivation  TEXT NOT NULL DEFAULT '',
+    -- Values for the campaign's game's sheet_template, filtered to
+    -- scope:"npc" fields. Opaque JSON, resolved live against the template —
+    -- see docs on player_characters.sheet below for why nothing is cached.
+    sheet       TEXT NOT NULL DEFAULT '{}',
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -426,6 +450,12 @@ CREATE TABLE IF NOT EXISTS player_characters (
     name         TEXT NOT NULL,
     description  TEXT NOT NULL DEFAULT '',
     personal_story TEXT NOT NULL DEFAULT '',
+    -- Values for game_id's sheet_template (scope:"pc" fields), a flat
+    -- {fieldKey: value} map. Opaque to the backend; resolved against
+    -- whatever template the game currently points at — never a snapshotted
+    -- copy, so a template fix (e.g. a typo'd field key) reaches every
+    -- character automatically instead of leaving stale copies behind.
+    sheet        TEXT NOT NULL DEFAULT '{}',
     created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 );

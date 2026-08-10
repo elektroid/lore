@@ -68,6 +68,15 @@ func MigrateAlters(database *sql.DB) {
 		`CREATE INDEX IF NOT EXISTS idx_sessions_run_id ON sessions(run_id)`,
 		`ALTER TABLE game_lore_entities ADD COLUMN excerpt TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE games ADD COLUMN description TEXT NOT NULL DEFAULT ''`,
+		// sheet_templates is a brand-new table, created by schema.sql (run
+		// just before MigrateAlters) on every database, old and new alike —
+		// so by the time this ALTER runs, the table it references already
+		// exists. NULL default is mandatory here too: ALTER TABLE ADD COLUMN
+		// only allows a REFERENCES clause when the default is NULL.
+		`ALTER TABLE games ADD COLUMN sheet_template_id TEXT REFERENCES sheet_templates(id) ON DELETE SET NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_games_sheet_template_id ON games(sheet_template_id)`,
+		`ALTER TABLE player_characters ADD COLUMN sheet TEXT NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE campaign_npcs ADD COLUMN sheet TEXT NOT NULL DEFAULT '{}'`,
 	}
 	for _, stmt := range alters {
 		database.Exec(stmt) //nolint:errcheck — duplicate column error is expected on re-run

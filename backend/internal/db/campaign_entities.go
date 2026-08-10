@@ -18,15 +18,18 @@ type CampaignNPC struct {
 	Quote       string `json:"quote"`
 	Motivation  string `json:"motivation"`
 	Images      string `json:"images"` // JSON array of NPCImage
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	// Values for the campaign's game's sheet_template, filtered to
+	// scope:"npc" fields — resolved live, same as player_characters.sheet.
+	Sheet     string `json:"sheet"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
-const npcCols = `id, campaign_id, name, role, description, quote, motivation, images, created_at, updated_at`
+const npcCols = `id, campaign_id, name, role, description, quote, motivation, images, sheet, created_at, updated_at`
 
 func scanNPC(row interface{ Scan(...any) error }) (*CampaignNPC, error) {
 	var n CampaignNPC
-	return &n, row.Scan(&n.ID, &n.CampaignID, &n.Name, &n.Role, &n.Description, &n.Quote, &n.Motivation, &n.Images, &n.CreatedAt, &n.UpdatedAt)
+	return &n, row.Scan(&n.ID, &n.CampaignID, &n.Name, &n.Role, &n.Description, &n.Quote, &n.Motivation, &n.Images, &n.Sheet, &n.CreatedAt, &n.UpdatedAt)
 }
 
 func ListCampaignNPCs(ctx context.Context, database *sql.DB, campaignID string) ([]CampaignNPC, error) {
@@ -58,21 +61,27 @@ func GetCampaignNPC(ctx context.Context, database *sql.DB, id string) (*Campaign
 	return n, err
 }
 
-func CreateCampaignNPC(ctx context.Context, database *sql.DB, campaignID, name, role, description, quote, motivation string) (*CampaignNPC, error) {
+func CreateCampaignNPC(ctx context.Context, database *sql.DB, campaignID, name, role, description, quote, motivation, sheet string) (*CampaignNPC, error) {
 	id := uuid.New().String()
+	if sheet == "" {
+		sheet = "{}"
+	}
 	_, err := database.ExecContext(ctx,
-		`INSERT INTO campaign_npcs(id,campaign_id,name,role,description,quote,motivation) VALUES(?,?,?,?,?,?,?)`,
-		id, campaignID, name, role, description, quote, motivation)
+		`INSERT INTO campaign_npcs(id,campaign_id,name,role,description,quote,motivation,sheet) VALUES(?,?,?,?,?,?,?,?)`,
+		id, campaignID, name, role, description, quote, motivation, sheet)
 	if err != nil {
 		return nil, err
 	}
 	return GetCampaignNPC(ctx, database, id)
 }
 
-func UpdateCampaignNPC(ctx context.Context, database *sql.DB, id, name, role, description, quote, motivation string) (*CampaignNPC, error) {
+func UpdateCampaignNPC(ctx context.Context, database *sql.DB, id, name, role, description, quote, motivation, sheet string) (*CampaignNPC, error) {
+	if sheet == "" {
+		sheet = "{}"
+	}
 	_, err := database.ExecContext(ctx,
-		`UPDATE campaign_npcs SET name=?,role=?,description=?,quote=?,motivation=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-		name, role, description, quote, motivation, id)
+		`UPDATE campaign_npcs SET name=?,role=?,description=?,quote=?,motivation=?,sheet=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+		name, role, description, quote, motivation, sheet, id)
 	if err != nil {
 		return nil, err
 	}

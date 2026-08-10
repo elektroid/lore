@@ -255,7 +255,7 @@ func (h *SynopsisHandler) SuggestNPCs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, s := range suggestions {
-		npc, err := db.CreateCampaignNPC(r.Context(), h.db, scenario.CampaignID, s.Name, s.Role, s.Description, s.Quote, s.Motivation)
+		npc, err := db.CreateCampaignNPC(r.Context(), h.db, scenario.CampaignID, s.Name, s.Role, s.Description, s.Quote, s.Motivation, "")
 		if err != nil {
 			continue
 		}
