@@ -33,14 +33,29 @@ function GameDocumentsDialog({ game, isAdmin, onClose }: { game: Game; isAdmin: 
     queryFn: () => api.get<GameDocument[]>(`/games/${game.id}/documents`),
   })
 
-  const uploadDoc = useMutation({
-    mutationFn: (file: File) => {
-      const form = new FormData()
-      form.append('file', file)
-      return api.upload<GameDocument>(`/games/${game.id}/documents`, form)
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['game-documents', game.id] }),
-  })
+  // Plain state instead of useMutation: a progress bar needs XHR's
+  // upload.onprogress, and cancelling needs a handle to abort() — neither
+  // fits react-query's mutationFn shape.
+  const [upload, setUpload] = useState<{ name: string; progress: number; cancel: () => void } | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+
+  function startUpload(file: File) {
+    setUploadError(null)
+    const form = new FormData()
+    form.append('file', file)
+    const { promise, cancel } = api.uploadWithProgress<GameDocument>(
+      `/games/${game.id}/documents`,
+      form,
+      pct => setUpload(u => (u ? { ...u, progress: pct } : u)),
+    )
+    setUpload({ name: file.name, progress: 0, cancel })
+    promise
+      .then(() => qc.invalidateQueries({ queryKey: ['game-documents', game.id] }))
+      .catch(err => {
+        if ((err as Error).name !== 'AbortError') setUploadError((err as Error).message)
+      })
+      .finally(() => setUpload(null))
+  }
 
   const deleteDoc = useMutation({
     mutationFn: (name: string) => api.delete(documentDeleteUrl(game.id, name)),
@@ -59,31 +74,52 @@ function GameDocumentsDialog({ game, isAdmin, onClose }: { game: Game; isAdmin: 
         </DialogHeader>
 
         {isAdmin && (
-          <div className="flex items-center gap-2">
-            <input
-              ref={uploadInputRef}
-              type="file"
-              accept={DOCUMENT_ACCEPT}
-              className="hidden"
-              onChange={e => {
-                const file = e.target.files?.[0]
-                e.target.value = ''
-                if (file) uploadDoc.mutate(file)
-              }}
-            />
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={uploadDoc.isPending}
-              onClick={() => uploadInputRef.current?.click()}
-            >
-              <Upload className="h-3.5 w-3.5 mr-1" />
-              {uploadDoc.isPending ? 'Envoi…' : 'Ajouter un document'}
-            </Button>
+          <div>
+            {upload ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                    <span className="truncate">{upload.name}</span>
+                    <span className="shrink-0 ml-2 tabular-nums">{upload.progress}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-[width]"
+                      style={{ width: `${upload.progress}%` }}
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={() => upload.cancel()}
+                  className="shrink-0 p-1 text-muted-foreground/60 hover:text-destructive transition-colors"
+                  title="Annuler"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  ref={uploadInputRef}
+                  type="file"
+                  accept={DOCUMENT_ACCEPT}
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0]
+                    e.target.value = ''
+                    if (file) startUpload(file)
+                  }}
+                />
+                <Button size="sm" variant="outline" onClick={() => uploadInputRef.current?.click()}>
+                  <Upload className="h-3.5 w-3.5 mr-1" />
+                  Ajouter un document
+                </Button>
+              </>
+            )}
           </div>
         )}
-        {uploadDoc.isError && (
-          <p className="text-xs text-destructive">{(uploadDoc.error as Error).message}</p>
+        {uploadError && (
+          <p className="text-xs text-destructive">{uploadError}</p>
         )}
         {deleteDoc.isError && (
           <p className="text-xs text-destructive">{(deleteDoc.error as Error).message}</p>

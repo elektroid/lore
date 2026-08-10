@@ -224,14 +224,19 @@ func (h *GameHandler) UploadDocument(w http.ResponseWriter, r *http.Request) {
 	if stem == "" {
 		stem = "document"
 	}
-	// uuid prefix avoids clobbering an existing file with the same cleaned
-	// name (two authors both uploading "rulebook.pdf", say).
-	filename := uuid.New().String()[:8] + "-" + stem + ext
+	filename := stem + ext
 
 	dir := filepath.Join(h.externalMaterialDir, filepath.Clean("/"+game.Slug))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create directory")
 		return
+	}
+
+	// Keep the readable name — a source citation later needs to match a
+	// document by its (sanitized) title, which a random prefix would break.
+	// Only fall back to disambiguating when that name is actually taken.
+	if _, err := os.Stat(filepath.Join(dir, filename)); err == nil {
+		filename = stem + "-" + uuid.New().String()[:8] + ext
 	}
 
 	dst, err := os.Create(filepath.Join(dir, filename))

@@ -8,7 +8,28 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { api } from '@/api/client'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import { useUser } from '@/stores/auth'
-import type { Game, GameLoreEntity, GameLoreEntitiesPage, GameLoreEntityRelationsResponse } from '@/types/game'
+import type { Game, GameDocument, GameLoreEntity, GameLoreEntitiesPage, GameLoreEntityRelationsResponse } from '@/types/game'
+
+// Same normalization the backend applies to an uploaded filename's stem
+// (safeFilename in backend/internal/handlers/campaigns.go) — matching a
+// citation's source_title against a document name only works if both sides
+// fold the same way.
+function slugForMatch(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
+// A citation names a book ("Night City 2045"), not a specific uploaded file —
+// the two are linked by nothing more than this fuzzy name match, so it's
+// deliberately loose (substring either direction) to survive a real filename
+// like "RTG-CPR-Night_City_2045-150dpi.pdf" carrying extra scanner cruft.
+function findSourceDocument(docs: GameDocument[], sourceTitle: string): GameDocument | undefined {
+  const titleSlug = slugForMatch(sourceTitle)
+  if (!titleSlug) return undefined
+  return docs.find(d => {
+    const nameSlug = slugForMatch(d.name.replace(/\.[^./]+$/, ''))
+    return !!nameSlug && (nameSlug === titleSlug || nameSlug.includes(titleSlug) || titleSlug.includes(nameSlug))
+  })
+}
 
 const KIND_LABELS: Record<string, string> = {
   district: 'District',
@@ -55,6 +76,10 @@ function EntityDetail({ entityId, gameId, knownKinds, onNavigate }: {
   const { data: relations } = useQuery({
     queryKey: ['game-lore-entity-relations', gameId, entityId],
     queryFn: () => api.get<GameLoreEntityRelationsResponse>(`/games/${gameId}/lore-entities/${entityId}/relations`),
+  })
+  const { data: docs = [] } = useQuery({
+    queryKey: ['game-documents', gameId],
+    queryFn: () => api.get<GameDocument[]>(`/games/${gameId}/documents`),
   })
 
   const updateKind = useMutation({
@@ -112,9 +137,22 @@ function EntityDetail({ entityId, gameId, knownKinds, onNavigate }: {
         </blockquote>
       )}
 
-      <p className="text-xs text-muted-foreground">
-        {entity.source_title}, page {entity.source_page}
-      </p>
+      {(() => {
+        const citation = `${entity.source_title}, page ${entity.source_page}`
+        const sourceDoc = findSourceDocument(docs, entity.source_title)
+        return sourceDoc ? (
+          <a
+            href={`${sourceDoc.url}#page=${entity.source_page}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-muted-foreground underline decoration-dotted hover:text-foreground inline-block"
+          >
+            {citation}
+          </a>
+        ) : (
+          <p className="text-xs text-muted-foreground">{citation}</p>
+        )
+      })()}
 
       {(outgoing.length > 0 || incoming.length > 0) && (
         <div className="space-y-2 pt-2 border-t">
