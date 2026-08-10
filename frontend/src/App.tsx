@@ -3,6 +3,8 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import CampaignsPage from '@/pages/CampaignsPage'
 import CampaignDetailPage from '@/pages/CampaignDetailPage'
 import CampaignEntitiesPage from '@/pages/CampaignEntitiesPage'
+import GameMasterPage from '@/pages/GameMasterPage'
+import RunPlayerPage from '@/pages/RunPlayerPage'
 import ScenarioFactoryPage from '@/pages/ScenarioFactoryPage'
 import SettingsPage from '@/pages/SettingsPage'
 import ProfilePage from '@/pages/ProfilePage'
@@ -73,6 +75,24 @@ export default function App() {
           element={
             <ProtectedRoute>
               <ScenarioFactoryPage />
+            </ProtectedRoute>
+          }
+        />
+        {/* Gamemaster hub — prepare and manage the groups playing this campaign */}
+        <Route
+          path="/campaigns/:id/runs"
+          element={
+            <ProtectedRoute>
+              <GameMasterPage />
+            </ProtectedRoute>
+          }
+        />
+        {/* Player mode — a seated player's own view of one run */}
+        <Route
+          path="/runs/:runId"
+          element={
+            <ProtectedRoute>
+              <RunPlayerPage />
             </ProtectedRoute>
           }
         />

@@ -156,6 +156,10 @@ export default function SynopsisPage() {
           ? { label: selectedScene.title }
           : { label: 'Synopsis' },
       ]}
+      modeTabs={campaign ? [
+        { label: 'Auteur', to: `/campaigns/${campaign.id}`, active: true },
+        { label: 'Meneur', to: `/campaigns/${campaign.id}/runs`, active: false },
+      ] : undefined}
     >
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-4">
         {/* Top bar */}
@@ -181,7 +185,7 @@ export default function SynopsisPage() {
               </div>
             )}
             <a
-              href={`/scenarios/${scenarioId}/play`}
+              href={`/scenarios/${scenarioId}/play${lensRunId ? `?run=${lensRunId}` : ''}`}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             >
               <Play className="h-3.5 w-3.5" />

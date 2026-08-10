@@ -260,10 +260,14 @@ export default function ScenarioFactoryPage() {
     { label: campaign?.name ?? '…', to: campaign ? `/campaigns/${campaign.id}` : undefined },
     { label: 'Fabrique' },
   ]
+  const modeTabs = [
+    { label: 'Auteur', to: `/campaigns/${campaignId}`, active: true },
+    { label: 'Meneur', to: `/campaigns/${campaignId}/runs`, active: false },
+  ]
 
   if (!draftId || !proposal) {
     return (
-      <AppShell crumbs={crumbs}>
+      <AppShell crumbs={crumbs} modeTabs={modeTabs}>
         <main className="max-w-3xl mx-auto px-6 py-8">
           <BriefForm
             drafts={drafts}
@@ -284,7 +288,7 @@ export default function ScenarioFactoryPage() {
   const notExpanded = proposal.scenes.filter(s => s.include && !s.expanded).length
 
   return (
-    <AppShell crumbs={crumbs}>
+    <AppShell crumbs={crumbs} modeTabs={modeTabs}>
       <main className="max-w-4xl mx-auto px-6 py-8 space-y-5">
         {/* Header */}
         <div className="flex items-start gap-3">

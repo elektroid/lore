@@ -8,10 +8,10 @@ import { Label } from '@/components/ui/label'
 import AppShell from '@/components/AppShell'
 import { api } from '@/api/client'
 import { useDocTitle } from '@/hooks/useDocTitle'
-import { useUser } from '@/stores/auth'
 import type { Campaign } from '@/types/campaign'
 import type { Game } from '@/types/game'
 import type { PlayerCharacter } from '@/types/character'
+import type { ListPlayerRunsResponse } from '@/types/me'
 
 interface ListCharactersResponse {
   characters: PlayerCharacter[]
@@ -167,9 +167,65 @@ function GMView({ campaigns }: { campaigns: Campaign[] }) {
   )
 }
 
-// ── Player view ───────────────────────────────────────────────────────────────
+// ── Player: your tables ─────────────────────────────────────────────────────
 
-function PlayerView({ memberCampaigns }: { memberCampaigns: Campaign[] }) {
+/**
+ * Runs the account is seated in, plus campaigns it merely has access to but
+ * isn't seated in yet — access and a seat are different questions
+ * (campaign_members vs run_players). See docs/adr/0001-runs-separate-story-from-play.md.
+ */
+function TablesView({ memberCampaigns }: { memberCampaigns: Campaign[] }) {
+  const navigate = useNavigate()
+
+  const { data: runsResp } = useQuery({
+    queryKey: ['me-runs'],
+    queryFn: () => api.get<ListPlayerRunsResponse>('/me/runs'),
+  })
+  const runs = runsResp?.runs ?? []
+
+  const seatedCampaignIds = new Set(runs.map(r => r.campaign_id))
+  const waitingForSeat = memberCampaigns.filter(c => !seatedCampaignIds.has(c.id))
+
+  return (
+    <section>
+      <h2 className="text-lg font-semibold mb-4">Vos tables</h2>
+      {runs.length === 0 && waitingForSeat.length === 0 ? (
+        <p className="text-muted-foreground text-sm">Vous ne jouez dans aucune table pour l'instant.</p>
+      ) : (
+        <ul className="space-y-2">
+          {runs.map(r => (
+            <li
+              key={r.run_id}
+              onClick={() => navigate(`/runs/${r.run_id}`)}
+              className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
+            >
+              <div>
+                <p className="font-medium">{r.run_name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {r.campaign_name}
+                  {r.character_name && ` · ${r.character_name}`}
+                </p>
+              </div>
+              {r.last_session_date && (
+                <p className="text-xs text-muted-foreground">{r.last_session_date}</p>
+              )}
+            </li>
+          ))}
+          {waitingForSeat.map(c => (
+            <li key={c.id} className="flex items-center justify-between p-4 rounded-lg border border-dashed bg-transparent">
+              <div>
+                <p className="font-medium text-muted-foreground">{c.name}</p>
+                <p className="text-xs text-muted-foreground">Accès accordé, en attente d'un groupe</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function CharactersView() {
   const { data: charResp } = useQuery({
     queryKey: ['characters'],
     queryFn: () => api.get<ListCharactersResponse>('/characters'),
@@ -186,57 +242,30 @@ function PlayerView({ memberCampaigns }: { memberCampaigns: Campaign[] }) {
   }, {})
 
   return (
-    <div className="space-y-10">
-      {/* Enrolled campaigns */}
-      <section>
-        <h2 className="text-lg font-semibold mb-4">Mes campagnes</h2>
-        {memberCampaigns.length === 0 ? (
-          <p className="text-muted-foreground text-sm">Vous n'êtes inscrit à aucune campagne.</p>
-        ) : (
-          <ul className="space-y-2">
-            {memberCampaigns.map(c => (
-              <li
-                key={c.id}
-                className="flex items-center justify-between p-4 rounded-lg border bg-card"
-              >
-                <div>
-                  <p className="font-medium">{c.name}</p>
-                  {c.game_name && (
-                    <p className="text-sm text-muted-foreground">{c.game_name}</p>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* Characters by game */}
-      <section>
-        <h2 className="text-lg font-semibold mb-4">Mes personnages</h2>
-        {characters.length === 0 ? (
-          <p className="text-muted-foreground text-sm">Aucun personnage pour l'instant.</p>
-        ) : (
-          <div className="space-y-6">
-            {Object.entries(byGame).map(([gameName, chars]) => (
-              <div key={gameName}>
-                <p className="text-sm font-medium text-muted-foreground mb-2">{gameName}</p>
-                <ul className="space-y-2">
-                  {chars.map(c => (
-                    <li key={c.id} className="p-4 rounded-lg border bg-card">
-                      <p className="font-medium">{c.name || <span className="italic text-muted-foreground">(sans nom)</span>}</p>
-                      {c.description && (
-                        <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{c.description}</p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
+    <section>
+      <h2 className="text-lg font-semibold mb-4">Mes personnages</h2>
+      {characters.length === 0 ? (
+        <p className="text-muted-foreground text-sm">Aucun personnage pour l'instant.</p>
+      ) : (
+        <div className="space-y-6">
+          {Object.entries(byGame).map(([gameName, chars]) => (
+            <div key={gameName}>
+              <p className="text-sm font-medium text-muted-foreground mb-2">{gameName}</p>
+              <ul className="space-y-2">
+                {chars.map(c => (
+                  <li key={c.id} className="p-4 rounded-lg border bg-card">
+                    <p className="font-medium">{c.name || <span className="italic text-muted-foreground">(sans nom)</span>}</p>
+                    {c.description && (
+                      <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{c.description}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -244,7 +273,6 @@ function PlayerView({ memberCampaigns }: { memberCampaigns: Campaign[] }) {
 
 export default function CampaignsPage() {
   useDocTitle('lore')
-  const user = useUser()
 
   const { data: campaigns = [], isLoading, error } = useQuery({
     queryKey: ['campaigns'],
@@ -253,8 +281,6 @@ export default function CampaignsPage() {
 
   const owned = campaigns.filter(c => c.access === 'owner' || !c.access)
   const memberOnly = campaigns.filter(c => c.access === 'member')
-
-  const isPlayerOnly = user?.role === 'player'
 
   return (
     <AppShell>
@@ -275,28 +301,11 @@ export default function CampaignsPage() {
         )}
 
         {!isLoading && !error && (
-          isPlayerOnly
-            ? <PlayerView memberCampaigns={memberOnly} />
-            : (
-              <>
-                <GMView campaigns={owned} />
-                {memberOnly.length > 0 && (
-                  <section className="mt-10 pt-8 border-t">
-                    <h2 className="text-base font-semibold mb-4 text-muted-foreground">Campagnes en tant que joueur</h2>
-                    <ul className="space-y-2">
-                      {memberOnly.map(c => (
-                        <li key={c.id} className="flex items-center p-4 rounded-lg border bg-card">
-                          <div>
-                            <p className="font-medium">{c.name}</p>
-                            {c.game_name && <p className="text-sm text-muted-foreground">{c.game_name}</p>}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                )}
-              </>
-            )
+          <div className="space-y-10">
+            <GMView campaigns={owned} />
+            <TablesView memberCampaigns={memberOnly} />
+            <CharactersView />
+          </div>
         )}
       </main>
     </AppShell>

@@ -73,6 +73,30 @@ func ListSessions(ctx context.Context, database *sql.DB, scenarioID, runID strin
 	return list, rows.Err()
 }
 
+// ListSessionsByRun returns every session of a group, across every scenario in
+// the campaign — a run spans the whole campaign, not one scenario. Used by the
+// player-facing run view, which has no scenario id to scope by.
+func ListSessionsByRun(ctx context.Context, database *sql.DB, runID string) ([]Session, error) {
+	rows, err := database.QueryContext(ctx,
+		`SELECT `+sessionCols+` FROM sessions WHERE run_id=? ORDER BY date DESC, created_at DESC`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []Session
+	for rows.Next() {
+		s, err := scanSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, *s)
+	}
+	if list == nil {
+		list = []Session{}
+	}
+	return list, rows.Err()
+}
+
 func GetSession(ctx context.Context, database *sql.DB, id string) (*Session, error) {
 	s, err := scanSession(database.QueryRowContext(ctx,
 		`SELECT `+sessionCols+` FROM sessions WHERE id=?`, id))

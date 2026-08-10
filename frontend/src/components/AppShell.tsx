@@ -10,8 +10,15 @@ interface Crumb {
   onClick?: () => void
 }
 
+interface ModeTab {
+  label: string
+  to: string
+  active: boolean
+}
+
 interface AppShellProps {
   crumbs?: Crumb[]
+  modeTabs?: ModeTab[]
   children: React.ReactNode
 }
 
@@ -21,7 +28,7 @@ const themes: { id: Theme; icon: React.ReactNode; label: string }[] = [
   { id: 'cyberpunk', icon: <Zap className="h-3.5 w-3.5" />, label: 'Cyberpunk' },
 ]
 
-export default function AppShell({ crumbs = [], children }: AppShellProps) {
+export default function AppShell({ crumbs = [], modeTabs, children }: AppShellProps) {
   const theme = useUIStore((s) => s.theme)
   const setTheme = useUIStore((s) => s.setTheme)
   const user = useUser()
@@ -116,6 +123,25 @@ export default function AppShell({ crumbs = [], children }: AppShellProps) {
           ))}
         </div>
       </header>
+      {modeTabs && modeTabs.length > 0 && (
+        <div className="border-b px-6 py-2">
+          <div className="inline-flex rounded-md border p-0.5 bg-muted/40">
+            {modeTabs.map((tab) => (
+              <Link
+                key={tab.to}
+                to={tab.to}
+                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                  tab.active
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {tab.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
       {children}
     </div>
   )

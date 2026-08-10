@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import AppShell from '@/components/AppShell'
-import RunsSection from '@/components/RunsSection'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import { api } from '@/api/client'
 import { useUser } from '@/stores/auth'
@@ -271,9 +270,6 @@ function CampaignForm({ campaign }: { campaign: Campaign }) {
 
       {/* Who may open the campaign */}
       <AccessSection campaignId={id!} ownerID={campaign.owner_id} />
-
-      {/* Who plays it, and how far they have got */}
-      <RunsSection campaignId={id!} />
       {guardDialog}
     </form>
   )
@@ -418,7 +414,13 @@ export default function CampaignDetailPage() {
   }
 
   return (
-    <AppShell crumbs={[{ label: campaign.name }]}>
+    <AppShell
+      crumbs={[{ label: campaign.name }]}
+      modeTabs={[
+        { label: 'Auteur', to: `/campaigns/${id}`, active: true },
+        { label: 'Meneur', to: `/campaigns/${id}/runs`, active: false },
+      ]}
+    >
       <main className="max-w-3xl mx-auto px-6 py-8">
         <CampaignForm campaign={campaign} />
       </main>

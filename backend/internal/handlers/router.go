@@ -84,6 +84,19 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 			})
 		})
 
+		// Player mode: an authenticated player's own view of the runs they are
+		// seated in, account-scoped only. See docs/adr/0001-runs-separate-story-from-play.md.
+		me := &MeHandler{db: database}
+		r.Route("/me/runs", func(r chi.Router) {
+			r.Get("/", me.ListRuns)
+			r.Route("/{runId}", func(r chi.Router) {
+				r.Get("/", me.GetRun)
+				r.Put("/character", me.SetCharacter)
+				r.Get("/notes", me.GetNotes)
+				r.Put("/notes", me.PutNotes)
+			})
+		})
+
 		settings := &SettingsHandler{db: database, encKey: cfg.EncryptionKey()}
 		r.Route("/settings", func(r chi.Router) {
 			// Reads are open: the app shows whether an LLM is configured, and

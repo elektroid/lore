@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Play, Flag, CheckCircle2, XCircle, Circle, MapPin, Users,
@@ -500,9 +500,13 @@ export default function PlayPage() {
   const scenarioId = id!
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const [searchParams] = useSearchParams()
 
   const [selectedSceneId, setSelectedSceneId] = useState('')
-  const [activeRunId, setActiveRunId] = useState('')
+  // A "Continuer" link from the Meneur hub carries ?run=<id> so the console
+  // opens straight into that group's evening instead of defaulting to the
+  // first one.
+  const [activeRunId, setActiveRunId] = useState(() => searchParams.get('run') ?? '')
   const [sessionModalOpen, setSessionModalOpen] = useState(false)
   const [editingSession, setEditingSession] = useState<Session | null>(null)
   const [locationPickerOpen, setLocationPickerOpen] = useState(false)
@@ -717,6 +721,10 @@ export default function PlayPage() {
         { label: scenario?.name ?? '…', onClick: () => navigate(`/scenarios/${scenarioId}/synopsis`) },
         { label: 'Play' },
       ]}
+      modeTabs={campaign ? [
+        { label: 'Auteur', to: `/campaigns/${campaign.id}`, active: false },
+        { label: 'Meneur', to: `/campaigns/${campaign.id}/runs`, active: true },
+      ] : undefined}
     >
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-4">
 

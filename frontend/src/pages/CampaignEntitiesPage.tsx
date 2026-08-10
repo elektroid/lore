@@ -581,7 +581,13 @@ export default function CampaignEntitiesPage() {
   }
 
   return (
-    <AppShell crumbs={[{ label: campaign?.name ?? '…', to: `/campaigns/${id}` }, { label: 'Entités' }]}>
+    <AppShell
+      crumbs={[{ label: campaign?.name ?? '…', to: `/campaigns/${id}` }, { label: 'Entités' }]}
+      modeTabs={[
+        { label: 'Auteur', to: `/campaigns/${id}`, active: true },
+        { label: 'Meneur', to: `/campaigns/${id}/runs`, active: false },
+      ]}
+    >
       <main className="max-w-3xl mx-auto px-6 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="flex items-center justify-between mb-6">

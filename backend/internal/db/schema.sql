@@ -248,6 +248,18 @@ CREATE TABLE IF NOT EXISTS run_players (
     UNIQUE(run_id, user_id)
 );
 
+-- A player's private scratchpad for a run: their own reminders, never read by
+-- the GM or any other player. One row per (run, player).
+CREATE TABLE IF NOT EXISTS run_notes (
+    id         TEXT PRIMARY KEY,
+    run_id     TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    body       TEXT NOT NULL DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(run_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
     id                 TEXT PRIMARY KEY,
     scenario_id        TEXT NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
