@@ -28,7 +28,7 @@ export default function LoginPage() {
       loginStore(res.user)
       navigate(from, { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed')
+      setError(err instanceof Error ? err.message : 'Échec de la connexion')
     } finally {
       setLoading(false)
     }
@@ -40,7 +40,7 @@ export default function LoginPage() {
         <div className="bg-card rounded-lg border p-8 shadow-xl">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold">Lore Engine</h1>
-            <p className="text-muted-foreground mt-2">Sign in to your account</p>
+            <p className="text-muted-foreground mt-2">Connectez-vous à votre compte</p>
           </div>
 
           {error && (
@@ -61,14 +61,14 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="w-full rounded-md border border-input bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="you@example.com"
+                placeholder="vous@exemple.com"
                 disabled={loading}
               />
             </div>
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium mb-2">
-                Password
+                Mot de passe
               </label>
               <input
                 type="password"
@@ -88,17 +88,17 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full rounded-md bg-primary text-primary-foreground py-2 text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Signing in...' : 'Sign in'}
+              {loading ? 'Connexion…' : 'Se connecter'}
             </button>
           </form>
 
           <div className="mt-6 text-center text-sm">
-            <span className="text-muted-foreground">Don't have an account? </span>
+            <span className="text-muted-foreground">Pas encore de compte ? </span>
             <a
               href="/register"
               className="text-primary hover:underline font-medium"
             >
-              Sign up
+              Créer un compte
             </a>
           </div>
         </div>

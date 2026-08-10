@@ -92,6 +92,8 @@ function AccessSection({ campaignId, ownerID }: { campaignId: string; ownerID: s
         </p>
       </div>
 
+      <p className="text-xs text-muted-foreground font-medium">Comptes ayant accès</p>
+
       {members.length === 0 && (
         <p className="text-xs text-muted-foreground">Aucun meneur délégué.</p>
       )}
@@ -132,7 +134,7 @@ function AccessSection({ campaignId, ownerID }: { campaignId: string; ownerID: s
             onChange={e => setSearch(e.target.value)}
             className="h-8 text-xs"
           />
-          {filtered.length > 0 && (
+          {search.trim() && filtered.length > 0 && (
             <ul className="border rounded-md divide-y max-h-48 overflow-y-auto">
               {filtered.map(u => (
                 <li key={u.id} className="flex items-center gap-3 px-3 py-2">
@@ -154,7 +156,7 @@ function AccessSection({ campaignId, ownerID }: { campaignId: string; ownerID: s
               ))}
             </ul>
           )}
-          {search && filtered.length === 0 && (
+          {search.trim() && filtered.length === 0 && (
             <p className="text-xs text-muted-foreground">Aucun utilisateur disponible.</p>
           )}
         </div>
@@ -311,9 +313,9 @@ function ScenarioList({ campaignId }: { campaignId: string }) {
 
   return (
     <div className="space-y-3 pt-6 border-t">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-sm font-medium">Scénarios</p>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <a
             href={`/api/campaigns/${campaignId}/export`}
             className="inline-flex items-center gap-1 text-xs h-8 px-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -325,11 +327,11 @@ function ScenarioList({ campaignId }: { campaignId: string }) {
             <Users className="h-3.5 w-3.5 mr-1" />
             Entités
           </Button>
-          <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+          <Button size="sm" onClick={() => setOpen(true)}>
             <Plus className="h-3.5 w-3.5 mr-1" />
             Nouveau scénario
           </Button>
-          <Button size="sm" onClick={() => navigate(`/campaigns/${campaignId}/factory`)}>
+          <Button size="sm" variant="outline" onClick={() => navigate(`/campaigns/${campaignId}/factory`)}>
             <Wand2 className="h-3.5 w-3.5 mr-1" />
             Fabrique
           </Button>

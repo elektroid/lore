@@ -91,12 +91,14 @@ The entity name is always a `<button>` element, never a `<p>` or `<span>`.
 
 ### Modal vs. inline edit
 
-| Entity has a dedicated `*EditorModal` | Edit pattern |
-|---------------------------------------|--------------|
-| Yes (NPC, Artefact, Location)         | `setEditId(entity.id)` — opens the modal |
-| No (Faction)                          | `startEdit(entity)` — expands an inline form in the row |
+All four current entity types (NPC, Artefact, Location, Faction) have a
+dedicated `*EditorModal`. Editing an existing entity calls `setEditId(entity.id)`
+to open it; creating a new one opens the same `Dialog` shell (`CampaignEntitiesPage.tsx`)
+with a smaller field set — image management, LLM actions and the rest become
+available once the entity exists, which happens as soon as the create form is
+submitted (the modal reopens in edit mode with the new id).
 
-**Rule:** create a modal when the entity needs image management, has many fields, or has LLM actions. All four current entity types (NPC, Artefact, Location, Faction) use modals.
+**Rule:** create a modal when the entity needs image management, has many fields, or has LLM actions.
 
 ### Avatar / thumbnail
 

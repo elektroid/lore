@@ -23,8 +23,8 @@ interface AppShellProps {
 }
 
 const themes: { id: Theme; icon: React.ReactNode; label: string }[] = [
-  { id: 'daylight', icon: <Sun className="h-3.5 w-3.5" />, label: 'Daylight' },
-  { id: 'night',    icon: <Moon className="h-3.5 w-3.5" />, label: 'Night' },
+  { id: 'daylight', icon: <Sun className="h-3.5 w-3.5" />, label: 'Clair' },
+  { id: 'night',    icon: <Moon className="h-3.5 w-3.5" />, label: 'Sombre' },
   { id: 'cyberpunk', icon: <Zap className="h-3.5 w-3.5" />, label: 'Cyberpunk' },
 ]
 
@@ -46,7 +46,7 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b px-6 py-3 flex items-center gap-2 text-sm">
+      <header className="border-b px-6 py-3 flex items-center gap-2 gap-y-2 text-sm flex-wrap">
         <Link to="/" className="font-semibold hover:text-foreground text-foreground">
           Lore Engine
         </Link>
@@ -70,6 +70,7 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
           <Link
             to="/games"
             title="Jeux"
+            aria-label="Jeux"
             className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
           >
             <Dices className="h-3.5 w-3.5" />
@@ -77,6 +78,7 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
           <Link
             to="/profile"
             title="Mon profil"
+            aria-label="Mon profil"
             className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
           >
             <UserCircle className="h-3.5 w-3.5" />
@@ -85,6 +87,7 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
             <Link
               to="/admin"
               title="Administration"
+              aria-label="Administration"
               className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
             >
               <Users className="h-3.5 w-3.5" />
@@ -94,6 +97,7 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
             <Link
               to="/settings"
               title="Paramètres"
+              aria-label="Paramètres"
               className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
             >
               <Settings className="h-3.5 w-3.5" />
@@ -102,6 +106,7 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
           <button
             onClick={handleLogout}
             title="Se déconnecter"
+            aria-label="Se déconnecter"
             className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
           >
             <LogOut className="h-3.5 w-3.5" />
@@ -112,6 +117,8 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
               key={t.id}
               onClick={() => setTheme(t.id)}
               title={t.label}
+              aria-label={`Thème ${t.label}`}
+              aria-pressed={theme === t.id}
               className={`p-1.5 rounded transition-colors ${
                 theme === t.id
                   ? 'bg-primary text-primary-foreground'

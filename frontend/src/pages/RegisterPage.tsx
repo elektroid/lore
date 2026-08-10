@@ -22,13 +22,13 @@ export default function RegisterPage() {
 
     // Validate
     if (password !== confirmPassword) {
-      setError('Passwords do not match')
+      setError('Les mots de passe ne correspondent pas')
       setLoading(false)
       return
     }
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters')
+      setError('Le mot de passe doit contenir au moins 8 caractères')
       setLoading(false)
       return
     }
@@ -40,7 +40,7 @@ export default function RegisterPage() {
       // Auto-login after registration, redirect to home
       navigate('/', { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed')
+      setError(err instanceof Error ? err.message : 'Échec de la création du compte')
     } finally {
       setLoading(false)
     }
@@ -52,7 +52,7 @@ export default function RegisterPage() {
         <div className="bg-card rounded-lg border p-8 shadow-xl">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold">Lore Engine</h1>
-            <p className="text-muted-foreground mt-2">Create your account</p>
+            <p className="text-muted-foreground mt-2">Créez votre compte</p>
           </div>
 
           {error && (
@@ -64,7 +64,7 @@ export default function RegisterPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label htmlFor="name" className="block text-sm font-medium mb-2">
-                Display Name
+                Nom affiché
               </label>
               <input
                 type="text"
@@ -75,7 +75,7 @@ export default function RegisterPage() {
                 minLength={2}
                 maxLength={50}
                 className="w-full rounded-md border border-input bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="Your name"
+                placeholder="Votre nom"
                 disabled={loading}
               />
             </div>
@@ -91,14 +91,14 @@ export default function RegisterPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="w-full rounded-md border border-input bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="you@example.com"
+                placeholder="vous@exemple.com"
                 disabled={loading}
               />
             </div>
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium mb-2">
-                Password
+                Mot de passe
               </label>
               <input
                 type="password"
@@ -115,7 +115,7 @@ export default function RegisterPage() {
 
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium mb-2">
-                Confirm Password
+                Confirmer le mot de passe
               </label>
               <input
                 type="password"
@@ -135,17 +135,17 @@ export default function RegisterPage() {
               disabled={loading}
               className="w-full rounded-md bg-primary text-primary-foreground py-2 text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Creating account...' : 'Create account'}
+              {loading ? 'Création du compte…' : 'Créer le compte'}
             </button>
           </form>
 
           <div className="mt-6 text-center text-sm">
-            <span className="text-muted-foreground">Already have an account? </span>
+            <span className="text-muted-foreground">Déjà un compte ? </span>
             <a
               href="/login"
               className="text-primary hover:underline font-medium"
             >
-              Sign in
+              Se connecter
             </a>
           </div>
         </div>

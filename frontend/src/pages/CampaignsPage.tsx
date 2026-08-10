@@ -286,7 +286,7 @@ export default function CampaignsPage() {
 
   return (
     <AppShell>
-      <main className="px-6 py-8 max-w-4xl">
+      <main className="px-6 py-8 max-w-4xl mx-auto">
         <div className="mb-6 rounded-lg overflow-hidden border">
           <img
             src="/dice.jpg"

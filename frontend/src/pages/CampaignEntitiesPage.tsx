@@ -128,7 +128,7 @@ function NPCTab({ campaignId, openId, creating, onCreatingChange, form, onFormCh
                     {npc.name || <span className="text-muted-foreground italic">(sans nom)</span>}
                   </button>
                   {npc.role && <p className="text-xs text-muted-foreground truncate">{npc.role}</p>}
-                  {npc.motivation && <p className="text-xs text-primary/80 italic truncate">{npc.motivation}</p>}
+                  {npc.motivation && npc.motivation !== npc.role && <p className="text-xs text-primary/80 italic truncate">{npc.motivation}</p>}
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(npc.id)}>
@@ -258,8 +258,12 @@ function LocationTab({ campaignId, openId, creating, onCreatingChange, form, onF
                 <EntityAvatar name={loc.name} imageUrl={first?.url} onImageClick={() => first && setLightboxImg(first)} />
                 <div className="flex-1 min-w-0">
                   <button className="text-sm font-medium truncate hover:underline text-left" onClick={() => setEditId(loc.id)}>{loc.name || <span className="text-muted-foreground italic">(sans nom)</span>}</button>
-                  {loc.atmosphere && <p className="text-xs text-muted-foreground">{loc.atmosphere}</p>}
-                  {loc.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{stripMentions(loc.description)}</p>}
+                  {loc.atmosphere && <p className="text-xs text-muted-foreground truncate">{loc.atmosphere}</p>}
+                  {loc.description && loc.description !== loc.atmosphere && (
+                    <p className={`text-xs text-muted-foreground mt-1 ${loc.atmosphere ? 'truncate' : 'line-clamp-2'}`}>
+                      {stripMentions(loc.description)}
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(loc.id)}>
@@ -373,7 +377,11 @@ function FactionTab({ campaignId, openId, creating, onCreatingChange, form, onFo
                     {f.type && <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{f.type}</span>}
                   </div>
                   {f.motivation && <p className="text-xs text-primary/80 italic truncate mt-0.5">{f.motivation}</p>}
-                  {f.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{stripMentions(f.description)}</p>}
+                  {f.description && f.description !== f.motivation && (
+                    <p className={`text-xs text-muted-foreground mt-1 ${f.motivation ? 'truncate' : 'line-clamp-2'}`}>
+                      {stripMentions(f.description)}
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(f.id)}>
