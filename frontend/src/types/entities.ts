@@ -13,6 +13,7 @@ export interface CampaignNPC {
   quote: string
   motivation: string
   images: string  // JSON array of NPCImage
+  sheet: string   // values for the campaign's game's sheet_template, scope:"npc" fields
   created_at: string
   updated_at: string
 }

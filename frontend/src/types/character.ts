@@ -6,6 +6,7 @@ export interface PlayerCharacter {
   name: string
   description: string
   personal_story: string
+  sheet: string
   created_at: string
   updated_at: string
 }
@@ -15,12 +16,14 @@ export interface CreateCharacterRequest {
   name: string
   description: string
   personal_story: string
+  sheet: string
 }
 
 export interface UpdateCharacterRequest {
   name: string
   description: string
   personal_story: string
+  sheet: string
 }
 
 export interface ListCharactersResponse {

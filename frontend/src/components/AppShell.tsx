@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users, Dices, LogOut } from 'lucide-react'
+import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users, Dices, ClipboardList, LogOut } from 'lucide-react'
 import { useUIStore, type Theme } from '@/stores/ui'
 import { useAuthStore, useUser } from '@/stores/auth'
 import { logout as logoutRequest } from '@/api/auth'
@@ -105,6 +105,14 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
             className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
           >
             <Dices className="h-3.5 w-3.5" />
+          </Link>
+          <Link
+            to="/sheet-templates"
+            title="Fiches de personnage"
+            aria-label="Fiches de personnage"
+            className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+          >
+            <ClipboardList className="h-3.5 w-3.5" />
           </Link>
           <Link
             to="/profile"

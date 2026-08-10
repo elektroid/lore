@@ -6,6 +6,8 @@ export interface Game {
   description: string
   visual_style: string
   mistral_agent_id: string
+  sheet_template_id: string | null
+  sheet_template_name: string
   created_at: string
 }
 

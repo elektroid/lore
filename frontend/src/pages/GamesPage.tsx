@@ -11,6 +11,7 @@ import { api } from '@/api/client'
 import { useUser } from '@/stores/auth'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import type { Game, GameDocument } from '@/types/game'
+import type { SheetTemplate } from '@/types/sheetTemplate'
 
 function slugify(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
@@ -82,6 +83,10 @@ export default function GamesPage() {
     queryKey: ['games'],
     queryFn: () => api.get<Game[]>('/games'),
   })
+  const { data: sheetTemplates = [] } = useQuery({
+    queryKey: ['sheet-templates'],
+    queryFn: () => api.get<SheetTemplate[]>('/sheet-templates'),
+  })
 
   const importInputRef = useRef<HTMLInputElement>(null)
   const importGame = useMutation({
@@ -98,17 +103,19 @@ export default function GamesPage() {
   const [newSlug, setNewSlug] = useState('')
   const [newGenre, setNewGenre] = useState('')
   const [newDescription, setNewDescription] = useState('')
+  const [newSheetTemplateId, setNewSheetTemplateId] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editSlug, setEditSlug] = useState('')
   const [editGenre, setEditGenre] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [editSheetTemplateId, setEditSheetTemplateId] = useState('')
   const [editVisualStyle, setEditVisualStyle] = useState('')
   const [origVisualStyle, setOrigVisualStyle] = useState('')
   const [docsGame, setDocsGame] = useState<Game | null>(null)
 
   const createGame = useMutation({
-    mutationFn: (data: { name: string; slug: string; genre: string; description: string }) =>
+    mutationFn: (data: { name: string; slug: string; genre: string; description: string; sheet_template_id: string | null }) =>
       api.post<Game>('/games', data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['games'] })
@@ -117,12 +124,13 @@ export default function GamesPage() {
       setNewSlug('')
       setNewGenre('')
       setNewDescription('')
+      setNewSheetTemplateId('')
     },
   })
 
   const updateGame = useMutation({
-    mutationFn: async ({ id, name, slug, genre, description }: { id: string; name: string; slug: string; genre: string; description: string }) => {
-      await api.put<Game>(`/games/${id}`, { name, slug, genre, description })
+    mutationFn: async ({ id, name, slug, genre, description, sheet_template_id }: { id: string; name: string; slug: string; genre: string; description: string; sheet_template_id: string | null }) => {
+      await api.put<Game>(`/games/${id}`, { name, slug, genre, description, sheet_template_id })
       if (editVisualStyle !== origVisualStyle) {
         return api.put<Game>(`/games/${id}/visual-style`, { visual_style: editVisualStyle })
       }
@@ -150,6 +158,7 @@ export default function GamesPage() {
     setEditSlug(g.slug)
     setEditGenre(g.genre ?? '')
     setEditDescription(g.description ?? '')
+    setEditSheetTemplateId(g.sheet_template_id ?? '')
     setEditVisualStyle(g.visual_style ?? '')
     setOrigVisualStyle(g.visual_style ?? '')
   }
@@ -227,7 +236,7 @@ export default function GamesPage() {
                       size="sm"
                       className="h-8 px-2 text-xs shrink-0"
                       disabled={!editName.trim() || !editSlug.trim() || updateGame.isPending}
-                      onClick={() => updateGame.mutate({ id: g.id, name: editName.trim(), slug: editSlug.trim(), genre: editGenre.trim(), description: editDescription })}
+                      onClick={() => updateGame.mutate({ id: g.id, name: editName.trim(), slug: editSlug.trim(), genre: editGenre.trim(), description: editDescription, sheet_template_id: editSheetTemplateId || null })}
                     >
                       OK
                     </Button>
@@ -241,6 +250,17 @@ export default function GamesPage() {
                     className="h-8 text-xs"
                     placeholder="Genre (ex : cyberpunk, fantasy, horreur…)"
                   />
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-muted-foreground shrink-0">Fiche de personnage</Label>
+                    <select
+                      value={editSheetTemplateId}
+                      onChange={e => setEditSheetTemplateId(e.target.value)}
+                      className="flex-1 text-xs rounded border border-input bg-background px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      <option value="">Aucune</option>
+                      {sheetTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
                   <textarea
                     value={editDescription}
                     onChange={e => setEditDescription(e.target.value)}
@@ -360,12 +380,12 @@ export default function GamesPage() {
                 size="sm"
                 className="h-8 px-2 text-xs shrink-0"
                 disabled={!newName.trim() || !newSlug.trim() || createGame.isPending}
-                onClick={() => createGame.mutate({ name: newName.trim(), slug: newSlug.trim(), genre: newGenre.trim(), description: newDescription.trim() })}
+                onClick={() => createGame.mutate({ name: newName.trim(), slug: newSlug.trim(), genre: newGenre.trim(), description: newDescription.trim(), sheet_template_id: newSheetTemplateId || null })}
               >
                 Ajouter
               </Button>
               <button
-                onClick={() => { setAdding(false); setNewName(''); setNewSlug(''); setNewGenre(''); setNewDescription('') }}
+                onClick={() => { setAdding(false); setNewName(''); setNewSlug(''); setNewGenre(''); setNewDescription(''); setNewSheetTemplateId('') }}
                 className="text-muted-foreground/50 hover:text-muted-foreground shrink-0"
               >
                 <X className="h-3.5 w-3.5" />
@@ -377,6 +397,17 @@ export default function GamesPage() {
               className="h-8 text-xs"
               placeholder="Genre (ex : fantasy, cyberpunk, horreur…)"
             />
+            <div className="flex items-center gap-2">
+              <Label className="text-xs text-muted-foreground shrink-0">Fiche de personnage</Label>
+              <select
+                value={newSheetTemplateId}
+                onChange={e => setNewSheetTemplateId(e.target.value)}
+                className="flex-1 text-xs rounded border border-input bg-background px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">Aucune</option>
+                {sheetTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
             <textarea
               value={newDescription}
               onChange={e => setNewDescription(e.target.value)}

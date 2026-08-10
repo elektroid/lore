@@ -76,8 +76,8 @@ function NPCFormFields({ f, set }: { f: NPCForm; set: (p: Partial<NPCForm>) => v
 
 // ── NPC tab ───────────────────────────────────────────────────────────────────
 
-function NPCTab({ campaignId, openId, creating, onCreatingChange, form, onFormChange }: {
-  campaignId: string; openId?: string
+function NPCTab({ campaignId, gameId, openId, creating, onCreatingChange, form, onFormChange }: {
+  campaignId: string; gameId?: string; openId?: string
   creating: boolean; onCreatingChange: (v: boolean) => void
   form: NPCForm; onFormChange: (f: NPCForm) => void
 }) {
@@ -163,6 +163,7 @@ function NPCTab({ campaignId, openId, creating, onCreatingChange, form, onFormCh
         <NPCEditorModal
           npcId={editId}
           campaignId={campaignId}
+          gameId={gameId}
           open={!!editId}
           onClose={() => setEditId(null)}
         />
@@ -635,7 +636,7 @@ export default function CampaignEntitiesPage() {
               Rechercher
             </Button>
           </div>
-          <TabsContent value="npcs"><NPCTab campaignId={id!} openId={openIds['npcs']} creating={npcCreating} onCreatingChange={setNpcCreating} form={npcForm} onFormChange={setNpcForm} /></TabsContent>
+          <TabsContent value="npcs"><NPCTab campaignId={id!} gameId={campaign?.game_id} openId={openIds['npcs']} creating={npcCreating} onCreatingChange={setNpcCreating} form={npcForm} onFormChange={setNpcForm} /></TabsContent>
           <TabsContent value="locations"><LocationTab campaignId={id!} openId={openIds['locations']} creating={locCreating} onCreatingChange={setLocCreating} form={locForm} onFormChange={setLocForm} /></TabsContent>
           <TabsContent value="artefacts"><ArtefactTab campaignId={id!} openId={openIds['artefacts']} creating={artCreating} onCreatingChange={setArtCreating} form={artForm} onFormChange={setArtForm} /></TabsContent>
           <TabsContent value="factions"><FactionTab campaignId={id!} openId={openIds['factions']} creating={facCreating} onCreatingChange={setFacCreating} form={facForm} onFormChange={setFacForm} /></TabsContent>

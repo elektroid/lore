@@ -1,21 +1,20 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import AppShell from '@/components/AppShell'
+import EntityAvatar from '@/components/EntityAvatar'
+import CharacterEditorModal from '@/components/CharacterEditorModal'
 import { api } from '@/api/client'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import type { Campaign } from '@/types/campaign'
 import type { Game } from '@/types/game'
-import type { PlayerCharacter } from '@/types/character'
+import type { CreateCharacterRequest, ListCharactersResponse, PlayerCharacter } from '@/types/character'
 import type { ListPlayerRunsResponse } from '@/types/me'
-
-interface ListCharactersResponse {
-  characters: PlayerCharacter[]
-}
 
 // ── GM view ───────────────────────────────────────────────────────────────────
 
@@ -236,12 +235,37 @@ function TablesView({ memberCampaigns }: { memberCampaigns: Campaign[] }) {
 }
 
 function CharactersView() {
-  const { data: charResp } = useQuery({
+  const qc = useQueryClient()
+  const { data: characters = [] } = useQuery({
     queryKey: ['characters'],
-    queryFn: () => api.get<ListCharactersResponse>('/characters'),
+    queryFn: () => api.get<ListCharactersResponse>('/characters').then(r => r.characters),
+  })
+  const { data: games = [] } = useQuery({
+    queryKey: ['games'],
+    queryFn: () => api.get<Game[]>('/games'),
   })
 
-  const characters = charResp?.characters ?? []
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newGameId, setNewGameId] = useState('')
+  const [editId, setEditId] = useState<string | null>(null)
+
+  const createCharacter = useMutation({
+    mutationFn: (data: Pick<CreateCharacterRequest, 'name' | 'game_id'>) =>
+      api.post<PlayerCharacter>('/characters', { ...data, description: '', personal_story: '', sheet: '{}' }),
+    onSuccess: (char) => {
+      qc.invalidateQueries({ queryKey: ['characters'] })
+      setCreating(false)
+      setNewName('')
+      setNewGameId('')
+      setEditId(char.id)
+    },
+  })
+
+  const deleteCharacter = useMutation({
+    mutationFn: (id: string) => api.delete(`/characters/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['characters'] }),
+  })
 
   // Group characters by game_name
   const byGame = characters.reduce<Record<string, PlayerCharacter[]>>((acc, c) => {
@@ -253,7 +277,12 @@ function CharactersView() {
 
   return (
     <section>
-      <h2 className="text-lg font-semibold mb-4">Mes personnages</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold">Mes personnages</h2>
+        <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
+          <Plus className="h-3.5 w-3.5 mr-1" />Nouveau personnage
+        </Button>
+      </div>
       {characters.length === 0 ? (
         <p className="text-muted-foreground text-sm">Aucun personnage pour l'instant.</p>
       ) : (
@@ -263,17 +292,73 @@ function CharactersView() {
               <p className="text-sm font-medium text-muted-foreground mb-2">{gameName}</p>
               <ul className="space-y-2">
                 {chars.map(c => (
-                  <li key={c.id} className="p-4 rounded-lg border bg-card">
-                    <p className="font-medium">{c.name || <span className="italic text-muted-foreground">(sans nom)</span>}</p>
-                    {c.description && (
-                      <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{c.description}</p>
-                    )}
+                  <li key={c.id} className="flex items-start gap-3 p-4 rounded-lg border bg-card group">
+                    <EntityAvatar name={c.name} />
+                    <div className="min-w-0 flex-1">
+                      <button
+                        className="text-sm font-medium truncate hover:underline text-left"
+                        onClick={() => setEditId(c.id)}
+                      >
+                        {c.name || <span className="text-muted-foreground italic">(sans nom)</span>}
+                      </button>
+                      {c.description && (
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{c.description}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(c.id)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="sm" variant="ghost" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => { if (confirm(`Supprimer "${c.name}" ?`)) deleteCharacter.mutate(c.id) }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
             </div>
           ))}
         </div>
+      )}
+
+      <Dialog open={creating} onOpenChange={o => !o && setCreating(false)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nouveau personnage</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Nom</Label>
+              <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nom du personnage" autoFocus />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Jeu</Label>
+              <select
+                value={newGameId}
+                onChange={e => setNewGameId(e.target.value)}
+                className="w-full text-sm rounded-md border border-input bg-background px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">—</option>
+                {games.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              disabled={!newName.trim() || !newGameId || createCharacter.isPending}
+              onClick={() => createCharacter.mutate({ name: newName.trim(), game_id: newGameId })}
+            >
+              Créer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {editId && (
+        <CharacterEditorModal characterId={editId} open={!!editId} onClose={() => setEditId(null)} />
       )}
     </section>
   )

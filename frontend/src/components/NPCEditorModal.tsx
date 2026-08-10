@@ -11,10 +11,15 @@ import { useDebouncedSave } from '@/hooks/useDebouncedSave'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
 import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
 import MentionEditor from '@/components/MentionEditor'
+import SheetForm from '@/components/SheetForm'
+import type { SheetValues } from '@/types/sheetTemplate'
+import { parseSheetValues } from '@/types/sheetTemplate'
+import { useSheetTemplate } from '@/hooks/useSheetTemplate'
 
 interface Props {
   npcId: string
   campaignId: string
+  gameId?: string
   open: boolean
   onClose: () => void
 }
@@ -172,9 +177,9 @@ function ImageGrid({
 
 // ── Main modal ─────────────────────────────────────────────────────────────────
 
-export default function NPCEditorModal({ npcId, campaignId, open, onClose }: Props) {
+export default function NPCEditorModal({ npcId, campaignId, gameId, open, onClose }: Props) {
   const qc = useQueryClient()
-  const draft = useDebouncedSave<Partial<{ name: string; role: string; description: string; motivation: string; quote: string }>>()
+  const draft = useDebouncedSave<Partial<{ name: string; role: string; description: string; motivation: string; quote: string; sheet: string }>>()
 
   const { data: npc, isLoading } = useQuery({
     queryKey: ['npc', npcId],
@@ -183,6 +188,7 @@ export default function NPCEditorModal({ npcId, campaignId, open, onClose }: Pro
   })
 
   const [local, setLocal] = useState({ name: '', role: '', description: '', motivation: '', quote: '' })
+  const [sheetValues, setSheetValues] = useState<SheetValues>({})
   const prevIdRef = useRef('')
 
   useEffect(() => {
@@ -191,8 +197,11 @@ export default function NPCEditorModal({ npcId, campaignId, open, onClose }: Pro
       // Anything still pending belongs to the NPC we are leaving — save it.
       draft.flush()
       setLocal({ name: npc.name, role: npc.role, description: npc.description, motivation: npc.motivation, quote: npc.quote })
+      setSheetValues(parseSheetValues(npc.sheet))
     }
   }, [npc, draft])
+
+  const { schema, isLoading: schemaLoading } = useSheetTemplate(gameId)
 
   const [suggestion, setSuggestion] = useState<Record<string, string> | null>(null)
 
@@ -200,7 +209,7 @@ export default function NPCEditorModal({ npcId, campaignId, open, onClose }: Pro
     // Body built from the cached NPC (kept current by the optimistic patch
     // below), so a draft flushed after the modal moved on still saves against
     // the NPC it was typed into.
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<typeof local> }) => {
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<typeof local & { sheet: string }> }) => {
       const base = qc.getQueryData<CampaignNPC>(['npc', id])
       return api.put<CampaignNPC>(`/campaigns/${campaignId}/npcs/${id}`, {
         name: base?.name ?? local.name,
@@ -208,6 +217,7 @@ export default function NPCEditorModal({ npcId, campaignId, open, onClose }: Pro
         description: base?.description ?? local.description,
         motivation: base?.motivation ?? local.motivation,
         quote: base?.quote ?? local.quote,
+        sheet: base?.sheet ?? JSON.stringify(sheetValues),
         ...patch,
       })
     },
@@ -220,7 +230,7 @@ export default function NPCEditorModal({ npcId, campaignId, open, onClose }: Pro
 
   // Show the edit in the entity lists while the user types, instead of one
   // debounce later.
-  function patchNPC(id: string, patch: Partial<typeof local>) {
+  function patchNPC(id: string, patch: Partial<CampaignNPC>) {
     patchCachedItem<CampaignNPC>(qc, ['npc', id], patch)
     patchCachedListItem<CampaignNPC>(qc, ['campaign-npcs', campaignId], id, patch)
   }
@@ -250,6 +260,14 @@ export default function NPCEditorModal({ npcId, campaignId, open, onClose }: Pro
     setLocal(l => ({ ...l, [field]: value }))
     patchNPC(id, { [field]: value })
     draft.schedule({ [field]: value }, patch => save.mutate({ id, patch }))
+  }
+
+  function handleSheetChange(values: SheetValues) {
+    const id = npcId
+    setSheetValues(values)
+    const serialized = JSON.stringify(values)
+    patchNPC(id, { sheet: serialized })
+    draft.schedule({ sheet: serialized }, patch => save.mutate({ id, patch }))
   }
 
   function handleNPCUpdated(updated: CampaignNPC) {
@@ -313,6 +331,17 @@ export default function NPCEditorModal({ npcId, campaignId, open, onClose }: Pro
               <div className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Réplique type</p>
                 <AutoTextarea value={local.quote} onChange={v => handle('quote', v)} placeholder="«…»" className="italic" />
+              </div>
+
+              <div className="space-y-1 pt-2 border-t">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide pt-3">Fiche</p>
+                {schemaLoading ? (
+                  <p className="text-xs text-muted-foreground">Chargement…</p>
+                ) : schema ? (
+                  <SheetForm schema={schema} values={sheetValues} scope="npc" onChange={handleSheetChange} />
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">Pas encore de fiche pour ce système.</p>
+                )}
               </div>
 
               {suggestion && (

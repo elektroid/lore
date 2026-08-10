@@ -11,6 +11,8 @@ import SettingsPage from '@/pages/SettingsPage'
 import ProfilePage from '@/pages/ProfilePage'
 import AdminPage from '@/pages/AdminPage'
 import GamesPage from '@/pages/GamesPage'
+import SheetTemplatesPage from '@/pages/SheetTemplatesPage'
+import SheetTemplateEditorPage from '@/pages/SheetTemplateEditorPage'
 import LorePage from '@/pages/LorePage'
 import SynopsisPage from '@/pages/SynopsisPage'
 import PrintPage from '@/pages/PrintPage'
@@ -143,6 +145,22 @@ export default function App() {
           element={
             <ProtectedRoute>
               <GamesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sheet-templates"
+          element={
+            <ProtectedRoute>
+              <SheetTemplatesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sheet-templates/:id"
+          element={
+            <ProtectedRoute>
+              <SheetTemplateEditorPage />
             </ProtectedRoute>
           }
         />

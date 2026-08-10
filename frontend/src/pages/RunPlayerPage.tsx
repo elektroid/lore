@@ -18,12 +18,12 @@ function CharacterPanel({ run, runId }: { run: PlayerRunDetail; runId: string })
   const qc = useQueryClient()
   const [picking, setPicking] = useState(false)
 
-  const { data: charResp } = useQuery({
+  const { data: characters = [] } = useQuery({
     queryKey: ['characters'],
-    queryFn: () => api.get<ListCharactersResponse>('/characters'),
+    queryFn: () => api.get<ListCharactersResponse>('/characters').then(r => r.characters),
     enabled: picking,
   })
-  const eligible = (charResp?.characters ?? []).filter(
+  const eligible = characters.filter(
     (c: PlayerCharacter) => !run.game_id || c.game_id === run.game_id
   )
 
