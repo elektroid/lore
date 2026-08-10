@@ -48,6 +48,23 @@ func GetSheetTemplate(ctx context.Context, database *sql.DB, id string) (*SheetT
 	return &t, err
 }
 
+// GetSheetTemplateByName looks up a template by its exact name — used on
+// game import to reuse an existing template (e.g. a second Cyberpunk RED
+// export landing on an instance that already has one) rather than minting a
+// duplicate every time the same ruleset gets imported. Names aren't unique
+// at the database level (templates are admin-curated, not slugged), so this
+// returns the first match.
+func GetSheetTemplateByName(ctx context.Context, database *sql.DB, name string) (*SheetTemplate, error) {
+	var t SheetTemplate
+	err := database.QueryRowContext(ctx,
+		`SELECT id, name, schema, created_at, updated_at FROM sheet_templates WHERE name = ? LIMIT 1`, name).
+		Scan(&t.ID, &t.Name, &t.Schema, &t.CreatedAt, &t.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &t, err
+}
+
 func CreateSheetTemplate(ctx context.Context, database *sql.DB, name, schema string) (*SheetTemplate, error) {
 	id := uuid.New().String()
 	_, err := database.ExecContext(ctx,

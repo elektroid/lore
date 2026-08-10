@@ -381,6 +381,15 @@ type gameExportMeta struct {
 	VisualStyle string `json:"visual_style"`
 }
 
+// The character-sheet template the exported game is attached to, if any.
+// Schema is carried opaquely (same TEXT-column treatment it gets everywhere
+// else — see sheet_templates in schema.sql) rather than decoded, so this
+// handler doesn't need to know its shape.
+type sheetTemplateExport struct {
+	Name   string `json:"name"`
+	Schema string `json:"schema"`
+}
+
 // ID is export-local, not the source instance's real row ID — it exists only
 // so Relations below can reference "the third entity in this file" without
 // caring what ID it happens to get on the importing instance.
@@ -408,6 +417,10 @@ type gameExportDoc struct {
 	Game         gameExportMeta                 `json:"game"`
 	LoreEntities []gameLoreEntityExport         `json:"lore_entities"`
 	Relations    []gameLoreEntityRelationExport `json:"relations"`
+	// Nil when the exported game has no sheet_template attached — an older
+	// manifest (version < 3) simply decodes this as nil too, so import stays
+	// backward compatible without a format branch.
+	SheetTemplate *sheetTemplateExport `json:"sheet_template,omitempty"`
 }
 
 func (h *GameHandler) Export(w http.ResponseWriter, r *http.Request) {
@@ -460,7 +473,7 @@ func (h *GameHandler) Export(w http.ResponseWriter, r *http.Request) {
 
 	doc := gameExportDoc{
 		ExportedAt: time.Now().UTC().Format(time.RFC3339),
-		Version:    2,
+		Version:    3,
 		Game: gameExportMeta{
 			Name:        game.Name,
 			Slug:        game.Slug,
@@ -470,6 +483,17 @@ func (h *GameHandler) Export(w http.ResponseWriter, r *http.Request) {
 		},
 		LoreEntities: exported,
 		Relations:    exportedRelations,
+	}
+
+	if game.SheetTemplateID != nil {
+		tmpl, err := db.GetSheetTemplate(ctx, h.db, *game.SheetTemplateID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if tmpl != nil {
+			doc.SheetTemplate = &sheetTemplateExport{Name: tmpl.Name, Schema: tmpl.Schema}
+		}
 	}
 
 	manifest, err := json.Marshal(doc)
@@ -561,10 +585,31 @@ func (h *GameHandler) Import(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sheet templates aren't part of the export payload — an imported game
-	// starts with none, same as any newly created one; the admin attaches one
-	// afterward if it applies.
-	game, err := db.CreateGame(ctx, h.db, doc.Game.Name, doc.Game.Slug, doc.Game.Genre, doc.Game.Description, nil)
+	// Reuse an existing template with the same name rather than minting a
+	// duplicate every time the same ruleset's export lands on this instance
+	// (templates are meant to be shared across games — see sheet_templates in
+	// schema.sql). A local template found this way keeps its own schema; the
+	// export isn't allowed to silently overwrite an admin's edits.
+	var sheetTemplateID *string
+	if doc.SheetTemplate != nil && doc.SheetTemplate.Name != "" {
+		existing, err := db.GetSheetTemplateByName(ctx, h.db, doc.SheetTemplate.Name)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if existing != nil {
+			sheetTemplateID = &existing.ID
+		} else {
+			tmpl, err := db.CreateSheetTemplate(ctx, h.db, doc.SheetTemplate.Name, doc.SheetTemplate.Schema)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			sheetTemplateID = &tmpl.ID
+		}
+	}
+
+	game, err := db.CreateGame(ctx, h.db, doc.Game.Name, doc.Game.Slug, doc.Game.Genre, doc.Game.Description, sheetTemplateID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
