@@ -247,7 +247,7 @@ function RunParty({ runId, campaignId }: { runId: string; campaignId: string }) 
       {members.length > 0 && (
         <div className="space-y-1.5 pt-3 border-t border-dashed">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Comptes de la campagne
+            Joueurs existant sur le serveur
           </p>
           {available.length > 0 ? (
             <>
