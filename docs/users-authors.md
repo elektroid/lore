@@ -78,7 +78,7 @@ campaign.
    `/scenarios/:id/synopsis`. Names typed into scene prose become navigable
    mentions automatically once the entity exists.
 5. **Brainstorm** anything that isn't ready to become a scene yet, in a
-   scenario-scoped chat thread that persists across sessions.
+   scenario-scoped chat thread that persists across sessions or general discussion to go back and forth.
 6. **Grant access** — `Accès`, on the Auteur tab: search the instance's users
    by name or email and add them to `campaign_members`. This is authorization
    only; it does not seat anyone at a table yet (see
