@@ -212,6 +212,15 @@ export default function SynopsisPage() {
               <Printer className="h-3.5 w-3.5" />
               Imprimer
             </a>
+            {scenario?.campaign_id && (
+              <a
+                href={`/campaigns/${scenario.campaign_id}/entities`}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
+                <Users className="h-3.5 w-3.5" />
+                Entités
+              </a>
+            )}
             {campaign?.game_id && (
               <button
                 onClick={() => setDocsOpen(v => !v)}
