@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard'
@@ -201,7 +201,10 @@ function CampaignForm({ campaign }: { campaign: Campaign }) {
         game_id: f.game_id,
       }),
     onSuccess: (updated) => {
-      queryClient.setQueryData(['campaign', id], updated)
+      // PUT's response doesn't carry read-only fields like `access` (only GET
+      // does) — merge instead of replacing, or every other page sharing this
+      // query key loses them from cache.
+      queryClient.setQueryData<Campaign>(['campaign', id], old => old ? { ...old, ...updated } : updated)
       setForm(initForm(updated))
     },
   })
@@ -395,6 +398,14 @@ export default function CampaignDetailPage() {
 
   useDocTitle(campaign ? `lore: ${campaign.name}` : 'lore')
 
+  // Author mode is owner-only. A delegated account (access === 'member') has
+  // real gamemaster rights but never authoring ones — send it to the hub it
+  // actually has, rather than a form whose Enregistrer would just 403.
+  const isNonOwner = campaign != null && campaign.access !== 'owner'
+  useEffect(() => {
+    if (isNonOwner) navigate(`/campaigns/${id}/runs`, { replace: true })
+  }, [isNonOwner, id, navigate])
+
   if (isLoading) {
     return (
       <AppShell>
@@ -416,13 +427,7 @@ export default function CampaignDetailPage() {
     )
   }
 
-  // Author mode is owner-only. A delegated account (access === 'member') has
-  // real gamemaster rights but never authoring ones — send it to the hub it
-  // actually has, rather than a form whose Enregistrer would just 403.
-  if (campaign.access !== 'owner') {
-    navigate(`/campaigns/${id}/runs`, { replace: true })
-    return null
-  }
+  if (isNonOwner) return null
 
   return (
     <AppShell

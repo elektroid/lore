@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import LocationEditorModal from '@/components/LocationEditorModal'
 import NPCEditorModal from '@/components/NPCEditorModal'
 import ArtefactEditorModal from '@/components/ArtefactEditorModal'
@@ -143,17 +144,20 @@ function NPCTab({ campaignId, openId, creating, onCreatingChange, form, onFormCh
         })}
       </ul>
 
-      {creating && (
-        <div className="rounded-md border bg-card p-3 space-y-3">
+      <Dialog open={creating} onOpenChange={o => !o && onCreatingChange(false)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Ajouter un PNJ</DialogTitle>
+          </DialogHeader>
           <NPCFormFields f={form} set={p => onFormChange({ ...form, ...p })} />
-          <div className="flex gap-2 justify-end">
-            <Button size="sm" variant="ghost" className="h-7" onClick={() => onCreatingChange(false)}><X className="h-3.5 w-3.5 mr-1" /> Annuler</Button>
-            <Button size="sm" className="h-7" disabled={!form.name.trim() || create.isPending} onClick={() => create.mutate(form)}>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => onCreatingChange(false)}><X className="h-3.5 w-3.5 mr-1" /> Annuler</Button>
+            <Button disabled={!form.name.trim() || create.isPending} onClick={() => create.mutate(form)}>
               <Check className="h-3.5 w-3.5 mr-1" /> Créer
             </Button>
-          </div>
-        </div>
-      )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {editId && (
         <NPCEditorModal
@@ -271,17 +275,20 @@ function LocationTab({ campaignId, openId, creating, onCreatingChange, form, onF
         })}
       </ul>
 
-      {creating && (
-        <div className="rounded-md border bg-card p-3 space-y-3">
+      <Dialog open={creating} onOpenChange={o => !o && onCreatingChange(false)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Ajouter un lieu</DialogTitle>
+          </DialogHeader>
           <LocFormFields f={form} set={p => onFormChange({ ...form, ...p })} />
-          <div className="flex gap-2 justify-end">
-            <Button size="sm" variant="ghost" className="h-7" onClick={() => onCreatingChange(false)}><X className="h-3.5 w-3.5 mr-1" /> Annuler</Button>
-            <Button size="sm" className="h-7" disabled={!form.name.trim() || create.isPending} onClick={() => create.mutate(form)}>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => onCreatingChange(false)}><X className="h-3.5 w-3.5 mr-1" /> Annuler</Button>
+            <Button disabled={!form.name.trim() || create.isPending} onClick={() => create.mutate(form)}>
               <Check className="h-3.5 w-3.5 mr-1" /> Créer
             </Button>
-          </div>
-        </div>
-      )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {editId && (
         <LocationEditorModal
@@ -382,34 +389,39 @@ function FactionTab({ campaignId, openId, creating, onCreatingChange, form, onFo
         })}
       </ul>
 
-      {creating && (
-        <div className="rounded-md border bg-card p-3 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Nom</Label>
-              <Input value={form.name} onChange={e => onFormChange({ ...form, name: e.target.value })} placeholder="Nom de la faction" className="h-7 text-sm" autoFocus />
+      <Dialog open={creating} onOpenChange={o => !o && onCreatingChange(false)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Ajouter une faction</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Nom</Label>
+                <Input value={form.name} onChange={e => onFormChange({ ...form, name: e.target.value })} placeholder="Nom de la faction" className="h-7 text-sm" autoFocus />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Type</Label>
+                <Input value={form.type} onChange={e => onFormChange({ ...form, type: e.target.value })} placeholder="Corporation, gang…" className="h-7 text-sm" />
+              </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Type</Label>
-              <Input value={form.type} onChange={e => onFormChange({ ...form, type: e.target.value })} placeholder="Corporation, gang…" className="h-7 text-sm" />
+              <Label className="text-xs">Description</Label>
+              <AutoTextarea value={form.description} onChange={v => onFormChange({ ...form, description: v })} placeholder="Présentation, structure, histoire…" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Motivation</Label>
+              <Input value={form.motivation} onChange={e => onFormChange({ ...form, motivation: e.target.value })} placeholder="Ce qui fait agir la faction…" className="h-7 text-sm" />
             </div>
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Description</Label>
-            <AutoTextarea value={form.description} onChange={v => onFormChange({ ...form, description: v })} placeholder="Présentation, structure, histoire…" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Motivation</Label>
-            <Input value={form.motivation} onChange={e => onFormChange({ ...form, motivation: e.target.value })} placeholder="Ce qui fait agir la faction…" className="h-7 text-sm" />
-          </div>
-          <div className="flex gap-2 justify-end">
-            <Button size="sm" variant="ghost" className="h-7" onClick={() => onCreatingChange(false)}><X className="h-3.5 w-3.5 mr-1" /> Annuler</Button>
-            <Button size="sm" className="h-7" disabled={!form.name.trim() || create.isPending} onClick={() => create.mutate(form)}>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => onCreatingChange(false)}><X className="h-3.5 w-3.5 mr-1" /> Annuler</Button>
+            <Button disabled={!form.name.trim() || create.isPending} onClick={() => create.mutate(form)}>
               <Check className="h-3.5 w-3.5 mr-1" /> Créer
             </Button>
-          </div>
-        </div>
-      )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {editId && (
         <FactionEditorModal
@@ -505,20 +517,23 @@ function ArtefactTab({ campaignId, openId, creating, onCreatingChange, form, onF
         })}
       </ul>
 
-      {creating && (
-        <div className="rounded-md border bg-card p-3 space-y-3">
+      <Dialog open={creating} onOpenChange={o => !o && onCreatingChange(false)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Ajouter un artefact</DialogTitle>
+          </DialogHeader>
           <div className="space-y-1">
             <Label className="text-xs">Nom</Label>
-            <Input value={form.name} onChange={e => onFormChange({ ...form, name: e.target.value })} placeholder="Nom de l'artefact" className="h-7 text-sm" />
+            <Input value={form.name} onChange={e => onFormChange({ ...form, name: e.target.value })} placeholder="Nom de l'artefact" className="h-7 text-sm" autoFocus />
           </div>
-          <div className="flex gap-2 justify-end">
-            <Button size="sm" variant="ghost" className="h-7" onClick={() => onCreatingChange(false)}><X className="h-3.5 w-3.5 mr-1" /> Annuler</Button>
-            <Button size="sm" className="h-7" disabled={!form.name.trim() || create.isPending} onClick={() => create.mutate(form)}>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => onCreatingChange(false)}><X className="h-3.5 w-3.5 mr-1" /> Annuler</Button>
+            <Button disabled={!form.name.trim() || create.isPending} onClick={() => create.mutate(form)}>
               <Check className="h-3.5 w-3.5 mr-1" /> Créer
             </Button>
-          </div>
-        </div>
-      )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {editId && (
         <ArtefactEditorModal
@@ -584,10 +599,11 @@ export default function CampaignEntitiesPage() {
   // Entity editing is authoring — owner-only, even for a delegated
   // gamemaster (who reads NPCs/locations through PlayPage's own roster
   // instead). See AccessSection in CampaignDetailPage.tsx.
-  if (campaign && campaign.access !== 'owner') {
-    navigate(`/campaigns/${id}/runs`, { replace: true })
-    return null
-  }
+  const isNonOwner = campaign != null && campaign.access !== 'owner'
+  useEffect(() => {
+    if (isNonOwner) navigate(`/campaigns/${id}/runs`, { replace: true })
+  }, [isNonOwner, id, navigate])
+  if (isNonOwner) return null
 
   return (
     <AppShell

@@ -149,10 +149,12 @@ export default function SynopsisPage() {
   // gamemaster (who runs sessions from PlayPage instead, which reads the
   // synopsis it needs without exposing these editing controls). See
   // AccessSection in CampaignDetailPage.tsx.
-  if (campaign && campaign.access !== 'owner') {
-    navigate(`/campaigns/${campaign.id}/runs`, { replace: true })
-    return null
-  }
+  const isNonOwner = campaign != null && campaign.access !== 'owner'
+  const campaignId = campaign?.id
+  useEffect(() => {
+    if (isNonOwner) navigate(`/campaigns/${campaignId}/runs`, { replace: true })
+  }, [isNonOwner, campaignId, navigate])
+  if (isNonOwner) return null
 
   return (
     <>

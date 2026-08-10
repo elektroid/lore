@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 const PALETTE = [
   'bg-blue-500',
   'bg-emerald-500',
@@ -30,13 +32,16 @@ interface Props {
 }
 
 export default function EntityAvatar({ name, imageUrl, onImageClick }: Props) {
-  if (imageUrl) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+
+  if (imageUrl && imageUrl !== failedUrl) {
     return (
       <img
         src={imageUrl}
         alt={name}
         className="h-10 w-10 rounded object-cover shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
         onClick={onImageClick}
+        onError={() => setFailedUrl(imageUrl)}
       />
     )
   }
