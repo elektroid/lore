@@ -127,6 +127,8 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", games.Get)
 				r.Get("/documents", games.ListDocuments)
+				r.With(requireSuperuser).Post("/documents", games.UploadDocument)
+				r.With(requireSuperuser).Delete("/documents/*", games.DeleteDocument)
 				r.With(requireSuperuser).Put("/", games.Update)
 				r.With(requireSuperuser).Delete("/", games.Delete)
 				r.With(requireSuperuser).Put("/visual-style", games.UpdateVisualStyle)

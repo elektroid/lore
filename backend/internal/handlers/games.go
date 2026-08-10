@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	db "lore/internal/db"
 )
@@ -169,6 +170,122 @@ func (h *GameHandler) ListDocuments(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, docs)
+}
+
+// maxGameDocumentSize is generous compared to image uploads (see allowedExts
+// in uploads.go) — these are rulebook PDFs, not thumbnails.
+const maxGameDocumentSize = 100 << 20
+
+// allowedDocumentExts excludes anything a browser would render as HTML/script
+// (.html, .svg, .xml, ...) — /external-material is served same-origin by a
+// plain http.FileServer (router.go), so an uploaded file with one of those
+// extensions would execute in the app's own origin when opened.
+var allowedDocumentExts = map[string]bool{
+	".pdf": true, ".txt": true, ".md": true, ".doc": true, ".docx": true,
+	".rtf": true, ".odt": true, ".epub": true,
+}
+
+// UploadDocument adds a file to external-material/<slug>/ over HTTP so an
+// admin no longer needs shell access to the server just to drop in a
+// sourcebook (see docs/users-admin.md — until now this directory was
+// filesystem-only). It lands in the same place cmd/index-sourcebook reads
+// from, so an uploaded PDF is immediately indexable the same way a manually
+// copied one always was.
+func (h *GameHandler) UploadDocument(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	game, err := db.GetGame(r.Context(), h.db, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if game == nil {
+		writeError(w, http.StatusNotFound, "game not found")
+		return
+	}
+
+	if err := r.ParseMultipartForm(maxGameDocumentSize); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid upload")
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "missing file")
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if !allowedDocumentExts[ext] {
+		writeError(w, http.StatusBadRequest, "unsupported file type")
+		return
+	}
+
+	stem := safeFilename(strings.TrimSuffix(filepath.Base(header.Filename), filepath.Ext(header.Filename)))
+	if stem == "" {
+		stem = "document"
+	}
+	// uuid prefix avoids clobbering an existing file with the same cleaned
+	// name (two authors both uploading "rulebook.pdf", say).
+	filename := uuid.New().String()[:8] + "-" + stem + ext
+
+	dir := filepath.Join(h.externalMaterialDir, filepath.Clean("/"+game.Slug))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not create directory")
+		return
+	}
+
+	dst, err := os.Create(filepath.Join(dir, filename))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not save file")
+		return
+	}
+	defer dst.Close()
+	if _, err := io.Copy(dst, file); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not save file")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, GameDocument{
+		Name: filename,
+		URL:  "/external-material/" + game.Slug + "/" + filename,
+	})
+}
+
+// DeleteDocument removes a file from external-material/<slug>/. The path
+// comes from a chi wildcard (not a single {name} segment) so it can also
+// reach files nested in subdirectories that ListDocuments surfaces but that
+// this handler never itself creates (manually placed material predates this
+// endpoint). filepath.Clean anchors it to "/" before joining so a ".." can't
+// walk the result outside the game's own directory.
+func (h *GameHandler) DeleteDocument(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	game, err := db.GetGame(r.Context(), h.db, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if game == nil {
+		writeError(w, http.StatusNotFound, "game not found")
+		return
+	}
+
+	base := filepath.Join(h.externalMaterialDir, filepath.Clean("/"+game.Slug))
+	rel := chi.URLParam(r, "*")
+	target := filepath.Join(base, filepath.Clean("/"+rel))
+	if rel == "" || target == base || !strings.HasPrefix(target, base+string(filepath.Separator)) {
+		writeError(w, http.StatusBadRequest, "invalid document path")
+		return
+	}
+
+	if err := os.Remove(target); err != nil {
+		if os.IsNotExist(err) {
+			writeError(w, http.StatusNotFound, "document not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ── Lore entities ────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, X, FolderOpen, Sparkles, Download, Upload, BookOpen } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, FolderOpen, Sparkles, Download, Upload, BookOpen, File as FileIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,11 +17,34 @@ function slugify(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
-function GameDocumentsDialog({ game, onClose }: { game: Game; onClose: () => void }) {
+// Kept in sync with allowedDocumentExts in backend/internal/handlers/games.go.
+const DOCUMENT_ACCEPT = '.pdf,.txt,.md,.doc,.docx,.rtf,.odt,.epub'
+
+function documentDeleteUrl(gameId: string, name: string) {
+  return `/games/${gameId}/documents/${name.split('/').map(encodeURIComponent).join('/')}`
+}
+
+function GameDocumentsDialog({ game, isAdmin, onClose }: { game: Game; isAdmin: boolean; onClose: () => void }) {
   const [search, setSearch] = useState('')
+  const qc = useQueryClient()
+  const uploadInputRef = useRef<HTMLInputElement>(null)
   const { data: docs = [], isLoading } = useQuery({
     queryKey: ['game-documents', game.id],
     queryFn: () => api.get<GameDocument[]>(`/games/${game.id}/documents`),
+  })
+
+  const uploadDoc = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return api.upload<GameDocument>(`/games/${game.id}/documents`, form)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['game-documents', game.id] }),
+  })
+
+  const deleteDoc = useMutation({
+    mutationFn: (name: string) => api.delete(documentDeleteUrl(game.id, name)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['game-documents', game.id] }),
   })
 
   const filtered = search.trim()
@@ -34,6 +57,38 @@ function GameDocumentsDialog({ game, onClose }: { game: Game; onClose: () => voi
         <DialogHeader>
           <DialogTitle>Documents — {game.name}</DialogTitle>
         </DialogHeader>
+
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept={DOCUMENT_ACCEPT}
+              className="hidden"
+              onChange={e => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                if (file) uploadDoc.mutate(file)
+              }}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={uploadDoc.isPending}
+              onClick={() => uploadInputRef.current?.click()}
+            >
+              <Upload className="h-3.5 w-3.5 mr-1" />
+              {uploadDoc.isPending ? 'Envoi…' : 'Ajouter un document'}
+            </Button>
+          </div>
+        )}
+        {uploadDoc.isError && (
+          <p className="text-xs text-destructive">{(uploadDoc.error as Error).message}</p>
+        )}
+        {deleteDoc.isError && (
+          <p className="text-xs text-destructive">{(deleteDoc.error as Error).message}</p>
+        )}
+
         {isLoading ? (
           <p className="text-sm text-muted-foreground py-4">Chargement…</p>
         ) : docs.length === 0 ? (
@@ -54,16 +109,26 @@ function GameDocumentsDialog({ game, onClose }: { game: Game; onClose: () => voi
               {filtered.length === 0 ? (
                 <p className="text-xs text-muted-foreground px-2 py-2">Aucun résultat.</p>
               ) : filtered.map(d => (
-                <li key={d.url}>
+                <li key={d.url} className="flex items-center gap-1 group">
                   <a
                     href={d.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-sm px-2 py-1.5 rounded hover:bg-accent transition-colors"
+                    className="flex items-center gap-2 text-sm px-2 py-1.5 rounded hover:bg-accent transition-colors flex-1 min-w-0"
                   >
-                    <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <FileIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     <span className="truncate">{d.name}</span>
                   </a>
+                  {isAdmin && (
+                    <button
+                      onClick={() => { if (confirm(`Supprimer "${d.name}" ?`)) deleteDoc.mutate(d.name) }}
+                      disabled={deleteDoc.isPending}
+                      className="shrink-0 opacity-0 group-hover:opacity-100 p-1 text-muted-foreground/60 hover:text-destructive transition-opacity"
+                      title="Supprimer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -423,7 +488,7 @@ export default function GamesPage() {
       </main>
 
       {docsGame && (
-        <GameDocumentsDialog game={docsGame} onClose={() => setDocsGame(null)} />
+        <GameDocumentsDialog game={docsGame} isAdmin={isAdmin} onClose={() => setDocsGame(null)} />
       )}
     </AppShell>
   )
