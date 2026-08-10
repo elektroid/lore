@@ -1,8 +1,10 @@
 import { Link, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users, Dices, LogOut } from 'lucide-react'
 import { useUIStore, type Theme } from '@/stores/ui'
 import { useAuthStore, useUser } from '@/stores/auth'
 import { logout as logoutRequest } from '@/api/auth'
+import { api } from '@/api/client'
 
 interface Crumb {
   label: string
@@ -28,6 +30,34 @@ const themes: { id: Theme; icon: React.ReactNode; label: string }[] = [
   { id: 'cyberpunk', icon: <Zap className="h-3.5 w-3.5" />, label: 'Cyberpunk' },
 ]
 
+interface VersionInfo {
+  version: string
+  commit: string
+  build_time: string
+}
+
+function VersionBadge() {
+  const { data } = useQuery({
+    queryKey: ['version'],
+    queryFn: () => api.get<VersionInfo>('/version'),
+    staleTime: Infinity,
+  })
+  if (!data) return null
+
+  const title = data.version === 'dev'
+    ? 'build local — non déployée'
+    : [data.commit, data.build_time].filter(Boolean).join(' — ')
+
+  return (
+    <span
+      title={title}
+      className="font-mono text-[10px] text-muted-foreground/70 hover:text-muted-foreground select-all"
+    >
+      {data.version}
+    </span>
+  )
+}
+
 export default function AppShell({ crumbs = [], modeTabs, children }: AppShellProps) {
   const theme = useUIStore((s) => s.theme)
   const setTheme = useUIStore((s) => s.setTheme)
@@ -50,6 +80,7 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
         <Link to="/" className="font-semibold hover:text-foreground text-foreground">
           Lore Engine
         </Link>
+        <VersionBadge />
         {crumbs.map((crumb, i) => (
           <span key={i} className="flex items-center gap-2 text-muted-foreground">
             <ChevronRight className="h-3.5 w-3.5" />

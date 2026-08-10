@@ -3,6 +3,14 @@
 BINARY = lore-engine
 AIR    = $(shell go env GOPATH)/bin/air
 
+# Build identity — baked into the binary so prod and a local checkout are
+# never ambiguous when a group member reports a bug. `air` (dev) does not use
+# this, so a dev server always reports "dev" — see backend/internal/version.
+VERSION    := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT     := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS    := -X lore/internal/version.Version=$(VERSION) -X lore/internal/version.Commit=$(COMMIT) -X lore/internal/version.BuildTime=$(BUILD_TIME)
+
 check-config:
 	@test -f lore.toml || { \
 		echo "✗ lore.toml introuvable — copiez l'exemple : cp lore.toml.example lore.toml"; \
@@ -27,8 +35,8 @@ build:
 	rm -rf backend/internal/web/dist
 	mkdir -p backend/internal/web/dist
 	cp -r frontend/dist/. backend/internal/web/dist/
-	@echo "→ build backend"
-	cd backend && go build -o ../$(BINARY) ./cmd/server
+	@echo "→ build backend ($(VERSION))"
+	cd backend && go build -ldflags "$(LDFLAGS)" -o ../$(BINARY) ./cmd/server
 	@echo "✓ $(BINARY) — binaire autonome, frontend inclus"
 
 # Restores the placeholder-only dist so `go build` in the backend keeps working

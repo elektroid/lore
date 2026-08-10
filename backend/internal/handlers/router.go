@@ -37,6 +37,9 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 	// Serve external material (PDFs etc.) — files are not tracked in git
 	r.Handle("/external-material/*", http.StripPrefix("/external-material/", http.FileServer(http.Dir(externalMaterialDir))))
 
+	// Public — the login page shows it too, see isPublicEndpoint.
+	r.Get("/api/version", Version)
+
 	// Initialize auth handler
 	authHandler := NewAuthHandler(database, tokenService, cfg)
 

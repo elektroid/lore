@@ -56,7 +56,8 @@ func isPublicEndpoint(path string) bool {
 
 	switch path {
 	case "/api/auth/register", "/api/auth/login", "/api/auth/logout",
-		"/api/auth/refresh", "/api/auth/csrf", "/api/auth/bootstrap":
+		"/api/auth/refresh", "/api/auth/csrf", "/api/auth/bootstrap",
+		"/api/version":
 		return true
 	}
 	// The table surface (projection screen, player seats) authenticates with the
