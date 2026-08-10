@@ -42,6 +42,15 @@ Two gotchas when scripting it:
 - `POST`/`PUT`/`DELETE` need the `X-CSRF-Token` header matching the `lore_csrf`
   cookie from login (double-submit); read it out of the curl cookie jar.
 
+## Who the app is for
+
+Three classes of user, one requirements doc each — mission statement, rough
+workflow, user stories, explicit gaps. Read the one that matches whatever
+you're touching before changing UI or adding a feature:
+[docs/users-authors.md](docs/users-authors.md),
+[docs/users-players.md](docs/users-players.md),
+[docs/users-admin.md](docs/users-admin.md). Index: [docs/users.md](docs/users.md).
+
 ## Story vs. play — the line that matters
 
 A campaign is **written once and played by several groups**. A *run* (UI:
