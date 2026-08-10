@@ -12,6 +12,7 @@ import { api } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import GMDiceTray from '@/components/play/GMDiceTray'
 import ProjectionPanel from '@/components/play/ProjectionPanel'
 import TableShareDialog from '@/components/play/TableShareDialog'
@@ -144,6 +145,10 @@ function RosterDialog({
         <DialogHeader>
           <DialogTitle>Joueurs — {runName}</DialogTitle>
         </DialogHeader>
+        <p className="text-xs text-muted-foreground -mt-2">
+          Ce groupe et sa liste de joueurs sont communs à toutes les sessions, passées et
+          futures — ce n'est pas propre à la session en cours.
+        </p>
 
         <div className="space-y-4 mt-2">
           {/* Enrolled players */}
@@ -810,17 +815,25 @@ export default function PlayPage() {
 
           {/* The party — the group's, so it is there before the first session */}
           {activeRun && (
-            <button
-              onClick={() => setRosterOpen(true)}
-              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border border-border hover:bg-accent transition-colors"
-              title="Joueurs du groupe"
-            >
-              <Users className="h-3.5 w-3.5 text-muted-foreground" />
-              {sessionPlayers.length === 0
-                ? <span className="text-muted-foreground">Joueurs…</span>
-                : sessionPlayers.map(p => p.character_name || p.user_name).join(', ')
-              }
-            </button>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setRosterOpen(true)}
+                    className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border border-border hover:bg-accent transition-colors"
+                  >
+                    <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                    {sessionPlayers.length === 0
+                      ? <span className="text-muted-foreground">Joueurs…</span>
+                      : sessionPlayers.map(p => p.character_name || p.user_name).join(', ')
+                    }
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Joueurs du groupe « {activeRun.name} » — communs à toutes les sessions de ce groupe
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
 
           {/* Table surface */}
