@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard'
-import { BookOpen, Download, Plus, Users, Trash2, UserPlus, Wand2 } from 'lucide-react'
+import { BookOpen, Download, Plus, Users, Trash2, UserPlus, Wand2, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -175,6 +175,7 @@ function AccessSection({ campaignId, ownerID }: { campaignId: string; ownerID: s
 function DangerZone({ campaignId, campaignName }: { campaignId: string; campaignName: string }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [expanded, setExpanded] = useState(false)
   const [open, setOpen] = useState(false)
 
   const archive = useMutation({
@@ -187,22 +188,32 @@ function DangerZone({ campaignId, campaignName }: { campaignId: string; campaign
 
   return (
     <div className="space-y-3 pt-6 border-t">
-      <div>
-        <p className="text-sm font-medium text-destructive">Zone de danger</p>
-        <p className="text-xs text-muted-foreground">
-          Archiver retire la campagne — et tous ses scénarios, groupes et
-          sessions — de la liste des campagnes actives. Une copie complète
-          reste consultable et téléchargeable depuis les archives.
-        </p>
-      </div>
-      <Button
+      <button
         type="button"
-        variant="outline"
-        className="text-destructive hover:text-destructive"
-        onClick={() => setOpen(true)}
+        onClick={() => setExpanded(v => !v)}
+        className="flex items-center gap-1.5 text-sm font-medium text-destructive"
       >
-        Archiver la campagne
-      </Button>
+        {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        Zone de danger
+      </button>
+
+      {expanded && (
+        <>
+          <p className="text-xs text-muted-foreground">
+            Archiver retire la campagne — et tous ses scénarios, groupes et
+            sessions — de la liste des campagnes actives. Une copie complète
+            reste consultable et téléchargeable depuis les archives.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setOpen(true)}
+          >
+            Archiver la campagne
+          </Button>
+        </>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
