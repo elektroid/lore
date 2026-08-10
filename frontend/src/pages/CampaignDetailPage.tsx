@@ -174,11 +174,15 @@ function AccessSection({ campaignId, ownerID }: { campaignId: string; ownerID: s
  */
 function DangerZone({ campaignId, campaignName }: { campaignId: string; campaignName: string }) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
 
   const archive = useMutation({
     mutationFn: () => api.delete(`/campaigns/${campaignId}`),
-    onSuccess: () => navigate('/'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      navigate('/')
+    },
   })
 
   return (
