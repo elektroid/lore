@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -136,7 +136,9 @@ function GMView({ campaigns }: { campaigns: Campaign[] }) {
                 ))}
               </select>
               {games.length === 0 && (
-                <p className="text-xs text-muted-foreground">Configurez vos jeux dans les Paramètres.</p>
+                <p className="text-xs text-muted-foreground">
+                  Aucun jeu configuré. <Link to="/games" className="underline hover:text-foreground">Ajoutez-en un</Link>.
+                </p>
               )}
             </div>
             <div className="space-y-2">

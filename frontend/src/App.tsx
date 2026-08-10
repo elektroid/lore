@@ -9,6 +9,7 @@ import ScenarioFactoryPage from '@/pages/ScenarioFactoryPage'
 import SettingsPage from '@/pages/SettingsPage'
 import ProfilePage from '@/pages/ProfilePage'
 import AdminPage from '@/pages/AdminPage'
+import GamesPage from '@/pages/GamesPage'
 import LorePage from '@/pages/LorePage'
 import SynopsisPage from '@/pages/SynopsisPage'
 import PrintPage from '@/pages/PrintPage'
@@ -125,6 +126,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <LorePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/games"
+          element={
+            <ProtectedRoute>
+              <GamesPage />
             </ProtectedRoute>
           }
         />

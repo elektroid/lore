@@ -3,6 +3,7 @@ export interface Game {
   name: string
   slug: string
   genre: string
+  description: string
   visual_style: string
   mistral_agent_id: string
   created_at: string

@@ -48,9 +48,10 @@ func (h *GameHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 type gameBody struct {
-	Name  string `json:"name"`
-	Slug  string `json:"slug"`
-	Genre string `json:"genre"`
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Genre       string `json:"genre"`
+	Description string `json:"description"`
 }
 
 func (h *GameHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +64,7 @@ func (h *GameHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name and slug are required")
 		return
 	}
-	game, err := db.CreateGame(r.Context(), h.db, body.Name, body.Slug, body.Genre)
+	game, err := db.CreateGame(r.Context(), h.db, body.Name, body.Slug, body.Genre, body.Description)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -82,7 +83,7 @@ func (h *GameHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name and slug are required")
 		return
 	}
-	game, err := db.UpdateGame(r.Context(), h.db, id, body.Name, body.Slug, body.Genre)
+	game, err := db.UpdateGame(r.Context(), h.db, id, body.Name, body.Slug, body.Genre, body.Description)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -375,6 +376,7 @@ type gameExportMeta struct {
 	Name        string `json:"name"`
 	Slug        string `json:"slug"`
 	Genre       string `json:"genre"`
+	Description string `json:"description"`
 	VisualStyle string `json:"visual_style"`
 }
 
@@ -462,6 +464,7 @@ func (h *GameHandler) Export(w http.ResponseWriter, r *http.Request) {
 			Name:        game.Name,
 			Slug:        game.Slug,
 			Genre:       game.Genre,
+			Description: game.Description,
 			VisualStyle: game.VisualStyle,
 		},
 		LoreEntities: exported,
@@ -557,7 +560,7 @@ func (h *GameHandler) Import(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	game, err := db.CreateGame(ctx, h.db, doc.Game.Name, doc.Game.Slug, doc.Game.Genre)
+	game, err := db.CreateGame(ctx, h.db, doc.Game.Name, doc.Game.Slug, doc.Game.Genre, doc.Game.Description)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

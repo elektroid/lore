@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Search, ArrowRight, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import AppShell from '@/components/AppShell'
@@ -157,7 +158,8 @@ export default function LorePage() {
     queryFn: () => api.get<Game[]>('/games'),
   })
 
-  const [gameId, setGameId] = useState<string>('')
+  const [searchParams] = useSearchParams()
+  const [gameId, setGameId] = useState<string>(searchParams.get('game') ?? '')
   const activeGameId = gameId || games[0]?.id || ''
 
   const { data: kindCounts = {} } = useQuery({
