@@ -155,8 +155,3 @@ func UpdateCampaign(ctx context.Context, database *sql.DB, p UpdateCampaignParam
 	}
 	return GetCampaign(ctx, database, p.ID)
 }
-
-func DeleteCampaign(ctx context.Context, database *sql.DB, id string) error {
-	_, err := database.ExecContext(ctx, `DELETE FROM campaigns WHERE id=?`, id)
-	return err
-}

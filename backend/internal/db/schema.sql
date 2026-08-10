@@ -79,6 +79,24 @@ CREATE TABLE IF NOT EXISTS campaigns (
     updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- A campaign pulled out of the live schema by its owner: not flagged in place
+-- (it must stop appearing everywhere a live campaign does) and not actually
+-- destroyed. `data` holds a JSON snapshot of the whole campaign subtree
+-- (scenarios, npcs, runs, sessions, ...) built by SnapshotCampaign — see
+-- archive.go. This is a brand-new table, so the index below is safe on an
+-- existing database the same way scenario_drafts' was: CREATE TABLE IF NOT
+-- EXISTS really does create it a few statements before any index runs.
+CREATE TABLE IF NOT EXISTS archived_campaigns (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL DEFAULT '',
+    game_name   TEXT NOT NULL DEFAULT '',
+    owner_id    TEXT NOT NULL DEFAULT '',
+    owner_name  TEXT NOT NULL DEFAULT '',
+    archived_by TEXT NOT NULL DEFAULT '',
+    archived_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    data        TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS scenarios (
     id          TEXT PRIMARY KEY,
     campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
@@ -500,3 +518,5 @@ CREATE INDEX IF NOT EXISTS idx_player_characters_user_id ON player_characters(us
 CREATE INDEX IF NOT EXISTS idx_player_characters_game_id ON player_characters(game_id);
 
 CREATE INDEX IF NOT EXISTS idx_game_lore_entities_game_id ON game_lore_entities(game_id, kind);
+
+CREATE INDEX IF NOT EXISTS idx_archived_campaigns_owner_id ON archived_campaigns(owner_id);

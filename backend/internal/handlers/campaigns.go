@@ -239,6 +239,9 @@ func (h *CampaignHandler) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, campaign)
 }
 
+// Delete archives the campaign rather than destroying it: its full cascade
+// (scenarios, npcs, runs, sessions, ...) is snapshotted into
+// archived_campaigns before the live rows are cleared. See db.ArchiveCampaign.
 func (h *CampaignHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	user, ok := auth.GetUserFromContext(r)
@@ -255,7 +258,7 @@ func (h *CampaignHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "campaign owner access required")
 		return
 	}
-	if err := db.DeleteCampaign(r.Context(), h.db, id); err != nil {
+	if err := db.ArchiveCampaign(r.Context(), h.db, campaign, user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

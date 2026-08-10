@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import CampaignsPage from '@/pages/CampaignsPage'
+import ArchivesPage from '@/pages/ArchivesPage'
 import CampaignDetailPage from '@/pages/CampaignDetailPage'
 import CampaignEntitiesPage from '@/pages/CampaignEntitiesPage'
 import GameMasterPage from '@/pages/GameMasterPage'
@@ -51,6 +52,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <CampaignsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/campaigns/archives"
+          element={
+            <ProtectedRoute>
+              <ArchivesPage />
             </ProtectedRoute>
           }
         />

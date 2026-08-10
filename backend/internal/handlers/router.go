@@ -141,6 +141,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 		})
 
 		campaigns := &CampaignHandler{db: database}
+		archivedCampaigns := &ArchivedCampaignHandler{db: database}
 		runs := &RunHandler{db: database}
 		entities := &EntityHandler{db: database, encKey: cfg.EncryptionKey()}
 		uploads := &UploadsHandler{db: database, uploadsDir: uploadsDir}
@@ -276,6 +277,11 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 				r.Get("/", scenarios.List)
 				r.With(requireCampaignOwnerByParam(database, "campaignID")).Post("/", scenarios.Create)
 			})
+		})
+
+		r.Route("/archived-campaigns", func(r chi.Router) {
+			r.Get("/", archivedCampaigns.List)
+			r.Get("/{id}/export", archivedCampaigns.Export)
 		})
 
 		// Draft-scoped factory routes: the draft resolves to its campaign, so

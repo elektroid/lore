@@ -19,6 +19,16 @@ export interface Campaign {
   access?: 'owner' | 'member'
 }
 
+export interface ArchivedCampaign {
+  id: string
+  name: string
+  game_name: string
+  owner_id: string
+  owner_name: string
+  archived_by: string
+  archived_at: string
+}
+
 export function parseLLMConfig(json: string): LLMConfig {
   try {
     const p = JSON.parse(json)

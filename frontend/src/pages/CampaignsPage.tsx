@@ -74,7 +74,15 @@ function GMView({ campaigns }: { campaigns: Campaign[] }) {
     <>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold">Campagnes</h2>
-        <Button onClick={() => setOpen(true)}>Nouvelle campagne</Button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/campaigns/archives"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Archives
+          </Link>
+          <Button onClick={() => setOpen(true)}>Nouvelle campagne</Button>
+        </div>
       </div>
 
       {campaigns.length === 0 && (

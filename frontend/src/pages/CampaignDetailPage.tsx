@@ -165,6 +165,73 @@ function AccessSection({ campaignId, ownerID }: { campaignId: string; ownerID: s
   )
 }
 
+/**
+ * Archiving pulls the campaign — and everything hanging off it: scenarios,
+ * npcs, runs, sessions — out of the live schema into a JSON snapshot, rather
+ * than flagging it in place or destroying it outright. See
+ * db.ArchiveCampaign on the backend. One-way from this UI: there is no
+ * restore action, only the downloadable snapshot on the archives page.
+ */
+function DangerZone({ campaignId, campaignName }: { campaignId: string; campaignName: string }) {
+  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+
+  const archive = useMutation({
+    mutationFn: () => api.delete(`/campaigns/${campaignId}`),
+    onSuccess: () => navigate('/'),
+  })
+
+  return (
+    <div className="space-y-3 pt-6 border-t">
+      <div>
+        <p className="text-sm font-medium text-destructive">Zone de danger</p>
+        <p className="text-xs text-muted-foreground">
+          Archiver retire la campagne — et tous ses scénarios, groupes et
+          sessions — de la liste des campagnes actives. Une copie complète
+          reste consultable et téléchargeable depuis les archives.
+        </p>
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        className="text-destructive hover:text-destructive"
+        onClick={() => setOpen(true)}
+      >
+        Archiver la campagne
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Archiver « {campaignName} » ?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            La campagne, ses scénarios, groupes et sessions seront retirés de
+            l'application et déplacés dans les archives. Cette action ne peut
+            pas être annulée depuis l'interface.
+          </p>
+          {archive.error && (
+            <p className="text-destructive text-sm">{archive.error.message}</p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Annuler
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => archive.mutate()}
+              disabled={archive.isPending}
+            >
+              {archive.isPending ? 'Archivage…' : 'Archiver'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 interface FormState {
   name: string
   genre: string
@@ -278,6 +345,8 @@ function CampaignForm({ campaign }: { campaign: Campaign }) {
 
       {/* Who may open the campaign */}
       <AccessSection campaignId={id!} ownerID={campaign.owner_id} />
+
+      <DangerZone campaignId={id!} campaignName={campaign.name} />
       {guardDialog}
     </form>
   )
