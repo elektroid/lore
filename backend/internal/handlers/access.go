@@ -38,6 +38,87 @@ func requireCampaignOwner(database *sql.DB) func(http.Handler) http.Handler {
 	}
 }
 
+// requireCampaignAccess guards routes that use {id} as the campaign ID param,
+// allowing the owner *or* any delegated account (campaign_members) through.
+// Access is the delegation of gamemaster rights, not just a roster: a member
+// admitted here can create and run their own groups (runs/sessions) for this
+// campaign, and read what running one requires. Authoring the campaign itself
+// — its metadata, entities, scenario content — stays owner-only and uses
+// requireCampaignOwner instead. See the four-modes design notes.
+func requireCampaignAccess(database *sql.DB) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, ok := auth.GetUserFromContext(r)
+			if !ok {
+				writeError(w, http.StatusUnauthorized, "authentication required")
+				return
+			}
+			if user.Role == "superuser" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			campaignID := chi.URLParam(r, "id")
+			campaign, err := db.GetCampaign(r.Context(), database, campaignID)
+			if err != nil || campaign == nil {
+				writeError(w, http.StatusNotFound, "campaign not found")
+				return
+			}
+			if campaign.OwnerID == user.ID {
+				next.ServeHTTP(w, r)
+				return
+			}
+			isMember, err := db.IsCampaignMember(r.Context(), database, campaignID, user.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "vérification d'accès impossible")
+				return
+			}
+			if !isMember {
+				writeError(w, http.StatusForbidden, "campaign access required")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// requireCampaignAccessByParam is requireCampaignAccess for routes that use a
+// named param other than {id} for the campaign ID.
+func requireCampaignAccessByParam(database *sql.DB, paramName string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, ok := auth.GetUserFromContext(r)
+			if !ok {
+				writeError(w, http.StatusUnauthorized, "authentication required")
+				return
+			}
+			if user.Role == "superuser" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			campaignID := chi.URLParam(r, paramName)
+			campaign, err := db.GetCampaign(r.Context(), database, campaignID)
+			if err != nil || campaign == nil {
+				writeError(w, http.StatusNotFound, "campaign not found")
+				return
+			}
+			if campaign.OwnerID == user.ID {
+				next.ServeHTTP(w, r)
+				return
+			}
+			isMember, err := db.IsCampaignMember(r.Context(), database, campaignID, user.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "vérification d'accès impossible")
+				return
+			}
+			if !isMember {
+				writeError(w, http.StatusForbidden, "campaign access required")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // requireCampaignOwnerByParam guards routes that use a named param other than {id} for the campaign ID.
 func requireCampaignOwnerByParam(database *sql.DB, paramName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -145,6 +226,53 @@ func requireDraftOwner(database *sql.DB) func(http.Handler) http.Handler {
 			}
 			if campaign.OwnerID != user.ID {
 				writeError(w, http.StatusForbidden, "campaign owner access required")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// requireScenarioAccess is requireCampaignAccess for routes that use {id} as
+// the scenario ID param: it resolves the scenario to its campaign, then
+// admits the owner or a delegated member. Running a session — sessions,
+// beats, the table — needs this; editing the scenario or its synopsis stays
+// behind requireScenarioOwner instead, applied per-verb where that route also
+// needs to reject a delegated (non-owner) member.
+func requireScenarioAccess(database *sql.DB) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, ok := auth.GetUserFromContext(r)
+			if !ok {
+				writeError(w, http.StatusUnauthorized, "authentication required")
+				return
+			}
+			if user.Role == "superuser" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			scenarioID := chi.URLParam(r, "id")
+			scenario, err := db.GetScenario(r.Context(), database, scenarioID)
+			if err != nil || scenario == nil {
+				writeError(w, http.StatusNotFound, "scenario not found")
+				return
+			}
+			campaign, err := db.GetCampaign(r.Context(), database, scenario.CampaignID)
+			if err != nil || campaign == nil {
+				writeError(w, http.StatusNotFound, "campaign not found")
+				return
+			}
+			if campaign.OwnerID == user.ID {
+				next.ServeHTTP(w, r)
+				return
+			}
+			isMember, err := db.IsCampaignMember(r.Context(), database, campaign.ID, user.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "vérification d'accès impossible")
+				return
+			}
+			if !isMember {
+				writeError(w, http.StatusForbidden, "campaign access required")
 				return
 			}
 			next.ServeHTTP(w, r)

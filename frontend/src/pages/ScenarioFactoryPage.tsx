@@ -256,6 +256,13 @@ export default function ScenarioFactoryPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
+  // The factory is an authoring tool — owner-only, even for a delegated
+  // gamemaster. See AccessSection in CampaignDetailPage.tsx.
+  if (campaign && campaign.access !== 'owner') {
+    navigate(`/campaigns/${campaignId}/runs`, { replace: true })
+    return null
+  }
+
   const crumbs = [
     { label: campaign?.name ?? '…', to: campaign ? `/campaigns/${campaign.id}` : undefined },
     { label: 'Fabrique' },

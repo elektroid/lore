@@ -33,10 +33,12 @@ interface PublicUser {
 }
 
 /**
- * Access control: which accounts may open this campaign. Not the party — that
- * is a group's, in RunsSection below. The two were one list once, and reading
- * an ACL as "the players of this story" is exactly the confusion runs fixed.
- * See docs/adr/0001-runs-separate-story-from-play.md.
+ * Access control: which accounts can become Meneur de jeu for this campaign —
+ * create and run their own groups, read what running one takes, but never
+ * edit the authored material itself. Not the party — the people actually
+ * seated at a table are a group's own affair, set up from the Meneur hub each
+ * delegated account gets once granted access here. See
+ * docs/adr/0001-runs-separate-story-from-play.md.
  */
 function AccessSection({ campaignId, ownerID }: { campaignId: string; ownerID: string }) {
   const queryClient = useQueryClient()
@@ -76,7 +78,7 @@ function AccessSection({ campaignId, ownerID }: { campaignId: string; ownerID: s
   )
 
   function roleLabel(role: string) {
-    return role === 'superuser' ? 'Admin' : 'Joueur'
+    return role === 'superuser' ? 'Admin' : 'Meneur de jeu'
   }
 
   return (
@@ -84,13 +86,14 @@ function AccessSection({ campaignId, ownerID }: { campaignId: string; ownerID: s
       <div>
         <p className="text-sm font-medium">Accès</p>
         <p className="text-xs text-muted-foreground">
-          Les comptes autorisés à ouvrir cette campagne. Pour constituer une table,
-          placez-les dans un groupe ci-dessous.
+          Donne à un compte la possibilité de devenir meneur de jeu de cette
+          campagne : créer ses propres groupes, les faire jouer, sans pouvoir
+          modifier la campagne elle-même.
         </p>
       </div>
 
       {members.length === 0 && (
-        <p className="text-xs text-muted-foreground">Aucun compte autorisé.</p>
+        <p className="text-xs text-muted-foreground">Aucun meneur délégué.</p>
       )}
 
       {members.length > 0 && (
@@ -411,6 +414,14 @@ export default function CampaignDetailPage() {
         </div>
       </AppShell>
     )
+  }
+
+  // Author mode is owner-only. A delegated account (access === 'member') has
+  // real gamemaster rights but never authoring ones — send it to the hub it
+  // actually has, rather than a form whose Enregistrer would just 403.
+  if (campaign.access !== 'owner') {
+    navigate(`/campaigns/${id}/runs`, { replace: true })
+    return null
   }
 
   return (

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Pencil, Check, X, Search } from 'lucide-react'
@@ -546,6 +546,7 @@ function ArtefactTab({ campaignId, openId, creating, onCreatingChange, form, onF
 
 export default function CampaignEntitiesPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('npcs')
   const [searchOpen, setSearchOpen] = useState(false)
   const [openIds, setOpenIds] = useState<Record<string, string | undefined>>({})
@@ -578,6 +579,14 @@ export default function CampaignEntitiesPage() {
   function handleSearchSelect(tab: string, entityId: string) {
     setActiveTab(tab)
     setOpenIds(prev => ({ ...prev, [tab]: entityId }))
+  }
+
+  // Entity editing is authoring — owner-only, even for a delegated
+  // gamemaster (who reads NPCs/locations through PlayPage's own roster
+  // instead). See AccessSection in CampaignDetailPage.tsx.
+  if (campaign && campaign.access !== 'owner') {
+    navigate(`/campaigns/${id}/runs`, { replace: true })
+    return null
   }
 
   return (

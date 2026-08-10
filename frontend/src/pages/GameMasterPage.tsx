@@ -6,7 +6,6 @@ import AppShell from '@/components/AppShell'
 import RunsSection from '@/components/RunsSection'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import { api } from '@/api/client'
-import { useUser } from '@/stores/auth'
 import type { Campaign } from '@/types/campaign'
 import type { Scenario } from '@/types/scenario'
 
@@ -46,7 +45,6 @@ function ScenarioLaunchList({ campaignId }: { campaignId: string }) {
 export default function GameMasterPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const currentUser = useUser()
 
   const { data: campaign, isLoading, error } = useQuery({
     queryKey: ['campaign', id],
@@ -76,19 +74,20 @@ export default function GameMasterPage() {
     )
   }
 
-  const isOwner = currentUser?.id === campaign.owner_id || currentUser?.role === 'superuser'
-  if (!isOwner) {
-    navigate(`/campaigns/${id}`)
-    return null
-  }
+  // A delegated account (access === 'member') can run this campaign's tables
+  // but never write to the campaign itself — no Auteur tab to offer them.
+  // See AccessSection in CampaignDetailPage.tsx.
+  const modeTabs = [
+    ...(campaign.access === 'owner'
+      ? [{ label: 'Auteur', to: `/campaigns/${id}`, active: false }]
+      : []),
+    { label: 'Meneur', to: `/campaigns/${id}/runs`, active: true },
+  ]
 
   return (
     <AppShell
       crumbs={[{ label: campaign.name, to: `/campaigns/${id}` }, { label: 'Meneur' }]}
-      modeTabs={[
-        { label: 'Auteur', to: `/campaigns/${id}`, active: false },
-        { label: 'Meneur', to: `/campaigns/${id}/runs`, active: true },
-      ]}
+      modeTabs={modeTabs}
     >
       <main className="max-w-3xl mx-auto px-6 py-8">
         <RunsSection campaignId={id!} />

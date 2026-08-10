@@ -722,7 +722,9 @@ export default function PlayPage() {
         { label: 'Play' },
       ]}
       modeTabs={campaign ? [
-        { label: 'Auteur', to: `/campaigns/${campaign.id}`, active: false },
+        ...(campaign.access === 'owner'
+          ? [{ label: 'Auteur', to: `/campaigns/${campaign.id}`, active: false }]
+          : []),
         { label: 'Meneur', to: `/campaigns/${campaign.id}/runs`, active: true },
       ] : undefined}
     >

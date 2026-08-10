@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, X, Sparkles, Printer, Play, BookOpen, FolderOpen, Users } from 'lucide-react'
 import AppShell from '@/components/AppShell'
@@ -81,6 +81,7 @@ function DocumentsDialog({ gameId, gameName, onClose }: { gameId: string; gameNa
 export default function SynopsisPage() {
   const { id } = useParams<{ id: string }>()
   const scenarioId = id!
+  const navigate = useNavigate()
 
   const { data: scenario } = useQuery({
     queryKey: ['scenario', scenarioId],
@@ -143,6 +144,15 @@ export default function SynopsisPage() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [selectedSceneId])
+
+  // Writing the story is authoring — owner-only, even for a delegated
+  // gamemaster (who runs sessions from PlayPage instead, which reads the
+  // synopsis it needs without exposing these editing controls). See
+  // AccessSection in CampaignDetailPage.tsx.
+  if (campaign && campaign.access !== 'owner') {
+    navigate(`/campaigns/${campaign.id}/runs`, { replace: true })
+    return null
+  }
 
   return (
     <>

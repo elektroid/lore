@@ -167,14 +167,19 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 					r.Get("/characters", campaigns.ListMemberCharacters)
 				})
 
-				// All entity and content routes require campaign ownership
+				// Entity and content routes: reading and running a session
+				// only need campaign access — the gamemaster delegation.
+				// Authoring writes stay behind requireCampaignOwner, applied
+				// per verb below, because campaign_members is not
+				// co-authorship. See docs/adr/0001-runs-separate-story-from-play.md.
 				r.Group(func(r chi.Router) {
-					r.Use(requireCampaignOwner(database))
+					owner := requireCampaignOwner(database)
+					r.Use(requireCampaignAccess(database))
 					r.Get("/search", entities.Search)
 
-					// Groups playing this campaign, and their parties. The
-					// campaign is authored once and played by several of them.
-					// See docs/adr/0001-runs-separate-story-from-play.md.
+					// Groups playing this campaign, and their parties. Any
+					// delegated account manages runs freely — that is what
+					// the delegation is for.
 					r.Route("/runs", func(r chi.Router) {
 						r.Get("/", runs.List)
 						r.Post("/", runs.Create)
@@ -189,74 +194,74 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 						})
 					})
 
-					// Scenario factory — see docs/scenario-factory.md
+					// Scenario factory — authoring, owner-only. See docs/scenario-factory.md
 					r.Route("/scenario-drafts", func(r chi.Router) {
-						r.Get("/", scenarioFactory.List)
-						r.Post("/", scenarioFactory.Create)
+						r.With(owner).Get("/", scenarioFactory.List)
+						r.With(owner).Post("/", scenarioFactory.Create)
 					})
 					r.Route("/npcs", func(r chi.Router) {
 						r.Get("/", entities.ListNPCs)
-						r.Post("/", entities.CreateNPC)
+						r.With(owner).Post("/", entities.CreateNPC)
 						r.Route("/{npcId}", func(r chi.Router) {
 							r.Use(requireChild(database, "id", "npcId", db.TableNPCs, db.ColCampaignID))
 							r.Get("/", entities.GetNPC)
-							r.Put("/", entities.UpdateNPC)
-							r.Delete("/", entities.DeleteNPC)
-							r.Post("/llm/develop", entities.DevelopNPCSuggestion)
-							r.Post("/llm/generate-images", imageLLM.GenerateNPCImages)
-							r.Post("/llm/confirm-images", imageLLM.ConfirmNPCImages)
-							r.Post("/images", uploads.UploadNPCImage)
-							r.Delete("/images/{imageId}", uploads.DeleteNPCImage)
+							r.With(owner).Put("/", entities.UpdateNPC)
+							r.With(owner).Delete("/", entities.DeleteNPC)
+							r.With(owner).Post("/llm/develop", entities.DevelopNPCSuggestion)
+							r.With(owner).Post("/llm/generate-images", imageLLM.GenerateNPCImages)
+							r.With(owner).Post("/llm/confirm-images", imageLLM.ConfirmNPCImages)
+							r.With(owner).Post("/images", uploads.UploadNPCImage)
+							r.With(owner).Delete("/images/{imageId}", uploads.DeleteNPCImage)
 						})
 					})
 					r.Route("/locations", func(r chi.Router) {
 						r.Get("/", entities.ListLocations)
-						r.Post("/", entities.CreateLocation)
+						r.With(owner).Post("/", entities.CreateLocation)
 						r.Route("/{locationId}", func(r chi.Router) {
 							r.Use(requireChild(database, "id", "locationId", db.TableLocations, db.ColCampaignID))
 							r.Get("/", entities.GetLocation)
-							r.Put("/", entities.UpdateLocation)
-							r.Delete("/", entities.DeleteLocation)
-							r.Post("/llm/develop", entities.DevelopLocation)
-							r.Post("/llm/generate-images", imageLLM.GenerateLocationImages)
-							r.Post("/llm/confirm-images", imageLLM.ConfirmLocationImages)
-							r.Post("/images", uploads.UploadLocationImage)
-							r.Put("/images/{imageId}", uploads.UpdateImageMeta)
-							r.Delete("/images/{imageId}", uploads.DeleteLocationImage)
+							r.With(owner).Put("/", entities.UpdateLocation)
+							r.With(owner).Delete("/", entities.DeleteLocation)
+							r.With(owner).Post("/llm/develop", entities.DevelopLocation)
+							r.With(owner).Post("/llm/generate-images", imageLLM.GenerateLocationImages)
+							r.With(owner).Post("/llm/confirm-images", imageLLM.ConfirmLocationImages)
+							r.With(owner).Post("/images", uploads.UploadLocationImage)
+							r.With(owner).Put("/images/{imageId}", uploads.UpdateImageMeta)
+							r.With(owner).Delete("/images/{imageId}", uploads.DeleteLocationImage)
 						})
 					})
 					r.Route("/factions", func(r chi.Router) {
 						r.Get("/", entities.ListFactions)
-						r.Post("/", entities.CreateFaction)
+						r.With(owner).Post("/", entities.CreateFaction)
 						r.Route("/{factionId}", func(r chi.Router) {
 							r.Use(requireChild(database, "id", "factionId", db.TableFactions, db.ColCampaignID))
 							r.Get("/", entities.GetFaction)
-							r.Put("/", entities.UpdateFaction)
-							r.Delete("/", entities.DeleteFaction)
-							r.Post("/llm/develop", entities.DevelopFaction)
-							r.Post("/llm/generate-images", imageLLM.GenerateFactionImages)
-							r.Post("/llm/confirm-images", imageLLM.ConfirmFactionImages)
-							r.Post("/images", uploads.UploadFactionImage)
-							r.Delete("/images/{imageId}", uploads.DeleteFactionImage)
+							r.With(owner).Put("/", entities.UpdateFaction)
+							r.With(owner).Delete("/", entities.DeleteFaction)
+							r.With(owner).Post("/llm/develop", entities.DevelopFaction)
+							r.With(owner).Post("/llm/generate-images", imageLLM.GenerateFactionImages)
+							r.With(owner).Post("/llm/confirm-images", imageLLM.ConfirmFactionImages)
+							r.With(owner).Post("/images", uploads.UploadFactionImage)
+							r.With(owner).Delete("/images/{imageId}", uploads.DeleteFactionImage)
 						})
 					})
 					r.Route("/artefacts", func(r chi.Router) {
 						r.Get("/", entities.ListArtefacts)
-						r.Post("/", entities.CreateArtefact)
+						r.With(owner).Post("/", entities.CreateArtefact)
 						r.Route("/{artefactId}", func(r chi.Router) {
 							r.Use(requireChild(database, "id", "artefactId", db.TableArtefacts, db.ColCampaignID))
 							r.Get("/", entities.GetArtefact)
-							r.Put("/", entities.UpdateArtefact)
-							r.Delete("/", entities.DeleteArtefact)
-							r.Post("/llm/develop", imageLLM.DevelopArtefact)
-							r.Post("/llm/generate-images", imageLLM.GenerateArtefactImages)
-							r.Post("/llm/confirm-images", imageLLM.ConfirmArtefactImages)
-							r.Post("/images", uploads.UploadArtefactImage)
-							r.Delete("/images/{imageId}", uploads.DeleteArtefactImage)
+							r.With(owner).Put("/", entities.UpdateArtefact)
+							r.With(owner).Delete("/", entities.DeleteArtefact)
+							r.With(owner).Post("/llm/develop", imageLLM.DevelopArtefact)
+							r.With(owner).Post("/llm/generate-images", imageLLM.GenerateArtefactImages)
+							r.With(owner).Post("/llm/confirm-images", imageLLM.ConfirmArtefactImages)
+							r.With(owner).Post("/images", uploads.UploadArtefactImage)
+							r.With(owner).Delete("/images/{imageId}", uploads.DeleteArtefactImage)
 							r.Route("/links", func(r chi.Router) {
 								r.Get("/", entities.ListArtefactLinks)
-								r.Post("/", entities.CreateArtefactLink)
-								r.Delete("/{linkId}", entities.DeleteArtefactLink)
+								r.With(owner).Post("/", entities.CreateArtefactLink)
+								r.With(owner).Delete("/{linkId}", entities.DeleteArtefactLink)
 							})
 						})
 					})
@@ -264,9 +269,12 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 			})
 			r.Route("/{campaignID}/scenarios", func(r chi.Router) {
 				scenarios := &ScenarioHandler{db: database}
-				r.Use(requireCampaignOwnerByParam(database, "campaignID"))
+				// Listing is how a delegated GM finds something to run
+				// (GameMasterPage's quick-launch list); writing new scenario
+				// content is authoring, owner-only.
+				r.Use(requireCampaignAccessByParam(database, "campaignID"))
 				r.Get("/", scenarios.List)
-				r.Post("/", scenarios.Create)
+				r.With(requireCampaignOwnerByParam(database, "campaignID")).Post("/", scenarios.Create)
 			})
 		})
 
@@ -286,40 +294,46 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 		synopsis := &SynopsisHandler{db: database, encKey: cfg.EncryptionKey()}
 		brainstorm := &BrainstormHandler{db: database, encKey: cfg.EncryptionKey()}
 		r.Route("/scenarios/{id}", func(r chi.Router) {
-			r.Use(requireScenarioOwner(database))
+			// Reading the story and running a session (sessions, beats, the
+			// table) only need campaign access — the gamemaster delegation.
+			// Writing the story is authoring, and stays behind
+			// requireScenarioOwner, applied per verb below.
+			owner := requireScenarioOwner(database)
+			r.Use(requireScenarioAccess(database))
 			r.Get("/", scenarios.Get)
-			r.Put("/", scenarios.Update)
-			r.Delete("/", scenarios.Delete)
-			r.Post("/duplicate", scenarios.Duplicate)
+			r.With(owner).Put("/", scenarios.Update)
+			r.With(owner).Delete("/", scenarios.Delete)
+			r.With(owner).Post("/duplicate", scenarios.Duplicate)
 
 			r.Route("/synopsis", func(r chi.Router) {
 				r.Get("/", synopsis.Get)
-				r.Put("/", synopsis.Update)
-				r.Get("/snapshots", synopsis.ListSnapshots)
-				r.Post("/restore/{snapshotID}", synopsis.RestoreSnapshot)
+				r.With(owner).Put("/", synopsis.Update)
+				r.With(owner).Get("/snapshots", synopsis.ListSnapshots)
+				r.With(owner).Post("/restore/{snapshotID}", synopsis.RestoreSnapshot)
 				r.Get("/npcs", synopsis.ListNPCs)
-				r.Post("/npcs", synopsis.AddNPC)
-				r.Delete("/npcs/{npcId}", synopsis.RemoveNPC)
-				r.Put("/npcs/{npcId}/status", synopsis.UpdateNPCStatus)
+				r.With(owner).Post("/npcs", synopsis.AddNPC)
+				r.With(owner).Delete("/npcs/{npcId}", synopsis.RemoveNPC)
+				r.With(owner).Put("/npcs/{npcId}/status", synopsis.UpdateNPCStatus)
 				r.Get("/factions", synopsis.ListFactions)
-				r.Post("/factions", synopsis.AddFaction)
-				r.Delete("/factions/{factionId}", synopsis.RemoveFaction)
+				r.With(owner).Post("/factions", synopsis.AddFaction)
+				r.With(owner).Delete("/factions/{factionId}", synopsis.RemoveFaction)
 				r.Route("/scenes", func(r chi.Router) {
 					r.Get("/", synopsis.ListScenes)
-					r.Post("/", synopsis.CreateScene)
-					r.Post("/reorder", synopsis.ReorderScenes)
+					r.With(owner).Post("/", synopsis.CreateScene)
+					r.With(owner).Post("/reorder", synopsis.ReorderScenes)
 					r.Route("/{sceneId}", func(r chi.Router) {
 						r.Use(requireChild(database, "id", "sceneId", db.TableScenes, db.ColScenarioID))
-						r.Put("/", synopsis.UpdateScene)
-						r.Delete("/", synopsis.DeleteScene)
-						r.Post("/npcs", synopsis.AddSceneNPC)
-						r.Delete("/npcs/{npcId}", synopsis.RemoveSceneNPC)
-						r.Post("/artefacts", synopsis.AddSceneArtefact)
-						r.Delete("/artefacts/{artefactId}", synopsis.RemoveSceneArtefact)
-						r.Post("/llm/develop", synopsis.DevelopScene)
+						r.With(owner).Put("/", synopsis.UpdateScene)
+						r.With(owner).Delete("/", synopsis.DeleteScene)
+						r.With(owner).Post("/npcs", synopsis.AddSceneNPC)
+						r.With(owner).Delete("/npcs/{npcId}", synopsis.RemoveSceneNPC)
+						r.With(owner).Post("/artefacts", synopsis.AddSceneArtefact)
+						r.With(owner).Delete("/artefacts/{artefactId}", synopsis.RemoveSceneArtefact)
+						r.With(owner).Post("/llm/develop", synopsis.DevelopScene)
 					})
 				})
 				r.Route("/llm", func(r chi.Router) {
+					r.Use(owner)
 					r.Post("/complete-hook", synopsis.CompleteHook)
 					r.Post("/suggest-npcs", synopsis.SuggestNPCs)
 					r.Post("/develop-npc/{npcId}", synopsis.DevelopNPC)
@@ -366,7 +380,10 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 				})
 			})
 
+			// Brainstorming is an authoring tool for developing the story —
+			// owner-only, unlike the sessions/beats above it.
 			r.Route("/brainstorm/threads", func(r chi.Router) {
+				r.Use(owner)
 				r.Get("/", brainstorm.ListThreads)
 				r.Post("/", brainstorm.CreateThread)
 				r.Route("/{threadId}", func(r chi.Router) {

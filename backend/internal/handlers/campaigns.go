@@ -100,6 +100,10 @@ func (h *CampaignHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// Get returns the campaign to its owner, a delegated member (access =
+// "member", the gamemaster-delegation tier — see requireCampaignAccess), or a
+// superuser. Every page a delegated GM can reach (the Meneur hub, PlayPage,
+// SynopsisPage in read mode) fetches the campaign this way for its name.
 func (h *CampaignHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	user, ok := auth.GetUserFromContext(r)
@@ -116,11 +120,23 @@ func (h *CampaignHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "campaign not found")
 		return
 	}
+	access := "owner"
 	if user.Role != "superuser" && campaign.OwnerID != user.ID {
-		writeError(w, http.StatusForbidden, "campaign owner access required")
-		return
+		isMember, err := db.IsCampaignMember(r.Context(), h.db, id, user.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !isMember {
+			writeError(w, http.StatusForbidden, "campaign access required")
+			return
+		}
+		access = "member"
 	}
-	writeJSON(w, http.StatusOK, campaign)
+	writeJSON(w, http.StatusOK, struct {
+		db.Campaign
+		Access string `json:"access"`
+	}{Campaign: *campaign, Access: access})
 }
 
 type createCampaignBody struct {
