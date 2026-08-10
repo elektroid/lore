@@ -101,6 +101,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 		})
 
 		settings := &SettingsHandler{db: database, encKey: cfg.EncryptionKey()}
+		serverInfo := &ServerInfoHandler{db: database, dbPath: cfg.Database.Path, uploadsDir: uploadsDir, externalMaterialDir: externalMaterialDir}
 		r.Route("/settings", func(r chi.Router) {
 			// Reads are open: the app shows whether an LLM is configured, and
 			// the key is masked on the way out. Writes are instance-wide.
@@ -109,6 +110,10 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 			r.With(requireSuperuser).Put("/llm", settings.PutLLM)
 			r.With(requireSuperuser).Put("/images", settings.PutImageConfig)
 			r.With(requireSuperuser).Post("/llm/models", settings.ListLLMModels)
+			// Disk space and process facts are operational detail, not secrets,
+			// but there's no reason to expose them beyond the people who already
+			// see the LLM keys on this page.
+			r.With(requireSuperuser).Get("/server-info", serverInfo.GetServerInfo)
 		})
 
 		games := &GameHandler{db: database, externalMaterialDir: externalMaterialDir}

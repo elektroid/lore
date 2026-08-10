@@ -29,6 +29,42 @@ interface ModelInfo {
   id: string
 }
 
+interface ServerInfo {
+  version: string
+  commit: string
+  build_time: string
+  go_version: string
+  os: string
+  arch: string
+  uptime_seconds: number
+  disk: { free_bytes: number; total_bytes: number }
+  database_bytes: number
+  uploads_bytes: number
+  external_material_bytes: number
+  user_count: number
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes) return '0 o'
+  const units = ['o', 'Ko', 'Mo', 'Go', 'To']
+  let value = bytes
+  let i = 0
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024
+    i++
+  }
+  return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
+}
+
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  if (days > 0) return `${days} j ${hours} h`
+  if (hours > 0) return `${hours} h ${minutes} min`
+  return `${minutes} min`
+}
+
 const defaultLLM: LLMConfig = { base_url: '', api_key: '', model: '', max_tokens: 2000 }
 const defaultImage: ImageConfig = {
   provider: 'mistral',
@@ -99,6 +135,11 @@ export default function SettingsPage() {
   const { data: imageData, isLoading: imageLoading } = useQuery({
     queryKey: ['settings', 'images'],
     queryFn: () => api.get<ImageConfig>('/settings/images'),
+  })
+  const { data: serverInfo, isLoading: serverInfoLoading } = useQuery({
+    queryKey: ['settings', 'server-info'],
+    queryFn: () => api.get<ServerInfo>('/settings/server-info'),
+    enabled: currentUser?.role === 'superuser',
   })
 
   const [llm, setLlm] = useState<LLMConfig>(defaultLLM)
@@ -452,6 +493,73 @@ export default function SettingsPage() {
               </Button>
             </div>
           </form>
+        </div>
+
+        <div className="border-t pt-10">
+          <div>
+            <h2 className="text-lg font-semibold">Serveur</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              État de l'instance — espace disque, volumétrie des données, version en cours d'exécution.
+            </p>
+          </div>
+
+          {serverInfoLoading ? (
+            <p className="text-sm text-muted-foreground mt-4">Chargement…</p>
+          ) : !serverInfo ? (
+            <p className="text-sm text-muted-foreground mt-4">Indisponible.</p>
+          ) : (
+            <div className="mt-4 space-y-4">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-sm">
+                  <span>Espace disque libre</span>
+                  <span className="text-muted-foreground">
+                    {formatBytes(serverInfo.disk.free_bytes)} / {formatBytes(serverInfo.disk.total_bytes)}
+                  </span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-primary"
+                    style={{
+                      width: serverInfo.disk.total_bytes
+                        ? `${Math.min(100, (1 - serverInfo.disk.free_bytes / serverInfo.disk.total_bytes) * 100)}%`
+                        : '0%',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                <div>
+                  <dt className="text-muted-foreground text-xs">Base de données</dt>
+                  <dd>{formatBytes(serverInfo.database_bytes)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground text-xs">Images et fichiers</dt>
+                  <dd>{formatBytes(serverInfo.uploads_bytes)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground text-xs">Documents externes</dt>
+                  <dd>{formatBytes(serverInfo.external_material_bytes)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground text-xs">Utilisateurs</dt>
+                  <dd>{serverInfo.user_count}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground text-xs">En ligne depuis</dt>
+                  <dd>{formatUptime(serverInfo.uptime_seconds)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground text-xs">Version</dt>
+                  <dd>{serverInfo.version}{serverInfo.commit ? ` (${serverInfo.commit.slice(0, 7)})` : ''}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground text-xs">Go / OS</dt>
+                  <dd>{serverInfo.go_version} · {serverInfo.os}/{serverInfo.arch}</dd>
+                </div>
+              </dl>
+            </div>
+          )}
         </div>
       </main>
       {guardDialog}
