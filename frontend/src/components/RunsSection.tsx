@@ -207,74 +207,88 @@ function RunParty({ runId, campaignId }: { runId: string; campaignId: string }) 
     members.find(m => m.user_id === userId)?.characters ?? []
 
   return (
-    <div className="border-t px-3 py-3 space-y-3">
-      {players.length === 0 && (
-        <p className="text-xs text-muted-foreground">Aucun joueur dans ce groupe.</p>
-      )}
+    <div className="border-t px-3 py-3 space-y-4">
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Joueurs du groupe
+        </p>
+        {players.length === 0 && (
+          <p className="text-xs text-muted-foreground">Aucun joueur dans ce groupe.</p>
+        )}
 
-      {players.length > 0 && (
-        <ul className="space-y-1">
-          {players.map(p => (
-            <li key={p.id} className="flex items-center gap-2">
-              <span className="text-sm flex-1 truncate">{p.user_name}</span>
-              <select
-                value={p.character_id}
-                onChange={e => setPlayer.mutate({ userId: p.user_id, characterId: e.target.value })}
-                className="text-xs rounded border border-input bg-background px-1.5 py-1 max-w-[45%] focus:outline-none focus:ring-1 focus:ring-ring"
-              >
-                <option value="">— Aucun personnage —</option>
-                {charactersOf(p.user_id).map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              <Button
-                variant="ghost" size="sm"
-                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive shrink-0"
-                onClick={() => removePlayer.mutate(p.user_id)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
+        {players.length > 0 && (
+          <ul className="space-y-1">
+            {players.map(p => (
+              <li key={p.id} className="flex items-center gap-2">
+                <span className="text-sm flex-1 truncate">{p.user_name}</span>
+                <select
+                  value={p.character_id}
+                  onChange={e => setPlayer.mutate({ userId: p.user_id, characterId: e.target.value })}
+                  className="text-xs rounded border border-input bg-background px-1.5 py-1 max-w-[45%] focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">— Aucun personnage —</option>
+                  {charactersOf(p.user_id).map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <Button
+                  variant="ghost" size="sm"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                  onClick={() => removePlayer.mutate(p.user_id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
-      {available.length > 0 && (
-        <div className="space-y-1.5">
-          <Input
-            placeholder="Ajouter un joueur…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="h-7 text-xs"
-          />
-          {(search.trim() || players.length === 0) && (
-            <ul className="border rounded-md divide-y max-h-40 overflow-y-auto">
-              {filtered.map(m => (
-                <li key={m.user_id} className="flex items-center gap-2 px-2 py-1.5">
-                  <span className="text-xs flex-1 truncate">{m.user_name}</span>
-                  <Button
-                    variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0"
-                    onClick={() => { setPlayer.mutate({ userId: m.user_id, characterId: '' }); setSearch('') }}
-                  >
-                    <UserPlus className="h-3.5 w-3.5" />
-                  </Button>
-                </li>
-              ))}
-              {filtered.length === 0 && (
-                <li className="px-2 py-1.5 text-xs text-muted-foreground">Aucun résultat.</li>
+      {members.length > 0 && (
+        <div className="space-y-1.5 pt-3 border-t border-dashed">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Comptes de la campagne
+          </p>
+          {available.length > 0 ? (
+            <>
+              <Input
+                placeholder="Rechercher un compte à ajouter…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="h-7 text-xs"
+              />
+              {(search.trim() || players.length === 0) && (
+                <ul className="border rounded-md divide-y max-h-40 overflow-y-auto">
+                  {filtered.map(m => (
+                    <li key={m.user_id} className="flex items-center gap-2 px-2 py-1.5">
+                      <span className="text-xs flex-1 truncate">{m.user_name}</span>
+                      <Button
+                        variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0"
+                        onClick={() => { setPlayer.mutate({ userId: m.user_id, characterId: '' }); setSearch('') }}
+                      >
+                        <UserPlus className="h-3.5 w-3.5" />
+                      </Button>
+                    </li>
+                  ))}
+                  {filtered.length === 0 && (
+                    <li className="px-2 py-1.5 text-xs text-muted-foreground">Aucun résultat.</li>
+                  )}
+                </ul>
               )}
-            </ul>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">Tous les comptes ayant accès sont déjà dans ce groupe.</p>
           )}
         </div>
       )}
 
       {members.length === 0 && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground pt-3 border-t border-dashed">
           Personne n'a encore accès à cette campagne — ajoutez des comptes dans « Accès » ci-dessus.
         </p>
       )}
 
-      <p className="text-xs text-muted-foreground flex items-center gap-1 pt-1">
+      <p className="text-xs text-muted-foreground flex items-center gap-1 pt-3 border-t">
         <Play className="h-3 w-3" />
         Les sessions de ce groupe se lancent depuis un scénario, en mode Play.
       </p>
