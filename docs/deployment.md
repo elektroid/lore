@@ -103,12 +103,13 @@ Deux pièges :
 
 ## 5. Sauvegardes
 
-Tout l'état tient dans deux endroits :
+Tout l'état tient dans trois endroits :
 
 | Quoi | Où |
 |---|---|
 | Données | `lore.db` (+ `-wal`, `-shm`) |
 | Images téléversées | `uploads.dir`, `./data/uploads` par défaut |
+| Documents de jeu | `external_material.dir`, `./external-material` par défaut — si le service tourne dans un environnement restreint (`systemd` avec `ProtectSystem=strict` ou équivalent), pointez-le vers un chemin déjà autorisé en écriture (ex. sous le même parent que `uploads.dir`), sinon les téléversements échouent avec « could not create directory » même si le dossier de lecture existait déjà |
 
 La base est en mode WAL : **copier `lore.db` seul donne un fichier vide ou
 périmé**. Utiliser la sauvegarde en ligne de SQLite, qui fonctionne pendant que
