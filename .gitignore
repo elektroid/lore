@@ -20,8 +20,9 @@ frontend/dist/
 .DS_Store
 .claude/
 
-# Machine-local notes, never for git (e.g. docs/deploy-nobodix.local.md).
+# Machine-local notes and scripts, never for git (e.g. docs/deploy-nobodix.local.md).
 *.local.md
+*.local.sh
 
 # The frontend is copied here by `make build` and embedded in the binary.
 # Only the placeholder is tracked, so a source checkout still compiles.
