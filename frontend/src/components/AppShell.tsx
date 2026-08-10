@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users, BookOpen, Dices, LogOut } from 'lucide-react'
+import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users, Dices, LogOut } from 'lucide-react'
 import { useUIStore, type Theme } from '@/stores/ui'
 import { useAuthStore, useUser } from '@/stores/auth'
 import { logout as logoutRequest } from '@/api/auth'
@@ -73,13 +73,6 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
             className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
           >
             <Dices className="h-3.5 w-3.5" />
-          </Link>
-          <Link
-            to="/lore"
-            title="Connaissances de jeu"
-            className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
-          >
-            <BookOpen className="h-3.5 w-3.5" />
           </Link>
           <Link
             to="/profile"
