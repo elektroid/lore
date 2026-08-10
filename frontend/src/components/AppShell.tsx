@@ -5,6 +5,7 @@ import { useUIStore, type Theme } from '@/stores/ui'
 import { useAuthStore, useUser } from '@/stores/auth'
 import { logout as logoutRequest } from '@/api/auth'
 import { api } from '@/api/client'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface Crumb {
   label: string
@@ -97,77 +98,106 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
             )}
           </span>
         ))}
-        <div className="ml-auto flex items-center gap-1">
-          <Link
-            to="/games"
-            title="Jeux"
-            aria-label="Jeux"
-            className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
-          >
-            <Dices className="h-3.5 w-3.5" />
-          </Link>
-          <Link
-            to="/sheet-templates"
-            title="Fiches de personnage"
-            aria-label="Fiches de personnage"
-            className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
-          >
-            <ClipboardList className="h-3.5 w-3.5" />
-          </Link>
-          <Link
-            to="/profile"
-            title="Mon profil"
-            aria-label="Mon profil"
-            className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
-          >
-            <UserCircle className="h-3.5 w-3.5" />
-          </Link>
-          {user?.role === 'superuser' && (
-            <Link
-              to="/admin"
-              title="Administration"
-              aria-label="Administration"
-              className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
-            >
-              <Users className="h-3.5 w-3.5" />
-            </Link>
-          )}
-          {user?.role === 'superuser' && (
-            <Link
-              to="/settings"
-              title="Paramètres"
-              aria-label="Paramètres"
-              className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </Link>
-          )}
-          <button
-            onClick={handleLogout}
-            title="Se déconnecter"
-            aria-label="Se déconnecter"
-            className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-          </button>
-          <div className="w-px h-4 bg-border mx-1" />
-          {themes.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTheme(t.id)}
-              title={t.label}
-              aria-label={`Thème ${t.label}`}
-              aria-pressed={theme === t.id}
-              className={`p-1.5 rounded transition-colors ${
-                theme === t.id
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-              }`}
-            >
-              {t.icon}
-            </button>
-          ))}
-        </div>
+        <TooltipProvider delayDuration={200}>
+          <div className="ml-auto flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  to="/games"
+                  aria-label="Jeux"
+                  className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+                >
+                  <Dices className="h-3.5 w-3.5" />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent>Jeux</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  to="/sheet-templates"
+                  aria-label="Fiches de personnage"
+                  className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+                >
+                  <ClipboardList className="h-3.5 w-3.5" />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent>Fiches de personnage</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  to="/profile"
+                  aria-label="Mon profil"
+                  className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+                >
+                  <UserCircle className="h-3.5 w-3.5" />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent>Mon profil</TooltipContent>
+            </Tooltip>
+            {user?.role === 'superuser' && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link
+                    to="/admin"
+                    aria-label="Administration"
+                    className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+                  >
+                    <Users className="h-3.5 w-3.5" />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>Administration</TooltipContent>
+              </Tooltip>
+            )}
+            {user?.role === 'superuser' && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link
+                    to="/settings"
+                    aria-label="Paramètres"
+                    className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>Paramètres</TooltipContent>
+              </Tooltip>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleLogout}
+                  aria-label="Se déconnecter"
+                  className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Se déconnecter</TooltipContent>
+            </Tooltip>
+            <div className="w-px h-4 bg-border mx-1" />
+            {themes.map((t) => (
+              <Tooltip key={t.id}>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setTheme(t.id)}
+                    aria-label={`Thème ${t.label}`}
+                    aria-pressed={theme === t.id}
+                    className={`p-1.5 rounded transition-colors ${
+                      theme === t.id
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    {t.icon}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{t.label}</TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        </TooltipProvider>
       </header>
       {modeTabs && modeTabs.length > 0 && (
         <div className="border-b px-6 py-2">
