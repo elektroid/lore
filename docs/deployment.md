@@ -66,7 +66,7 @@ server {
     listen 443 ssl;
     server_name lore.example.com;
 
-    client_max_body_size 32m;   # téléversement d'images
+    client_max_body_size 400m;  # téléversement d'images et de documents de jeu
 
     location / {
         proxy_pass http://127.0.0.1:8080;
