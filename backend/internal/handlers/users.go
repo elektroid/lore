@@ -68,5 +68,11 @@ func (h *UserHandler) UpdateRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	action := "role_demoted"
+	if req.Role == "superuser" {
+		action = "role_promoted"
+	}
+	db.LogAuditEvent(r.Context(), h.db, requester.ID, action, "user", updated.ID, updated.Email, clientIP(r))
+
 	writeJSON(w, http.StatusOK, userToResponse(updated))
 }

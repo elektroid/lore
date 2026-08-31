@@ -116,6 +116,11 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 			r.With(requireSuperuser).Get("/server-info", serverInfo.GetServerInfo)
 		})
 
+		// Audit log: who logged in, promoted a user, or changed instance
+		// config. See audit_log in schema.sql and docs/users-admin.md.
+		audit := &AuditHandler{db: database}
+		r.With(requireSuperuser).Get("/audit-log", audit.List)
+
 		games := &GameHandler{db: database, externalMaterialDir: externalMaterialDir}
 		gameLLM := &GameLLMHandler{db: database, encKey: cfg.EncryptionKey()}
 		r.Route("/games", func(r chi.Router) {

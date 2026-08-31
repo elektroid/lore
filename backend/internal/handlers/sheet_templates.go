@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"lore/internal/auth"
 	db "lore/internal/db"
 )
 
@@ -64,7 +65,17 @@ func (h *SheetTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	logSheetTemplateAudit(r, h.db, "sheet_template_created", tmpl.ID, tmpl.Name)
 	writeJSON(w, http.StatusCreated, tmpl)
+}
+
+// logSheetTemplateAudit is a thin wrapper around db.LogAuditEvent for the
+// handlers in this file — every call site already has the requester in
+// context and the same clientIP/template-id/template-name shape.
+func logSheetTemplateAudit(r *http.Request, database *sql.DB, action, templateID, templateName string) {
+	if requester, ok := auth.GetUserFromContext(r); ok {
+		db.LogAuditEvent(r.Context(), database, requester.ID, action, "sheet_template", templateID, templateName, clientIP(r))
+	}
 }
 
 func (h *SheetTemplateHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -90,14 +101,21 @@ func (h *SheetTemplateHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "sheet template not found")
 		return
 	}
+	logSheetTemplateAudit(r, h.db, "sheet_template_updated", tmpl.ID, tmpl.Name)
 	writeJSON(w, http.StatusOK, tmpl)
 }
 
 func (h *SheetTemplateHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	// Best-effort — only used to name the audit entry, never to gate the delete.
+	name := id
+	if tmpl, err := db.GetSheetTemplate(r.Context(), h.db, id); err == nil && tmpl != nil {
+		name = tmpl.Name
+	}
 	if err := db.DeleteSheetTemplate(r.Context(), h.db, id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	logSheetTemplateAudit(r, h.db, "sheet_template_deleted", id, name)
 	w.WriteHeader(http.StatusNoContent)
 }

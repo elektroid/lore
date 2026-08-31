@@ -183,6 +183,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	csrfToken := uuid.New().String()
 	h.setCSRFCookie(w, csrfToken)
 
+	db.LogAuditEvent(r.Context(), h.db, user.ID, "register", "user", user.ID, user.Email, clientIP(r))
+
 	// Return response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -222,12 +224,14 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	if user == nil {
 		// Generic message to prevent email enumeration
+		db.LogAuditEvent(r.Context(), h.db, "", "login_failed", "user", "", req.Email, clientIP(r))
 		writeErrorResponse(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid email or password")
 		return
 	}
 
 	// Check password
 	if !user.CheckPassword(req.Password) {
+		db.LogAuditEvent(r.Context(), h.db, "", "login_failed", "user", user.ID, req.Email, clientIP(r))
 		writeErrorResponse(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid email or password")
 		return
 	}
@@ -251,6 +255,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	csrfToken := uuid.New().String()
 	h.setCSRFCookie(w, csrfToken)
 
+	db.LogAuditEvent(r.Context(), h.db, user.ID, "login", "user", user.ID, user.Email, clientIP(r))
+
 	// Return response
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(loginResponse{
@@ -265,6 +271,17 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Logout clears authentication cookies
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	// Logout is a public route (no AuthMiddleware, see isPublicEndpoint), so
+	// the actor isn't in context — read the cookie being cleared instead.
+	// Best-effort: an expired or missing token just means no event is logged.
+	if cookie, err := r.Cookie("lore_access"); err == nil {
+		if claims, err := h.tokenService.ParseAccessToken(cookie.Value); err == nil {
+			if user, err := db.GetUserByID(r.Context(), h.db, claims.UserID); err == nil && user != nil {
+				db.LogAuditEvent(r.Context(), h.db, user.ID, "logout", "user", user.ID, user.Email, clientIP(r))
+			}
+		}
+	}
+
 	// Clear access token cookie
 	h.clearCookie(w, "lore_access")
 	// Clear refresh token cookie

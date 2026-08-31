@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"lore/internal/auth"
 	"lore/internal/crypto"
 	db "lore/internal/db"
 	"lore/internal/llm"
@@ -84,6 +85,11 @@ func (h *SettingsHandler) PutLLM(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	if requester, ok := auth.GetUserFromContext(r); ok {
+		db.LogAuditEvent(r.Context(), h.db, requester.ID, "llm_config_updated", "settings", "llm_config", cfg.BaseURL, clientIP(r))
+	}
+
 	// Return with key masked.
 	if cfg.APIKey != "" {
 		cfg.APIKey = crypto.MaskedKey
@@ -262,6 +268,11 @@ func (h *SettingsHandler) PutImageConfig(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	if requester, ok := auth.GetUserFromContext(r); ok {
+		db.LogAuditEvent(r.Context(), h.db, requester.ID, "image_config_updated", "settings", imageSettingKey, cfg.Provider, clientIP(r))
+	}
+
 	if cfg.MistralAPIKey != "" {
 		cfg.MistralAPIKey = crypto.MaskedKey
 	}

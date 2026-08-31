@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"lore/internal/auth"
 	db "lore/internal/db"
 )
 
@@ -71,7 +72,17 @@ func (h *GameHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	logGameAudit(r, h.db, "game_created", game.ID, game.Name)
 	writeJSON(w, http.StatusCreated, game)
+}
+
+// logGameAudit is a thin wrapper around db.LogAuditEvent for the handlers in
+// this file — every call site already has the requester in context and the
+// same clientIP/game-id/game-name shape.
+func logGameAudit(r *http.Request, database *sql.DB, action, gameID, gameName string) {
+	if requester, ok := auth.GetUserFromContext(r); ok {
+		db.LogAuditEvent(r.Context(), database, requester.ID, action, "game", gameID, gameName, clientIP(r))
+	}
 }
 
 func (h *GameHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +105,7 @@ func (h *GameHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "game not found")
 		return
 	}
+	logGameAudit(r, h.db, "game_updated", game.ID, game.Name)
 	writeJSON(w, http.StatusOK, game)
 }
 
@@ -120,10 +132,16 @@ func (h *GameHandler) UpdateVisualStyle(w http.ResponseWriter, r *http.Request) 
 
 func (h *GameHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	// Best-effort — only used to name the audit entry, never to gate the delete.
+	name := id
+	if game, err := db.GetGame(r.Context(), h.db, id); err == nil && game != nil {
+		name = game.Name
+	}
 	if err := db.DeleteGame(r.Context(), h.db, id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	logGameAudit(r, h.db, "game_deleted", id, name)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -422,6 +440,9 @@ func (h *GameHandler) CreateLoreEntity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if requester, ok := auth.GetUserFromContext(r); ok {
+		db.LogAuditEvent(r.Context(), h.db, requester.ID, "lore_entity_created", "lore_entity", entity.ID, entity.Name, clientIP(r))
+	}
 	writeJSON(w, http.StatusCreated, entity)
 }
 
@@ -456,9 +477,17 @@ func (h *GameHandler) UpdateLoreEntityKind(w http.ResponseWriter, r *http.Reques
 
 func (h *GameHandler) DeleteLoreEntity(w http.ResponseWriter, r *http.Request) {
 	entityID := chi.URLParam(r, "entityId")
+	// Best-effort — only used to name the audit entry, never to gate the delete.
+	name := entityID
+	if entity, err := db.GetGameLoreEntity(r.Context(), h.db, entityID); err == nil && entity != nil {
+		name = entity.Name
+	}
 	if err := db.DeleteGameLoreEntity(r.Context(), h.db, entityID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if requester, ok := auth.GetUserFromContext(r); ok {
+		db.LogAuditEvent(r.Context(), h.db, requester.ID, "lore_entity_deleted", "lore_entity", entityID, name, clientIP(r))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

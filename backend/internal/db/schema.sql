@@ -433,6 +433,26 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Audit log: the administrator actions docs/users-admin.md flags as the gap
+-- ("who changed the LLM endpoint, deleted a lore entity, or promoted another
+-- user") plus login/logout. actor_id carries no FK and no ON DELETE — there
+-- is no account deletion in this app (same doc, "no account deactivation"),
+-- so it is always resolvable, and the actor's current name/email is read via
+-- a join at query time (see ListAuditEvents) rather than snapshotted here.
+-- An unauthenticated failed login has no actor_id at all — the attempted
+-- email lands in target_label instead.
+CREATE TABLE IF NOT EXISTS audit_log (
+    id           TEXT PRIMARY KEY,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    actor_id     TEXT NOT NULL DEFAULT '',
+    action       TEXT NOT NULL,
+    target_type  TEXT NOT NULL DEFAULT '',
+    target_id    TEXT NOT NULL DEFAULT '',
+    target_label TEXT NOT NULL DEFAULT '',
+    ip           TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
+
 -- Campaign members: tracks which users have access to which campaigns
 CREATE TABLE IF NOT EXISTS campaign_members (
     id          TEXT PRIMARY KEY,
