@@ -1,16 +1,12 @@
-import { useRef, useEffect, useState, useCallback } from 'react'
-import { Bold, Italic, List } from 'lucide-react'
-import { useCampaignMentions, type Mentionable } from '@/hooks/useCampaignMentions'
-import {
-  MENTION_RE, MENTION_KIND_BADGE, MENTION_KIND_LABEL,
-  mentionRef, parseMentionRef, type MentionKind,
-} from '@/lib/mentions'
-
-interface DropdownState {
-  query: string
-  node: Text
-  atOffset: number
-}
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEditor, EditorContent } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Placeholder from '@tiptap/extension-placeholder'
+import { Bold, Italic, List, Code2 } from 'lucide-react'
+import { useCampaignMentions, type CampaignMentions, type Mentionable } from '@/hooks/useCampaignMentions'
+import { MENTION_KIND_BADGE, MENTION_KIND_LABEL } from '@/lib/mentions'
+import { textToDoc, docToText } from '@/lib/richTextDoc'
+import { Mention } from './mentionEditor/MentionExtension'
 
 interface Props {
   campaignId: string
@@ -21,251 +17,132 @@ interface Props {
   className?: string
 }
 
-// Accented letters count as part of a name: "@Ré" must keep searching, not drop
-// the dropdown at the "é". \w would.
-const TRIGGER_RE = /@([\p{L}\p{N}_'-]*)$/u
-
-type Resolve = (kind: MentionKind, id: string) => string | undefined
-
-function buildHTML(text: string, resolve: Resolve): string {
-  let result = ''
-  let last = 0
-  for (const m of text.matchAll(MENTION_RE)) {
-    result += esc(text.slice(last, m.index))
-    const [, storedName, ref] = m
-    const { kind, id } = parseMentionRef(ref)
-    const live = resolve(kind, id)
-    result += chipHTML(ref, storedName, kind, live ?? storedName, live === undefined)
-    last = (m.index ?? 0) + m[0].length
-  }
-  result += esc(text.slice(last))
-  return result
-}
-
-function chipHTML(ref: string, storedName: string, kind: MentionKind, label: string, stale: boolean): string {
-  return `<span contenteditable="false" data-mention="${escAttr(ref)}" data-name="${escAttr(storedName)}"` +
-    ` data-mention-kind="${kind}" class="mention-chip${stale ? ' mention-chip--stale' : ''}">@${esc(label)}</span>`
-}
-
-function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-function escAttr(s: string): string {
-  return s.replace(/"/g, '&quot;')
-}
-
-function serialize(el: HTMLElement): string {
-  let out = ''
-  for (const node of el.childNodes) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      out += (node as Text).textContent ?? ''
-    } else if (node instanceof HTMLElement) {
-      if (node.dataset.mention) {
-        out += `@[${node.dataset.name ?? ''}](${node.dataset.mention})`
-      } else if (node.tagName === 'BR') {
-        out += '\n'
-      } else if (node.tagName === 'DIV') {
-        out += '\n' + serialize(node)
-      }
-    }
-  }
-  return out
-}
-
-function getMentionTrigger(el: HTMLElement): DropdownState | null {
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) return null
-  const range = sel.getRangeAt(0)
-  if (!range.collapsed) return null
-  const node = range.startContainer
-  if (node.nodeType !== Node.TEXT_NODE || !el.contains(node)) return null
-  const before = ((node as Text).textContent ?? '').slice(0, range.startOffset)
-  const match = before.match(TRIGGER_RE)
-  if (!match) return null
-  return { query: match[1], node: node as Text, atOffset: range.startOffset - match[0].length }
+interface DropdownState {
+  items: Mentionable[]
+  activeIdx: number
+  command: (item: Mentionable) => void
 }
 
 /**
  * A one-line-or-more prose field where typing `@` offers the campaign's PNJs,
- * artefacts, locations and factions. What is stored is text with inline refs
- * (see lib/mentions.ts) — not a relation table, so a mention costs nothing to
- * add and nothing to remove, and prose stays prose.
+ * artefacts, locations and factions, and `**bold**` / `*italic*` / `- lists`
+ * render live instead of showing their markers (see lib/richtext.ts for the
+ * format). What is stored is still that same plain string — not a relation
+ * table for mentions, not an HTML blob for formatting — so a mention or a
+ * bold word costs nothing to add and nothing to remove, and Export JSON never
+ * has to know this editor exists.
+ *
+ * "Mode expert" swaps the rendered view for the raw string in a <textarea>,
+ * for anyone who'd rather type `**bold**` directly than reach for a button.
  */
 export default function MentionEditor({ campaignId, value, onChange, placeholder, disabled, className }: Props) {
-  const editorRef = useRef<HTMLDivElement>(null)
-  const prevRef = useRef(value)
+  const [expert, setExpert] = useState(false)
   const [dd, setDd] = useState<DropdownState | null>(null)
-  const [activeIdx, setActiveIdx] = useState(0)
+  // TipTap's suggestion callbacks are built once (see the Mention.configure
+  // call below) and invoked later from outside React's render cycle, so they
+  // need refs — a captured `dd`/`mentions` value would go stale the moment
+  // either changes.
+  const ddRef = useRef<DropdownState | null>(null)
+  useLayoutEffect(() => { ddRef.current = dd }, [dd])
 
   const mentions = useCampaignMentions(campaignId)
-  const { resolve, search, all } = mentions
+  const mentionsRef = useRef<CampaignMentions>(mentions)
+  useLayoutEffect(() => { mentionsRef.current = mentions })
 
-  const applyHTML = useCallback((text: string) => {
-    const el = editorRef.current
-    if (!el) return
-    el.innerHTML = text === '' ? '' : buildHTML(text, resolve)
-  }, [resolve])
+  const prevRef = useRef(value)
 
-  useEffect(() => { applyHTML(value) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        heading: false, blockquote: false, codeBlock: false, horizontalRule: false,
+        strike: false, code: false, orderedList: false, link: false, underline: false,
+        // Otherwise TipTap silently appends an empty paragraph after a
+        // trailing list block, purely so there's somewhere to click below
+        // it — and docToText would serialize that as a stray trailing blank
+        // line on every save. Double-Enter inside the last list item still
+        // exits it and starts a normal paragraph, so nothing is lost.
+        trailingNode: false,
+      }),
+      Placeholder.configure({ placeholder: placeholder ?? '' }),
+      // The closures below only ever run from TipTap's own event handling,
+      // never synchronously during this render — ddRef/mentionsRef exist
+      // precisely so they read the latest value whenever that happens.
+      // eslint-disable-next-line react-hooks/refs
+      Mention.configure({
+        campaignId,
+        suggestion: {
+          items: ({ query }) => mentionsRef.current.search(query),
+          render: () => ({
+            onStart: props => setDd({ items: props.items, activeIdx: 0, command: props.command }),
+            onUpdate: props => setDd(d => ({ items: props.items, activeIdx: d ? Math.min(d.activeIdx, Math.max(props.items.length - 1, 0)) : 0, command: props.command })),
+            onKeyDown: ({ event }) => {
+              const current = ddRef.current
+              if (!current) return false
+              if (event.key === 'ArrowDown') {
+                setDd(d => d && { ...d, activeIdx: Math.min(d.activeIdx + 1, d.items.length - 1) })
+                return true
+              }
+              if (event.key === 'ArrowUp') {
+                setDd(d => d && { ...d, activeIdx: Math.max(d.activeIdx - 1, 0) })
+                return true
+              }
+              if (event.key === 'Enter' || event.key === 'Tab') {
+                const item = current.items[current.activeIdx]
+                if (item) current.command(item)
+                return true
+              }
+              if (event.key === 'Escape') { setDd(null); return true }
+              return false
+            },
+            onExit: () => setDd(null),
+          }),
+        },
+      }),
+    ],
+    content: textToDoc(value),
+    editable: !disabled,
+    editorProps: {
+      attributes: {
+        class: [
+          'mention-editor w-full min-h-[72px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm',
+          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+          className ?? '',
+        ].filter(Boolean).join(' '),
+      },
+    },
+    onUpdate: ({ editor }) => {
+      const text = docToText(editor.getJSON())
+      prevRef.current = text
+      onChange(text)
+    },
+  }, [campaignId])
+
+  useEffect(() => { editor?.setEditable(!disabled) }, [disabled, editor])
 
   useEffect(() => {
-    if (value !== prevRef.current) {
-      prevRef.current = value
-      applyHTML(value)
-    }
-  }, [value, applyHTML])
+    if (!editor || value === prevRef.current) return
+    prevRef.current = value
+    editor.commands.setContent(textToDoc(value), { emitUpdate: false })
+  }, [value, editor])
 
-  // Relabel chips once the entity lists land, and whenever an entity is renamed
-  // or deleted elsewhere. Rewriting labels in place rather than re-rendering the
-  // whole field keeps the caret where the GM left it.
-  useEffect(() => {
-    const el = editorRef.current
-    if (!el) return
-    el.querySelectorAll<HTMLElement>('[data-mention]').forEach(span => {
-      const { kind, id } = parseMentionRef(span.dataset.mention!)
-      const live = resolve(kind, id)
-      span.dataset.mentionKind = kind
-      span.textContent = `@${live ?? span.dataset.name ?? ''}`
-      span.classList.toggle('mention-chip--stale', live === undefined)
-    })
-  }, [resolve, all.length])
-
-  function handleInput() {
-    const el = editorRef.current
-    if (!el) return
-    const text = serialize(el)
-    if (text === '' || text === '\n') el.innerHTML = ''
-    prevRef.current = text
-    onChange(text)
-    const trigger = getMentionTrigger(el)
-    if (trigger) { setDd(trigger); setActiveIdx(0) }
-    else setDd(null)
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (!dd) return
-    const found = search(dd.query)
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, found.length - 1)) }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, 0)) }
-    else if ((e.key === 'Enter' || e.key === 'Tab') && found.length > 0) { e.preventDefault(); insertMention(found[activeIdx]) }
-    else if (e.key === 'Escape') setDd(null)
-  }
-
-  function insertMention(item: Mentionable) {
-    if (!dd) return
-    const sel = window.getSelection()
-    if (!sel || sel.rangeCount === 0) return
-    const cursorOffset = sel.getRangeAt(0).startOffset
-
-    const deleteRange = document.createRange()
-    deleteRange.setStart(dd.node, dd.atOffset)
-    deleteRange.setEnd(dd.node, cursorOffset)
-    deleteRange.deleteContents()
-
-    const chipEl = document.createElement('span')
-    chipEl.contentEditable = 'false'
-    chipEl.dataset.mention = mentionRef(item.kind, item.id)
-    chipEl.dataset.name = item.name
-    chipEl.dataset.mentionKind = item.kind
-    chipEl.className = 'mention-chip'
-    chipEl.textContent = `@${item.name}`
-
-    const space = document.createTextNode(' ')
-    deleteRange.insertNode(space)
-    deleteRange.insertNode(chipEl)
-
-    const r = document.createRange()
-    r.setStart(space, 1)
-    r.collapse(true)
-    sel.removeAllRanges()
-    sel.addRange(r)
-
-    const text = serialize(editorRef.current!)
-    prevRef.current = text
-    onChange(text)
-    setDd(null)
-  }
-
-  const found = dd ? search(dd.query) : []
-
-  /**
-   * Wrap the selection in `**bold**` / `*italic*` markers, or insert an empty
-   * pair with the caret in the middle when nothing is selected. Goes through
-   * execCommand('insertText') so it's indistinguishable from typing — the
-   * existing onInput -> handleInput path picks it up, same as everything else
-   * in this editor.
-   */
-  function applyMarker(marker: string) {
-    const el = editorRef.current
-    if (!el) return
-    el.focus()
-    const sel = window.getSelection()
-    if (!sel || sel.rangeCount === 0) return
-    const range = sel.getRangeAt(0)
-    if (!el.contains(range.commonAncestorContainer)) return
-    const selected = sel.toString()
-    document.execCommand('insertText', false, marker + selected + marker)
-    if (selected === '') {
-      const sel2 = window.getSelection()
-      const node = sel2?.getRangeAt(0)?.startContainer
-      if (sel2 && node && node.nodeType === Node.TEXT_NODE) {
-        const r = document.createRange()
-        r.setStart(node, Math.max(0, sel2.getRangeAt(0).startOffset - marker.length))
-        r.collapse(true)
-        sel2.removeAllRanges()
-        sel2.addRange(r)
-      }
-    }
-  }
-
-  /**
-   * Prefix the current line with `- `. Line-level rather than
-   * selection-level, because the browser represents lines two different
-   * ways here: the first line is a flat run of siblings directly under the
-   * editor, every line after it is wrapped in its own <div> by the browser's
-   * native Enter handling. Doesn't check for or toggle off an existing `- ` —
-   * clicking twice stacks markers, a rough edge left for later rather than
-   * solved now.
-   */
-  function applyListPrefix() {
-    const el = editorRef.current
-    if (!el) return
-    el.focus()
-    const sel = window.getSelection()
-    if (!sel || sel.rangeCount === 0) return
-    const range = sel.getRangeAt(0)
-    if (!el.contains(range.commonAncestorContainer)) return
-
-    let top: Node = range.startContainer
-    if (top !== el) {
-      while (top.parentNode && top.parentNode !== el) top = top.parentNode
-    }
-
-    const r = document.createRange()
-    if (top === el) {
-      // Cursor sits directly in the editor (empty field, or an ambiguous
-      // spot) — no specific line to anchor to, fall back to the very start.
-      r.setStart(el, 0)
-    } else if (top instanceof HTMLDivElement) {
-      // A later line: insert inside its own <div>, not before it — the div
-      // itself is the line, "before" it would land in the previous one.
-      r.setStart(top, 0)
-    } else {
-      // The first line: walk back past sibling nodes (text runs, mention
-      // chips) to the true start of the line, not just the node the cursor
-      // happens to be in.
-      let first = top
-      while (first.previousSibling
-        && !(first.previousSibling instanceof HTMLDivElement)
-        && !(first.previousSibling instanceof HTMLBRElement)) {
-        first = first.previousSibling
-      }
-      r.setStartBefore(first)
-    }
-    r.collapse(true)
-    sel.removeAllRanges()
-    sel.addRange(r)
-    document.execCommand('insertText', false, '- ')
+  if (expert) {
+    return (
+      <div className="relative">
+        <ExpertToggle expert={expert} onToggle={setExpert} />
+        <textarea
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          disabled={disabled}
+          className={[
+            'mention-editor w-full min-h-[72px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm font-mono',
+            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+            disabled ? 'cursor-not-allowed opacity-50' : '',
+            className ?? '',
+          ].filter(Boolean).join(' ')}
+        />
+      </div>
+    )
   }
 
   return (
@@ -274,56 +151,44 @@ export default function MentionEditor({ campaignId, value, onChange, placeholder
         <div className="flex items-center gap-0.5 mb-1">
           <button
             type="button"
-            title="Gras (** **)"
+            title="Gras"
             className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground"
             onMouseDown={e => e.preventDefault()}
-            onClick={() => applyMarker('**')}
+            onClick={() => editor?.chain().focus().toggleBold().run()}
           >
             <Bold className="h-3.5 w-3.5" />
           </button>
           <button
             type="button"
-            title="Italique (* *)"
+            title="Italique"
             className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground"
             onMouseDown={e => e.preventDefault()}
-            onClick={() => applyMarker('*')}
+            onClick={() => editor?.chain().focus().toggleItalic().run()}
           >
             <Italic className="h-3.5 w-3.5" />
           </button>
           <button
             type="button"
-            title="Liste à puces (- )"
+            title="Liste à puces"
             className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground"
             onMouseDown={e => e.preventDefault()}
-            onClick={applyListPrefix}
+            onClick={() => editor?.chain().focus().toggleBulletList().run()}
           >
             <List className="h-3.5 w-3.5" />
           </button>
+          <div className="flex-1" />
+          <ExpertToggle expert={expert} onToggle={setExpert} />
         </div>
       )}
-      <div
-        ref={editorRef}
-        contentEditable={!disabled}
-        suppressContentEditableWarning
-        onInput={handleInput}
-        onKeyDown={handleKeyDown}
-        onBlur={() => setTimeout(() => setDd(null), 150)}
-        data-placeholder={placeholder}
-        className={[
-          'mention-editor w-full min-h-[72px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm',
-          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-          disabled ? 'cursor-not-allowed opacity-50' : '',
-          className ?? '',
-        ].filter(Boolean).join(' ')}
-      />
-      {dd && found.length > 0 && (
+      <EditorContent editor={editor} />
+      {dd && dd.items.length > 0 && (
         <div className="absolute z-50 mt-1 min-w-[220px] rounded-md border bg-popover text-popover-foreground shadow-md py-1">
-          {found.map((item, i) => (
+          {dd.items.map((item, i) => (
             <button
               key={`${item.kind}:${item.id}`}
               type="button"
-              className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-accent hover:text-accent-foreground ${i === activeIdx ? 'bg-accent text-accent-foreground' : ''}`}
-              onMouseDown={e => { e.preventDefault(); insertMention(item) }}
+              className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-accent hover:text-accent-foreground ${i === dd.activeIdx ? 'bg-accent text-accent-foreground' : ''}`}
+              onMouseDown={e => { e.preventDefault(); dd.command(item) }}
             >
               <span className="font-medium flex-1 truncate">{item.name}</span>
               {item.sub && <span className="text-xs text-muted-foreground truncate">{item.sub}</span>}
@@ -335,5 +200,19 @@ export default function MentionEditor({ campaignId, value, onChange, placeholder
         </div>
       )}
     </div>
+  )
+}
+
+function ExpertToggle({ expert, onToggle }: { expert: boolean; onToggle: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      title={expert ? 'Revenir à l\'édition normale' : 'Mode expert — éditer le markdown brut'}
+      className={`h-6 w-6 flex items-center justify-center rounded hover:bg-accent ${expert ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+      onMouseDown={e => e.preventDefault()}
+      onClick={() => onToggle(!expert)}
+    >
+      <Code2 className="h-3.5 w-3.5" />
+    </button>
   )
 }
