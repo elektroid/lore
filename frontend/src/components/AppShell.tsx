@@ -48,17 +48,41 @@ function VersionBadge() {
   })
   if (!data) return null
 
-  const title = data.version === 'dev'
-    ? 'build local — non déployée'
-    : [data.commit, data.build_time].filter(Boolean).join(' — ')
-
-  return (
-    <span
-      title={title}
-      className="font-mono text-[10px] text-muted-foreground/70 hover:text-muted-foreground select-all"
-    >
+  const badge = (
+    <span className="font-mono text-[10px] text-muted-foreground/70 hover:text-muted-foreground select-all">
       {data.version}
     </span>
+  )
+
+  if (data.version === 'dev') {
+    return (
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>{badge}</TooltipTrigger>
+          <TooltipContent>build locale — non déployée</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+
+  const buildDate = data.build_time
+    ? new Date(data.build_time).toLocaleString('fr-FR', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+      })
+    : null
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>{badge}</TooltipTrigger>
+        <TooltipContent>
+          <div className="space-y-0.5">
+            {data.commit && <p>Commit {data.commit}</p>}
+            {buildDate && <p className="text-muted-foreground">Déployé le {buildDate}</p>}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
