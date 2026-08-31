@@ -57,6 +57,7 @@ func isPublicEndpoint(path string) bool {
 	switch path {
 	case "/api/auth/register", "/api/auth/login", "/api/auth/logout",
 		"/api/auth/refresh", "/api/auth/csrf", "/api/auth/bootstrap",
+		"/api/auth/forgot-password", "/api/auth/reset-password",
 		"/api/version":
 		return true
 	}

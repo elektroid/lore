@@ -433,6 +433,19 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Password reset tokens: only the SHA-256 hash of the token is stored, so a
+-- database leak alone does not hand out usable reset links. One row per
+-- issued link; ResetPassword deletes every row for the user once one is
+-- redeemed, so an intercepted second copy of an old link cannot be replayed.
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+
 -- Audit log: the administrator actions docs/users-admin.md flags as the gap
 -- ("who changed the LLM endpoint, deleted a lore entity, or promoted another
 -- user") plus login/logout. actor_id carries no FK and no ON DELETE — there

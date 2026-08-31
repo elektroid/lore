@@ -56,7 +56,36 @@ instance publique, mettre `closed` et créer le premier compte avec
 `[bootstrap]`. Il n'y a pas encore d'écran d'administration pour créer des
 comptes — c'est pourquoi `open` reste le défaut.
 
-## 4. Derrière un reverse proxy
+## 4. Email (optionnel)
+
+```toml
+[smtp]
+host     = "smtp.mail.ovh.net"
+port     = 587
+username = "noreply@exemple.com"
+password = "…"
+from     = "Lore Engine <noreply@exemple.com>"
+```
+
+Sans `[smtp]` (ou avec `host` vide), aucun email n'est envoyé : le formulaire
+« mot de passe oublié » reste utilisable — il répond toujours le même message
+générique, pour ne pas révéler quels emails sont enregistrés — mais ne
+délivre rien.
+
+N'envoyez pas depuis l'IP nue du serveur : sans réputation ni enregistrement
+SPF/DKIM pour cette IP, la plupart des fournisseurs de messagerie
+classeront le mail en spam ou le rejetteront. Le plus simple est une boîte
+mail existante chez l'hébergeur du domaine (le relais SMTP authentifié
+qu'elle propose est en général déjà couvert par le SPF du domaine) ; à
+défaut, un fournisseur transactionnel (Mailgun, SES, Postmark…) — au prix de
+nouveaux enregistrements DNS (SPF/DKIM/DMARC) à poser.
+
+Le lien de réinitialisation est construit à partir de l'en-tête `Host` et de
+`X-Forwarded-Proto` de la requête (voir `handlers.resetLink`) : le reverse
+proxy doit transmettre les deux telles quelles, ce que fait déjà la
+configuration nginx ci-dessous.
+
+## 5. Derrière un reverse proxy
 
 Le binaire sert l'API **et** l'interface sur le même port. Un proxy TLS devant
 suffit :
@@ -101,7 +130,7 @@ Deux pièges :
 - **La limitation de débit lit `X-Forwarded-For`.** Correct derrière un proxy,
   usurpable sans. N'exposez pas le port du binaire directement.
 
-## 5. Sauvegardes
+## 6. Sauvegardes
 
 Tout l'état tient dans trois endroits :
 
@@ -123,14 +152,14 @@ tar czf /sauvegardes/uploads-$(date +%F).tar.gz data/uploads
 Restauration : arrêter le service, remettre le `.db` en place (sans les
 `-wal`/`-shm` de l'ancienne instance), redémarrer.
 
-## 6. Mise à jour
+## 7. Mise à jour
 
 Le schéma est appliqué au démarrage. Les migrations qui réécrivent une table
 sont conditionnelles et non fatales : si l'une échoue, la base est laissée
 intacte et le serveur démarre quand même. **Sauvegardez tout de même avant de
 remplacer le binaire.**
 
-## 7. Vérification après déploiement
+## 8. Vérification après déploiement
 
 ```bash
 curl -sI https://lore.example.com/ | head -1                    # 200, l'interface

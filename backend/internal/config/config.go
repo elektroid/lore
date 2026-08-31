@@ -21,6 +21,23 @@ type Config struct {
 	Bootstrap        BootstrapConfig        `toml:"bootstrap"`
 	Crypto           CryptoConfig           `toml:"crypto"`
 	Auth             AuthConfig             `toml:"auth"`
+	SMTP             SMTPConfig             `toml:"smtp"`
+}
+
+// SMTPConfig holds outbound mail relay settings. Empty Host means mail
+// sending is disabled — callers must check SMTP.Enabled() before use, since
+// no email flow (password reset, invites…) has anything to fall back to.
+type SMTPConfig struct {
+	Host     string `toml:"host"`
+	Port     int    `toml:"port"`
+	Username string `toml:"username"`
+	Password string `toml:"password"`
+	From     string `toml:"from"` // e.g. "Lore Engine <noreply@example.com>"
+}
+
+// Enabled reports whether outbound mail is configured.
+func (c SMTPConfig) Enabled() bool {
+	return strings.TrimSpace(c.Host) != ""
 }
 
 // CryptoConfig holds the key stored API keys are encrypted with. Empty means
@@ -106,6 +123,7 @@ func Load(path string) (*Config, error) {
 			Credentials: true,
 		},
 		Auth: AuthConfig{Registration: "open"},
+		SMTP: SMTPConfig{Port: 587},
 	}
 
 	if _, err := os.Stat(path); err == nil {

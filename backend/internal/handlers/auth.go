@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"lore/internal/auth"
 	"lore/internal/config"
 	db "lore/internal/db"
+	"lore/internal/mail"
 )
 
 // AuthHandler handles authentication-related endpoints
@@ -20,6 +22,7 @@ type AuthHandler struct {
 	tokenService  *auth.TokenService
 	cfg           *config.Config
 	secureCookies bool
+	mailer        *mail.Mailer
 }
 
 // Register request/response types
@@ -98,6 +101,7 @@ func NewAuthHandler(database *sql.DB, tokenService *auth.TokenService, cfg *conf
 		tokenService:  tokenService,
 		cfg:           cfg,
 		secureCookies: cfg.Server.SecureCookies,
+		mailer:        mail.New(cfg.SMTP),
 	}
 }
 
@@ -508,6 +512,104 @@ func (h *AuthHandler) Bootstrap(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(registerResponse{
 		User: userToResponse(user),
 	})
+}
+
+// ForgotPassword issues a password reset link and emails it, if the address
+// belongs to an account and SMTP is configured. The response is identical
+// either way — unknown email, no SMTP configured, or send failure all look
+// the same to the caller — so this endpoint cannot be used to enumerate
+// registered accounts.
+func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
+		return
+	}
+	if req.Email == "" || !strings.Contains(req.Email, "@") {
+		writeErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "valid email is required")
+		return
+	}
+
+	if h.mailer.Enabled() {
+		if user, err := db.GetUserByEmail(r.Context(), h.db, req.Email); err == nil && user != nil {
+			if token, err := db.CreatePasswordResetToken(r.Context(), h.db, user.ID); err == nil {
+				link := resetLink(r, token)
+				if err := h.mailer.SendPasswordReset(user.Email, user.Name, link); err != nil {
+					log.Printf("password reset email to %s: %v", user.Email, err)
+				} else {
+					db.LogAuditEvent(r.Context(), h.db, user.ID, "password_reset_requested", "user", user.ID, user.Email, clientIP(r))
+				}
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "si un compte existe avec cet email, un lien de réinitialisation vient d'être envoyé",
+	})
+}
+
+// ResetPassword redeems a token minted by ForgotPassword and sets a new
+// password. Every outstanding token for the user is deleted afterwards —
+// including the one just used — so a copy of an old link cannot be replayed.
+func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token       string `json:"token"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
+		return
+	}
+	if req.Token == "" {
+		writeErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "token is required")
+		return
+	}
+	if len(req.NewPassword) < 8 {
+		writeErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "password must be at least 8 characters")
+		return
+	}
+
+	userID, err := db.GetValidPasswordResetToken(r.Context(), h.db, req.Token)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to validate token")
+		return
+	}
+	if userID == "" {
+		writeErrorResponse(w, http.StatusBadRequest, "INVALID_TOKEN", "lien invalide ou expiré")
+		return
+	}
+
+	if err := db.UpdateUserPassword(r.Context(), h.db, userID, req.NewPassword); err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update password")
+		return
+	}
+	db.DeletePasswordResetTokensForUser(r.Context(), h.db, userID) //nolint:errcheck
+
+	if user, err := db.GetUserByID(r.Context(), h.db, userID); err == nil && user != nil {
+		db.LogAuditEvent(r.Context(), h.db, user.ID, "password_reset", "user", user.ID, user.Email, clientIP(r))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "mot de passe mis à jour"})
+}
+
+// resetLink builds the absolute URL emailed to the user. There is no
+// configured public base URL (see docs/deployment.md — the reverse proxy is
+// the only thing that knows the external host), so this reconstructs it from
+// the request instead: nginx forwards the original Host header unchanged
+// (proxy_set_header Host $host) and sets X-Forwarded-Proto, which is exactly
+// what's needed here.
+func resetLink(r *http.Request, token string) string {
+	scheme := "http"
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		scheme = proto
+	} else if r.TLS != nil {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host + "/reset-password?token=" + token
 }
 
 // Helper functions

@@ -65,6 +65,8 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 		r.Post("/refresh", authHandler.Refresh)
 		r.Get("/csrf", authHandler.CSRF)
 		r.Post("/bootstrap", authHandler.Bootstrap)
+		r.Post("/forgot-password", authHandler.ForgotPassword)
+		r.Post("/reset-password", authHandler.ResetPassword)
 	})
 
 	r.Route("/api", func(r chi.Router) {
@@ -522,7 +524,8 @@ func isCredentialEndpoint(r *http.Request) bool {
 		return false
 	}
 	switch r.URL.Path {
-	case "/api/auth/login", "/api/auth/register", "/api/auth/bootstrap":
+	case "/api/auth/login", "/api/auth/register", "/api/auth/bootstrap",
+		"/api/auth/forgot-password", "/api/auth/reset-password":
 		return true
 	}
 	return false

@@ -46,3 +46,12 @@ max_tokens = 0
 # "open"   : n'importe qui peut créer un compte (défaut)
 # "closed" : seuls le compte bootstrap et ceux créés par un administrateur
 registration = "open"
+
+[smtp]
+# Optionnel — sans host renseigné, aucun email n'est envoyé (mot de passe
+# oublié inclus : le formulaire reste utilisable mais ne fait plus rien).
+# host     = "smtp.mail.ovh.net"
+# port     = 587
+# username = "noreply@exemple.com"
+# password = "..."
+# from     = "Lore Engine <noreply@exemple.com>"

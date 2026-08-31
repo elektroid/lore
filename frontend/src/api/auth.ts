@@ -56,6 +56,25 @@ export async function logout(): Promise<void> {
   await authRequest<void>('/logout', { method: 'POST' })
 }
 
+// Forgot password — always resolves with the same generic message, whether
+// or not the address is registered (see backend AuthHandler.ForgotPassword).
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  return authRequest<{ message: string }>('/forgot-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+}
+
+// Reset password using the token from the emailed link
+export async function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+  return authRequest<{ message: string }>('/reset-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, new_password: newPassword }),
+  })
+}
+
 // Refresh token
 export async function refreshToken(): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
   return authRequest<{ access_token: string; refresh_token: string; expires_in: number }>('/refresh', {
