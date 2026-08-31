@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, Navigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -51,6 +51,19 @@ function AuthorDashboard({ campaigns }: { campaigns: Campaign[] }) {
     },
   })
 
+  const importInputRef = useRef<HTMLInputElement>(null)
+  const importCampaign = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return api.upload<Campaign>('/campaigns/import', form)
+    },
+    onSuccess: (campaign) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      navigate(`/campaigns/${campaign.id}`)
+    },
+  })
+
   function field(key: keyof CampaignForm) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm(f => ({ ...f, [key]: e.target.value }))
@@ -82,9 +95,34 @@ function AuthorDashboard({ campaigns }: { campaigns: Campaign[] }) {
           >
             Archives
           </Link>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) importCampaign.mutate(file)
+            }}
+          />
+          <Button
+            variant="outline"
+            disabled={importCampaign.isPending}
+            onClick={() => importInputRef.current?.click()}
+          >
+            <Upload className="h-3.5 w-3.5 mr-1" />
+            {importCampaign.isPending ? 'Import…' : 'Importer'}
+          </Button>
           <Button onClick={() => setOpen(true)}>Nouvelle campagne</Button>
         </div>
       </div>
+
+      {importCampaign.isError && (
+        <p className="text-destructive text-sm mb-4">
+          {(importCampaign.error as Error).message}
+        </p>
+      )}
 
       {campaigns.length === 0 && (
         <p className="text-muted-foreground text-sm">

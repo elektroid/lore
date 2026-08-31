@@ -187,6 +187,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 		r.Route("/campaigns", func(r chi.Router) {
 			r.Get("/", campaigns.List)
 			r.Post("/", campaigns.Create)
+			r.Post("/import", campaigns.Import)
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", campaigns.Get)
 				r.Put("/", campaigns.Update)

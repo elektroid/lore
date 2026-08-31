@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	db "lore/internal/db"
+	"lore/internal/version"
 )
 
 // ── Export types ──────────────────────────────────────────────────────────────
@@ -21,6 +23,13 @@ import (
 type campaignExportDoc struct {
 	ExportedAt string                `json:"exported_at"`
 	Version    int                   `json:"version"`
+	// AppVersion/AppCommit identify the build that produced this export (see
+	// internal/version) so Import can refuse a file from a different commit
+	// rather than risk writing a shape the schema has since moved on from.
+	// Empty on both sides (a dev/air build never sets version.Commit) means
+	// "unknown" and skips the check rather than blocking it.
+	AppVersion string                `json:"app_version"`
+	AppCommit  string                `json:"app_commit"`
 	Campaign   campaignExportMeta    `json:"campaign"`
 	NPCs       []db.CampaignNPC      `json:"npcs"`
 	Locations  []db.CampaignLocation `json:"locations"`
@@ -313,6 +322,8 @@ func (h *CampaignHandler) Export(w http.ResponseWriter, r *http.Request) {
 	doc := campaignExportDoc{
 		ExportedAt: time.Now().UTC().Format(time.RFC3339),
 		Version:    1,
+		AppVersion: version.Version,
+		AppCommit:  version.Commit,
 		Campaign: campaignExportMeta{
 			ID:        campaign.ID,
 			Name:      campaign.Name,
@@ -333,6 +344,246 @@ func (h *CampaignHandler) Export(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	json.NewEncoder(w).Encode(doc)
+}
+
+// maxCampaignImportSize mirrors maxGameImportSize (games.go) — a campaign's
+// export is scenario prose plus a handful of entity rows, so a few MB is
+// generous headroom.
+const maxCampaignImportSize = 32 << 20
+
+// Import recreates a campaign from another instance's Export doc: same file,
+// no intermediate conversion. It is refused outright when both sides know
+// their build commit and the commits differ (see AppCommit on
+// campaignExportDoc) — the export/import pair only has to agree with
+// whatever schema.sql and this handler currently look like, and a commit
+// mismatch is the cheapest signal that isn't true anymore.
+//
+// Uploaded image URLs are not carried over: the files they point to live on
+// the source instance's disk, never in the export, so a copied URL would
+// just 404 here. NPCs/Locations/Artefacts land with no images; EntityAvatar
+// falls back to initials, same as any other entity nobody has illustrated
+// yet.
+func (h *CampaignHandler) Import(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	user, ok := auth.GetUserFromContext(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	if err := r.ParseMultipartForm(maxCampaignImportSize); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid upload")
+		return
+	}
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "missing file")
+		return
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, maxCampaignImportSize+1))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if len(data) > maxCampaignImportSize {
+		writeError(w, http.StatusBadRequest, "file too large")
+		return
+	}
+
+	var doc campaignExportDoc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		writeError(w, http.StatusBadRequest, "fichier invalide")
+		return
+	}
+	if doc.Campaign.Name == "" {
+		writeError(w, http.StatusBadRequest, "nom de campagne manquant dans l'export")
+		return
+	}
+	if doc.AppCommit != "" && version.Commit != "" && doc.AppCommit != version.Commit {
+		writeError(w, http.StatusConflict, fmt.Sprintf(
+			"cet export vient d'une version différente de l'application (commit %s) — ce serveur tourne en %s. Mettez les deux instances à la même version avant d'importer.",
+			doc.AppCommit, version.Commit))
+		return
+	}
+
+	// Best-effort match onto a local game with the same name — the source
+	// instance's game_id is meaningless here. No match (or no game on the
+	// export) just leaves the campaign unassigned, same as picking "— Aucun
+	// jeu / autre —" in the create dialog; the owner can set it afterwards.
+	gameID := ""
+	if doc.Campaign.GameName != "" {
+		if games, err := db.ListGames(ctx, h.db); err == nil {
+			for _, g := range games {
+				if strings.EqualFold(g.Name, doc.Campaign.GameName) {
+					gameID = g.ID
+					break
+				}
+			}
+		}
+	}
+
+	campaign, err := db.CreateCampaign(ctx, h.db, db.CreateCampaignParams{
+		Name:    doc.Campaign.Name,
+		Genre:   doc.Campaign.Genre,
+		GameID:  gameID,
+		OwnerID: user.ID,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	npcIDMap := make(map[string]string, len(doc.NPCs))
+	for _, n := range doc.NPCs {
+		created, err := db.CreateCampaignNPC(ctx, h.db, campaign.ID, n.Name, n.Role, n.Description, n.Quote, n.Motivation, n.Sheet)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		npcIDMap[n.ID] = created.ID
+	}
+
+	locationIDMap := make(map[string]string, len(doc.Locations))
+	for _, l := range doc.Locations {
+		created, err := db.CreateCampaignLocation(ctx, h.db, campaign.ID, l.Name, l.City, l.District, l.Description, l.Atmosphere)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		locationIDMap[l.ID] = created.ID
+	}
+
+	artefactIDMap := make(map[string]string, len(doc.Artefacts))
+	for _, a := range doc.Artefacts {
+		created, err := db.CreateCampaignArtefact(ctx, h.db, campaign.ID, a.Name, a.Description)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		artefactIDMap[a.ID] = created.ID
+	}
+
+	for _, link := range doc.Links.NPCArtefact {
+		newNPCID, ok := npcIDMap[link.NPCId]
+		if !ok {
+			continue
+		}
+		newArtefactID, ok := artefactIDMap[link.ArtefactID]
+		if !ok {
+			continue
+		}
+		if _, err := db.CreateNPCArtefactLink(ctx, h.db, newNPCID, newArtefactID, link.Nature); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	for _, sc := range doc.Scenarios {
+		scenario, err := db.CreateScenario(ctx, h.db, db.CreateScenarioParams{
+			CampaignID: campaign.ID,
+			Name:       sc.Scenario.Name,
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if sc.Scenario.Status != "" && sc.Scenario.Status != scenario.Status {
+			scenario, err = db.UpdateScenario(ctx, h.db, db.UpdateScenarioParams{
+				ID:     scenario.ID,
+				Name:   scenario.Name,
+				Status: sc.Scenario.Status,
+			})
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+
+		if sc.Synopsis != nil {
+			if _, err := db.UpdateSynopsis(ctx, h.db, db.UpdateSynopsisParams{
+				ScenarioID:    scenario.ID,
+				Hook:          sc.Synopsis.Hook,
+				NPCs:          sc.Synopsis.NPCs,
+				OverviewCache: sc.Synopsis.OverviewCache,
+			}); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+
+		// SynopsisNPC.ID is the campaign NPC's id, not a row id of its own —
+		// see the sn.npc_id column aliased into it in ListSynopsisNPCs.
+		for _, sn := range sc.NPCs {
+			newNPCID, ok := npcIDMap[sn.ID]
+			if !ok {
+				continue
+			}
+			if err := db.AddSynopsisNPC(ctx, h.db, scenario.ID, newNPCID, sn.Status, sn.SortOrder); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+
+		for _, sceneExp := range sc.Scenes {
+			scene, err := db.CreateScene(ctx, h.db, db.CreateSceneParams{
+				ScenarioID:  scenario.ID,
+				Type:        sceneExp.Type,
+				Status:      sceneExp.Status,
+				SortOrder:   sceneExp.SortOrder,
+				Title:       sceneExp.Title,
+				Description: sceneExp.Description,
+				Outcome:     sceneExp.Outcome,
+			})
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+
+			newLocationID := locationIDMap[sceneExp.LocationID]
+			if _, err := db.UpdateScene(ctx, h.db, scene.ID, db.UpdateSceneParams{
+				Title:         sceneExp.Title,
+				Status:        sceneExp.Status,
+				Description:   sceneExp.Description,
+				Outcome:       sceneExp.Outcome,
+				Notes:         sceneExp.Notes,
+				LocationID:    newLocationID,
+				IsStart:       sceneExp.IsStart,
+				IsEnd:         sceneExp.IsEnd,
+				PlaylistType:  sceneExp.PlaylistType,
+				PlaylistValue: sceneExp.PlaylistValue,
+			}); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+
+			for _, npc := range sceneExp.NPCs {
+				if newNPCID, ok := npcIDMap[npc.ID]; ok {
+					if err := db.AddSceneNPC(ctx, h.db, scene.ID, newNPCID); err != nil {
+						writeError(w, http.StatusInternalServerError, err.Error())
+						return
+					}
+				}
+			}
+			for _, art := range sceneExp.Artefacts {
+				if newArtefactID, ok := artefactIDMap[art.ID]; ok {
+					if err := db.AddSceneArtefact(ctx, h.db, scene.ID, newArtefactID); err != nil {
+						writeError(w, http.StatusInternalServerError, err.Error())
+						return
+					}
+				}
+			}
+		}
+	}
+
+	campaign, err = db.GetCampaign(ctx, h.db, campaign.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, campaign)
 }
 
 // ListMemberCharacters returns all campaign members with their characters for the campaign's game.
