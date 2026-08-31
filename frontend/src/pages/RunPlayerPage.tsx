@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import AppShell from '@/components/AppShell'
 import { api } from '@/api/client'
 import { useDocTitle } from '@/hooks/useDocTitle'
+import { useSyncMode } from '@/hooks/useSyncMode'
 import { RUN_STATUS_LABELS } from '@/types/run'
 import type { PlayerRunDetail, RunNote } from '@/types/me'
 import type { ListCharactersResponse, PlayerCharacter } from '@/types/character'
@@ -185,6 +186,7 @@ export default function RunPlayerPage() {
   })
 
   useDocTitle(run ? `lore: ${run.run_name}` : 'lore')
+  useSyncMode('player')
 
   if (isLoading) {
     return (

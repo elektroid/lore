@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import AppShell from '@/components/AppShell'
 import { useDocTitle } from '@/hooks/useDocTitle'
+import { useSyncMode } from '@/hooks/useSyncMode'
 import { api } from '@/api/client'
 import { useUser } from '@/stores/auth'
 import type { Scenario } from '@/types/scenario'
@@ -488,6 +489,7 @@ export default function CampaignDetailPage() {
   // real gamemaster rights but never authoring ones — send it to the hub it
   // actually has, rather than a form whose Enregistrer would just 403.
   const isNonOwner = campaign != null && campaign.access !== 'owner'
+  useSyncMode('author', !isNonOwner)
   useEffect(() => {
     if (isNonOwner) navigate(`/campaigns/${id}/runs`, { replace: true })
   }, [isNonOwner, id, navigate])
@@ -516,13 +518,7 @@ export default function CampaignDetailPage() {
   if (isNonOwner) return null
 
   return (
-    <AppShell
-      crumbs={[{ label: campaign.name }]}
-      modeTabs={[
-        { label: 'Auteur', to: `/campaigns/${id}`, active: true },
-        { label: 'Meneur', to: `/campaigns/${id}/runs`, active: false },
-      ]}
-    >
+    <AppShell crumbs={[{ label: campaign.name }]}>
       <main className="max-w-3xl mx-auto px-6 py-8">
         <CampaignForm campaign={campaign} />
       </main>

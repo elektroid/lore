@@ -17,6 +17,7 @@ import EntityAvatar from '@/components/EntityAvatar'
 import SearchDialog from '@/components/SearchDialog'
 import { api } from '@/api/client'
 import { useDocTitle } from '@/hooks/useDocTitle'
+import { useSyncMode } from '@/hooks/useSyncMode'
 import { stripMentions } from '@/lib/mentions'
 import type { Campaign } from '@/types/campaign'
 import type { CampaignNPC, NPCImage, CampaignLocation, LocationImage, CampaignArtefact, ArtefactImage, CampaignFaction, FactionImage } from '@/types/entities'
@@ -609,6 +610,7 @@ export default function CampaignEntitiesPage() {
   // gamemaster (who reads NPCs/locations through PlayPage's own roster
   // instead). See AccessSection in CampaignDetailPage.tsx.
   const isNonOwner = campaign != null && campaign.access !== 'owner'
+  useSyncMode('author', !isNonOwner)
   useEffect(() => {
     if (isNonOwner) navigate(`/campaigns/${id}/runs`, { replace: true })
   }, [isNonOwner, id, navigate])
@@ -617,10 +619,6 @@ export default function CampaignEntitiesPage() {
   return (
     <AppShell
       crumbs={[{ label: campaign?.name ?? '…', to: `/campaigns/${id}` }, { label: 'Entités' }]}
-      modeTabs={[
-        { label: 'Auteur', to: `/campaigns/${id}`, active: true },
-        { label: 'Meneur', to: `/campaigns/${id}/runs`, active: false },
-      ]}
     >
       <main className="max-w-3xl mx-auto px-6 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>

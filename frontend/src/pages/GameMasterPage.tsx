@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import AppShell from '@/components/AppShell'
 import RunsSection from '@/components/RunsSection'
 import { useDocTitle } from '@/hooks/useDocTitle'
+import { useSyncMode } from '@/hooks/useSyncMode'
 import { api } from '@/api/client'
 import type { Campaign } from '@/types/campaign'
 import type { Scenario } from '@/types/scenario'
@@ -52,6 +53,7 @@ export default function GameMasterPage() {
   })
 
   useDocTitle(campaign ? `lore: ${campaign.name} · Meneur` : 'lore')
+  useSyncMode('gamemaster')
 
   if (isLoading) {
     return (
@@ -74,20 +76,9 @@ export default function GameMasterPage() {
     )
   }
 
-  // A delegated account (access === 'member') can run this campaign's tables
-  // but never write to the campaign itself — no Auteur tab to offer them.
-  // See AccessSection in CampaignDetailPage.tsx.
-  const modeTabs = [
-    ...(campaign.access === 'owner'
-      ? [{ label: 'Auteur', to: `/campaigns/${id}`, active: false }]
-      : []),
-    { label: 'Meneur', to: `/campaigns/${id}/runs`, active: true },
-  ]
-
   return (
     <AppShell
       crumbs={[{ label: campaign.name, to: `/campaigns/${id}` }, { label: 'Meneur' }]}
-      modeTabs={modeTabs}
     >
       <main className="max-w-3xl mx-auto px-6 py-8">
         <RunsSection campaignId={id!} />

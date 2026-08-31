@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import AppShell from '@/components/AppShell'
 import { useDocTitle } from '@/hooks/useDocTitle'
+import { useSyncMode } from '@/hooks/useSyncMode'
 import { api } from '@/api/client'
 import { useUser } from '@/stores/auth'
 import type { User } from '@/types/user'
@@ -236,6 +237,7 @@ function AuditLogTab() {
 export default function AdminPage() {
   useDocTitle('lore: administration')
   const currentUser = useUser()
+  useSyncMode('admin', currentUser?.role === 'superuser')
 
   if (currentUser && currentUser.role !== 'superuser') {
     return <Navigate to="/" replace />

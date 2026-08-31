@@ -10,6 +10,7 @@ import BeatCard from '@/components/factory/BeatCard'
 import CastPanel from '@/components/factory/CastPanel'
 import { AutoTextarea, FieldLabel } from '@/components/factory/fields'
 import { useDocTitle } from '@/hooks/useDocTitle'
+import { useSyncMode } from '@/hooks/useSyncMode'
 import { api } from '@/api/client'
 import { parseProposal, type Proposal, type ScenarioDraft, type ProposalScene } from '@/types/factory'
 import type { Campaign } from '@/types/campaign'
@@ -262,20 +263,17 @@ export default function ScenarioFactoryPage() {
   useEffect(() => {
     if (isNonOwner) navigate(`/campaigns/${campaignId}/runs`, { replace: true })
   }, [isNonOwner, campaignId, navigate])
+  useSyncMode('author', !isNonOwner)
   if (isNonOwner) return null
 
   const crumbs = [
     { label: campaign?.name ?? '…', to: campaign ? `/campaigns/${campaign.id}` : undefined },
     { label: 'Fabrique' },
   ]
-  const modeTabs = [
-    { label: 'Auteur', to: `/campaigns/${campaignId}`, active: true },
-    { label: 'Meneur', to: `/campaigns/${campaignId}/runs`, active: false },
-  ]
 
   if (!draftId || !proposal) {
     return (
-      <AppShell crumbs={crumbs} modeTabs={modeTabs}>
+      <AppShell crumbs={crumbs}>
         <main className="max-w-3xl mx-auto px-6 py-8">
           <BriefForm
             drafts={drafts}
@@ -296,7 +294,7 @@ export default function ScenarioFactoryPage() {
   const notExpanded = proposal.scenes.filter(s => s.include && !s.expanded).length
 
   return (
-    <AppShell crumbs={crumbs} modeTabs={modeTabs}>
+    <AppShell crumbs={crumbs}>
       <main className="max-w-4xl mx-auto px-6 py-8 space-y-5">
         {/* Header */}
         <div className="flex items-start gap-3">

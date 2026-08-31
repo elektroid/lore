@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import AppShell from '@/components/AppShell'
 import { useDocTitle } from '@/hooks/useDocTitle'
+import { useSyncMode } from '@/hooks/useSyncMode'
 import { useTableStream } from '@/hooks/useTableStream'
 import { api } from '@/api/client'
 import { Button } from '@/components/ui/button'
@@ -594,6 +595,7 @@ export default function PlayPage() {
   const openBeats = beats.filter(b => b.status === 'captured' || b.status === 'developed').length
 
   useDocTitle(scenario ? `lore: ${scenario.name} — Play` : 'lore')
+  useSyncMode('gamemaster')
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
@@ -726,12 +728,6 @@ export default function PlayPage() {
         { label: scenario?.name ?? '…', onClick: () => navigate(`/scenarios/${scenarioId}/synopsis`) },
         { label: 'Play' },
       ]}
-      modeTabs={campaign ? [
-        ...(campaign.access === 'owner'
-          ? [{ label: 'Auteur', to: `/campaigns/${campaign.id}`, active: false }]
-          : []),
-        { label: 'Meneur', to: `/campaigns/${campaign.id}/runs`, active: true },
-      ] : undefined}
     >
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-4">
 
@@ -930,7 +926,7 @@ export default function PlayPage() {
               Un groupe réunit les joueurs et garde sa propre progression. Le scénario
               reste identique pour tous ceux qui le jouent.
             </p>
-            <Button onClick={() => navigate(`/campaigns/${scenario?.campaign_id ?? ''}`)}>
+            <Button onClick={() => navigate(`/campaigns/${scenario?.campaign_id ?? ''}/runs`)}>
               <Users className="h-4 w-4 mr-1.5" />
               Créer un groupe
             </Button>

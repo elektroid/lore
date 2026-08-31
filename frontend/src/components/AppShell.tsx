@@ -16,15 +16,8 @@ interface Crumb {
   onClick?: () => void
 }
 
-interface ModeTab {
-  label: string
-  to: string
-  active: boolean
-}
-
 interface AppShellProps {
   crumbs?: Crumb[]
-  modeTabs?: ModeTab[]
   children: React.ReactNode
 }
 
@@ -86,7 +79,7 @@ function VersionBadge() {
   )
 }
 
-export default function AppShell({ crumbs = [], modeTabs, children }: AppShellProps) {
+export default function AppShell({ crumbs = [], children }: AppShellProps) {
   const theme = useUIStore((s) => s.theme)
   const setTheme = useUIStore((s) => s.setTheme)
   const user = useUser()
@@ -277,25 +270,6 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
           </div>
         </TooltipProvider>
       </header>
-      {modeTabs && modeTabs.length > 0 && (
-        <div className="border-b px-6 py-2">
-          <div className="inline-flex rounded-md border p-0.5 bg-muted/40">
-            {modeTabs.map((tab) => (
-              <Link
-                key={tab.to}
-                to={tab.to}
-                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                  tab.active
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {tab.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
       {children}
     </div>
   )

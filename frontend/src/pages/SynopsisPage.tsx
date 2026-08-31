@@ -11,6 +11,7 @@ import BetweenScenesPanel from '@/components/synopsis/BetweenScenesPanel'
 import BrainstormDrawer from '@/components/synopsis/BrainstormDrawer'
 import { useSynopsis } from '@/hooks/useSynopsis'
 import { useDocTitle } from '@/hooks/useDocTitle'
+import { useSyncMode } from '@/hooks/useSyncMode'
 import { api } from '@/api/client'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { Campaign } from '@/types/campaign'
@@ -151,6 +152,7 @@ export default function SynopsisPage() {
   // AccessSection in CampaignDetailPage.tsx.
   const isNonOwner = campaign != null && campaign.access !== 'owner'
   const campaignId = campaign?.id
+  useSyncMode('author', !isNonOwner)
   useEffect(() => {
     if (isNonOwner) navigate(`/campaigns/${campaignId}/runs`, { replace: true })
   }, [isNonOwner, campaignId, navigate])
