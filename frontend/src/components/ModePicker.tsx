@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useUser } from '@/stores/auth'
 import { useModeStore, type AppMode } from '@/stores/mode'
-import { MODES } from '@/lib/modes'
+import { MODES, modeHomePath } from '@/lib/modes'
 
 export default function ModePicker() {
   const navigate = useNavigate()
@@ -12,7 +12,7 @@ export default function ModePicker() {
 
   function choose(id: AppMode) {
     setMode(id)
-    navigate(id === 'admin' ? '/admin' : '/')
+    navigate(modeHomePath(id))
   }
 
   return (

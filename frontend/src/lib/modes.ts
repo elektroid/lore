@@ -42,3 +42,9 @@ export const MODES: ModeInfo[] = [
 export function modeInfo(id: AppMode | null | undefined): ModeInfo | undefined {
   return MODES.find(m => m.id === id)
 }
+
+// Where picking a mode lands: admin has its own dedicated page, the other
+// three render as a dashboard on the homepage — see CampaignsPage.tsx.
+export function modeHomePath(id: AppMode): string {
+  return id === 'admin' ? '/admin' : '/'
+}

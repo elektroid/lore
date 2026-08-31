@@ -1,13 +1,14 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users, Dices, ClipboardList, LogOut, ChevronDown } from 'lucide-react'
+import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users, Dices, ClipboardList, LogOut, ChevronDown, Check } from 'lucide-react'
 import { useUIStore, type Theme } from '@/stores/ui'
 import { useAuthStore, useUser } from '@/stores/auth'
-import { useModeStore } from '@/stores/mode'
-import { modeInfo } from '@/lib/modes'
+import { useModeStore, type AppMode } from '@/stores/mode'
+import { MODES, modeInfo, modeHomePath } from '@/lib/modes'
 import { logout as logoutRequest } from '@/api/auth'
 import { api } from '@/api/client'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'
 
 interface Crumb {
   label: string
@@ -70,6 +71,17 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
   const setMode = useModeStore((s) => s.setMode)
   const navigate = useNavigate()
   const currentMode = modeInfo(mode)
+  const availableModes = MODES.filter(m => !m.superuserOnly || user?.role === 'superuser')
+
+  // Icons only relevant to some modes — see docs/users.md's per-persona split.
+  // Jeux/Fiches de personnage are catalog-management surfaces: an author
+  // picks a game system and, once relevant, its templates; an admin manages
+  // both. Neither belongs to the Meneur or Joueur workflow. Admin/Paramètres
+  // stay role-gated on top, unchanged.
+  const showGames = mode === 'author' || mode === 'admin'
+  const showSheetTemplates = mode === 'admin'
+  const showAdminLink = user?.role === 'superuser' && mode === 'admin'
+  const showSettingsLink = user?.role === 'superuser' && mode === 'admin'
 
   async function handleLogout() {
     try {
@@ -81,9 +93,9 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
     }
   }
 
-  function handleSwitchMode() {
-    setMode(null)
-    navigate('/')
+  function handleChooseMode(id: AppMode) {
+    setMode(id)
+    navigate(modeHomePath(id))
   }
 
   return (
@@ -93,21 +105,33 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
           Lore Engine
         </Link>
         <VersionBadge />
-        <button
-          onClick={handleSwitchMode}
-          title="Changer de mode"
-          className="flex items-center gap-1.5 text-xs pl-2 pr-1.5 py-1 rounded-full border bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-        >
-          {currentMode ? (
-            <>
-              <currentMode.icon className="h-3 w-3" />
-              {currentMode.label}
-            </>
-          ) : (
-            'Choisir un mode'
-          )}
-          <ChevronDown className="h-3 w-3 opacity-60" />
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              title="Changer de mode"
+              className="flex items-center gap-1.5 text-xs pl-2 pr-1.5 py-1 rounded-full border bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              {currentMode ? (
+                <>
+                  <currentMode.icon className="h-3 w-3" />
+                  {currentMode.label}
+                </>
+              ) : (
+                'Choisir un mode'
+              )}
+              <ChevronDown className="h-3 w-3 opacity-60" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            {availableModes.map(m => (
+              <DropdownMenuItem key={m.id} onSelect={() => handleChooseMode(m.id)}>
+                <m.icon className="h-3.5 w-3.5" />
+                {m.label}
+                {mode === m.id && <Check className="h-3.5 w-3.5 ml-auto" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         {crumbs.map((crumb, i) => (
           <span key={i} className="flex items-center gap-2 text-muted-foreground">
             <ChevronRight className="h-3.5 w-3.5" />
@@ -126,30 +150,34 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
         ))}
         <TooltipProvider delayDuration={200}>
           <div className="ml-auto flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link
-                  to="/games"
-                  aria-label="Jeux"
-                  className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
-                >
-                  <Dices className="h-3.5 w-3.5" />
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent>Jeux</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link
-                  to="/sheet-templates"
-                  aria-label="Fiches de personnage"
-                  className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
-                >
-                  <ClipboardList className="h-3.5 w-3.5" />
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent>Fiches de personnage</TooltipContent>
-            </Tooltip>
+            {showGames && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link
+                    to="/games"
+                    aria-label="Jeux"
+                    className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+                  >
+                    <Dices className="h-3.5 w-3.5" />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>Jeux</TooltipContent>
+              </Tooltip>
+            )}
+            {showSheetTemplates && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link
+                    to="/sheet-templates"
+                    aria-label="Fiches de personnage"
+                    className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+                  >
+                    <ClipboardList className="h-3.5 w-3.5" />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>Fiches de personnage</TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Link
@@ -162,7 +190,7 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
               </TooltipTrigger>
               <TooltipContent>Mon profil</TooltipContent>
             </Tooltip>
-            {user?.role === 'superuser' && (
+            {showAdminLink && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link
@@ -176,7 +204,7 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
                 <TooltipContent>Administration</TooltipContent>
               </Tooltip>
             )}
-            {user?.role === 'superuser' && (
+            {showSettingsLink && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link
