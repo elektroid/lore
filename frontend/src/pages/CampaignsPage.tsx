@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Navigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label'
 import AppShell from '@/components/AppShell'
 import EntityAvatar from '@/components/EntityAvatar'
 import CharacterEditorModal from '@/components/CharacterEditorModal'
+import ModePicker from '@/components/ModePicker'
+import { useModeStore } from '@/stores/mode'
 import { api } from '@/api/client'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import type { Campaign } from '@/types/campaign'
@@ -16,7 +18,7 @@ import type { Game } from '@/types/game'
 import type { CreateCharacterRequest, ListCharactersResponse, PlayerCharacter } from '@/types/character'
 import type { ListPlayerRunsResponse } from '@/types/me'
 
-// ── GM view ───────────────────────────────────────────────────────────────────
+// ── Author dashboard ─────────────────────────────────────────────────────────
 
 interface CampaignForm {
   name: string
@@ -26,7 +28,7 @@ interface CampaignForm {
 
 const emptyForm: CampaignForm = { name: '', genre: '', game_id: '' }
 
-function GMView({ campaigns }: { campaigns: Campaign[] }) {
+function AuthorDashboard({ campaigns }: { campaigns: Campaign[] }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -173,6 +175,47 @@ function GMView({ campaigns }: { campaigns: Campaign[] }) {
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+// ── Gamemaster dashboard ─────────────────────────────────────────────────────
+//
+// Every campaign this account can run a table for — owned (write access) and
+// delegated (access === 'member', see docs/users-authors.md §4 "the
+// delegated Meneur"). Unlike AuthorDashboard, rows open the Meneur console
+// directly (/campaigns/:id/runs) rather than the authoring page, and there
+// is no "create campaign" here — creating is an authoring action.
+
+function GamemasterDashboard({ campaigns }: { campaigns: Campaign[] }) {
+  const navigate = useNavigate()
+
+  return (
+    <section>
+      <h2 className="text-lg font-semibold mb-4">Mener une table</h2>
+      {campaigns.length === 0 ? (
+        <p className="text-muted-foreground text-sm">
+          Aucune campagne accessible pour l'instant.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {campaigns.map(c => (
+            <li
+              key={c.id}
+              onClick={() => navigate(`/campaigns/${c.id}/runs`)}
+              className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
+            >
+              <div>
+                <p className="font-medium">{c.name}</p>
+                {c.genre && <p className="text-sm text-muted-foreground">{c.genre}</p>}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {c.access === 'member' ? 'Délégué' : 'Auteur'}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 
@@ -368,11 +411,27 @@ function CharactersView() {
 
 export default function CampaignsPage() {
   useDocTitle('lore')
+  const mode = useModeStore(s => s.mode)
 
   const { data: campaigns = [], isLoading, error } = useQuery({
     queryKey: ['campaigns'],
     queryFn: () => api.get<Campaign[]>('/campaigns'),
+    enabled: mode === 'author' || mode === 'gamemaster' || mode === 'player',
   })
+
+  // Reachable directly (bookmark, browser back) with a stale 'admin' mode —
+  // that mode's home is /admin, not this page. See ModePicker.
+  if (mode === 'admin') {
+    return <Navigate to="/admin" replace />
+  }
+
+  if (!mode) {
+    return (
+      <AppShell>
+        <ModePicker />
+      </AppShell>
+    )
+  }
 
   const owned = campaigns.filter(c => c.access === 'owner' || !c.access)
   const memberOnly = campaigns.filter(c => c.access === 'member')
@@ -397,9 +456,14 @@ export default function CampaignsPage() {
 
         {!isLoading && !error && (
           <div className="space-y-10">
-            <GMView campaigns={owned} />
-            <TablesView memberCampaigns={memberOnly} />
-            <CharactersView />
+            {mode === 'author' && <AuthorDashboard campaigns={owned} />}
+            {mode === 'gamemaster' && <GamemasterDashboard campaigns={campaigns} />}
+            {mode === 'player' && (
+              <>
+                <TablesView memberCampaigns={memberOnly} />
+                <CharactersView />
+              </>
+            )}
           </div>
         )}
       </main>

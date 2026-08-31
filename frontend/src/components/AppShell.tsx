@@ -1,8 +1,10 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users, Dices, ClipboardList, LogOut } from 'lucide-react'
+import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users, Dices, ClipboardList, LogOut, ChevronDown } from 'lucide-react'
 import { useUIStore, type Theme } from '@/stores/ui'
 import { useAuthStore, useUser } from '@/stores/auth'
+import { useModeStore } from '@/stores/mode'
+import { modeInfo } from '@/lib/modes'
 import { logout as logoutRequest } from '@/api/auth'
 import { api } from '@/api/client'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -64,15 +66,24 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
   const setTheme = useUIStore((s) => s.setTheme)
   const user = useUser()
   const clearAuth = useAuthStore((s) => s.logout)
+  const mode = useModeStore((s) => s.mode)
+  const setMode = useModeStore((s) => s.setMode)
   const navigate = useNavigate()
+  const currentMode = modeInfo(mode)
 
   async function handleLogout() {
     try {
       await logoutRequest()
     } finally {
       clearAuth()
+      setMode(null)
       navigate('/login')
     }
+  }
+
+  function handleSwitchMode() {
+    setMode(null)
+    navigate('/')
   }
 
   return (
@@ -82,6 +93,21 @@ export default function AppShell({ crumbs = [], modeTabs, children }: AppShellPr
           Lore Engine
         </Link>
         <VersionBadge />
+        <button
+          onClick={handleSwitchMode}
+          title="Changer de mode"
+          className="flex items-center gap-1.5 text-xs pl-2 pr-1.5 py-1 rounded-full border bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+        >
+          {currentMode ? (
+            <>
+              <currentMode.icon className="h-3 w-3" />
+              {currentMode.label}
+            </>
+          ) : (
+            'Choisir un mode'
+          )}
+          <ChevronDown className="h-3 w-3 opacity-60" />
+        </button>
         {crumbs.map((crumb, i) => (
           <span key={i} className="flex items-center gap-2 text-muted-foreground">
             <ChevronRight className="h-3.5 w-3.5" />
