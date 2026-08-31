@@ -248,7 +248,10 @@ export default function SceneList({ scenarioId, selectedId, onSelect, sceneState
                 onSelect={() => onSelect(scene.id)}
                 played={sceneStates[scene.id] === 'cleared'}
                 voided={sceneStates[scene.id] === 'void'}
-                onDelete={() => deleteScene.mutate(scene.id)}
+                onDelete={() => {
+                  const label = scene.type === 'divider' ? 'ce séparateur' : `la scène "${scene.title || 'sans titre'}"`
+                  if (confirm(`Supprimer ${label} ?`)) deleteScene.mutate(scene.id)
+                }}
               />
             ))}
           </ul>
