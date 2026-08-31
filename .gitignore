@@ -8,6 +8,9 @@ lore.db-wal
 backend/lore.db
 backend/lore.db-shm
 backend/lore.db-wal
+backend/smoke.db
+backend/smoke.db-shm
+backend/smoke.db-wal
 backend/backups/
 backend/tmp/
 backend/vendor/
