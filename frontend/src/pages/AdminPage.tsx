@@ -53,6 +53,8 @@ const auditActionLabels: Record<string, string> = {
   role_demoted: 'Rétrogradé joueur',
   llm_config_updated: 'Config LLM modifiée',
   image_config_updated: "Config d'images modifiée",
+  password_reset_enabled: 'Mot de passe oublié activé',
+  password_reset_disabled: 'Mot de passe oublié désactivé',
   game_created: 'Jeu créé',
   game_updated: 'Jeu modifié',
   game_deleted: 'Jeu supprimé',

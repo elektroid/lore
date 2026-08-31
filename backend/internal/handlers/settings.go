@@ -14,8 +14,9 @@ import (
 )
 
 type SettingsHandler struct {
-	db     *sql.DB
-	encKey string
+	db             *sql.DB
+	encKey         string
+	smtpConfigured bool
 }
 
 // mistralKeySentinel lets the frontend ask the LLM config to reuse the
@@ -280,4 +281,71 @@ func (h *SettingsHandler) PutImageConfig(w http.ResponseWriter, r *http.Request)
 		cfg.OpenRouterAPIKey = crypto.MaskedKey
 	}
 	writeJSON(w, http.StatusOK, cfg)
+}
+
+const passwordResetSettingKey = "password_reset_config"
+
+// PasswordResetConfig is the admin-facing on/off switch for self-service
+// password reset — separate from [smtp] in lore.toml, which is the
+// infrastructure prerequisite (a relay to actually send through). An admin
+// with SMTP configured may still want the flow off (e.g. while sorting out
+// suspected abuse) without editing and redeploying the config file.
+type PasswordResetConfig struct {
+	Enabled bool `json:"enabled"`
+}
+
+// readPasswordResetConfig defaults to enabled when nothing has been saved
+// yet, matching the behaviour the feature shipped with before this toggle
+// existed: on whenever SMTP is configured.
+func readPasswordResetConfig(ctx context.Context, database *sql.DB) (PasswordResetConfig, error) {
+	raw, err := db.GetSetting(ctx, database, passwordResetSettingKey)
+	if err != nil {
+		return PasswordResetConfig{}, err
+	}
+	if raw == "" {
+		return PasswordResetConfig{Enabled: true}, nil
+	}
+	var cfg PasswordResetConfig
+	json.Unmarshal([]byte(raw), &cfg) //nolint:errcheck
+	return cfg, nil
+}
+
+// passwordResetSettingResponse is what the API exposes: the admin's stored
+// preference plus whether SMTP is even configured, so the settings UI can
+// explain why flipping the switch on might still do nothing.
+type passwordResetSettingResponse struct {
+	Enabled        bool `json:"enabled"`
+	SMTPConfigured bool `json:"smtp_configured"`
+}
+
+func (h *SettingsHandler) GetPasswordReset(w http.ResponseWriter, r *http.Request) {
+	cfg, err := readPasswordResetConfig(r.Context(), h.db)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, passwordResetSettingResponse{Enabled: cfg.Enabled, SMTPConfigured: h.smtpConfigured})
+}
+
+func (h *SettingsHandler) PutPasswordReset(w http.ResponseWriter, r *http.Request) {
+	var req PasswordResetConfig
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "corps de requête invalide")
+		return
+	}
+	b, _ := json.Marshal(req)
+	if err := db.SetSetting(r.Context(), h.db, passwordResetSettingKey, string(b)); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if requester, ok := auth.GetUserFromContext(r); ok {
+		action := "password_reset_disabled"
+		if req.Enabled {
+			action = "password_reset_enabled"
+		}
+		db.LogAuditEvent(r.Context(), h.db, requester.ID, action, "settings", passwordResetSettingKey, "", clientIP(r))
+	}
+
+	writeJSON(w, http.StatusOK, passwordResetSettingResponse{Enabled: req.Enabled, SMTPConfigured: h.smtpConfigured})
 }

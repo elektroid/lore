@@ -103,15 +103,17 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 			})
 		})
 
-		settings := &SettingsHandler{db: database, encKey: cfg.EncryptionKey()}
+		settings := &SettingsHandler{db: database, encKey: cfg.EncryptionKey(), smtpConfigured: cfg.SMTP.Enabled()}
 		serverInfo := &ServerInfoHandler{db: database, dbPath: cfg.Database.Path, uploadsDir: uploadsDir, externalMaterialDir: externalMaterialDir}
 		r.Route("/settings", func(r chi.Router) {
 			// Reads are open: the app shows whether an LLM is configured, and
 			// the key is masked on the way out. Writes are instance-wide.
 			r.Get("/llm", settings.GetLLM)
 			r.Get("/images", settings.GetImageConfig)
+			r.Get("/password-reset", settings.GetPasswordReset)
 			r.With(requireSuperuser).Put("/llm", settings.PutLLM)
 			r.With(requireSuperuser).Put("/images", settings.PutImageConfig)
+			r.With(requireSuperuser).Put("/password-reset", settings.PutPasswordReset)
 			r.With(requireSuperuser).Post("/llm/models", settings.ListLLMModels)
 			// Disk space and process facts are operational detail, not secrets,
 			// but there's no reason to expose them beyond the people who already

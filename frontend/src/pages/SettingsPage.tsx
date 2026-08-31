@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,6 +27,11 @@ interface ImageConfig {
 
 interface ModelInfo {
   id: string
+}
+
+interface PasswordResetSetting {
+  enabled: boolean
+  smtp_configured: boolean
 }
 
 interface ServerInfo {
@@ -140,6 +145,15 @@ export default function SettingsPage() {
     queryKey: ['settings', 'server-info'],
     queryFn: () => api.get<ServerInfo>('/settings/server-info'),
     enabled: currentUser?.role === 'superuser',
+  })
+  const { data: passwordReset, isLoading: passwordResetLoading } = useQuery({
+    queryKey: ['settings', 'password-reset'],
+    queryFn: () => api.get<PasswordResetSetting>('/settings/password-reset'),
+  })
+  const queryClient = useQueryClient()
+  const togglePasswordReset = useMutation({
+    mutationFn: (enabled: boolean) => api.put<PasswordResetSetting>('/settings/password-reset', { enabled }),
+    onSuccess: (updated) => queryClient.setQueryData(['settings', 'password-reset'], updated),
   })
 
   const [llm, setLlm] = useState<LLMConfig>(defaultLLM)
@@ -493,6 +507,45 @@ export default function SettingsPage() {
               </Button>
             </div>
           </form>
+        </div>
+
+        <div className="border-t pt-10">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold">Mot de passe oublié</h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                Autorise les comptes à demander un lien de réinitialisation par email.
+              </p>
+            </div>
+            {!passwordResetLoading && passwordReset && (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={passwordReset.enabled}
+                disabled={togglePasswordReset.isPending}
+                onClick={() => togglePasswordReset.mutate(!passwordReset.enabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+                  passwordReset.enabled ? 'bg-primary' : 'bg-muted'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
+                    passwordReset.enabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            )}
+          </div>
+
+          {!passwordResetLoading && passwordReset && !passwordReset.smtp_configured && (
+            <p className="text-xs text-amber-600 dark:text-amber-500 mt-3">
+              Aucun serveur SMTP n'est configuré (section <code>[smtp]</code> de <code>lore.toml</code>) —
+              même activé, ce réglage n'enverra aucun email tant que ce n'est pas fait.
+            </p>
+          )}
+          {togglePasswordReset.error && (
+            <p className="text-destructive text-xs mt-3">{(togglePasswordReset.error as Error).message}</p>
+          )}
         </div>
 
         <div className="border-t pt-10">

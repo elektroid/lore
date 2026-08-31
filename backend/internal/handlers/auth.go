@@ -520,6 +520,12 @@ func (h *AuthHandler) Bootstrap(w http.ResponseWriter, r *http.Request) {
 // the same to the caller — so this endpoint cannot be used to enumerate
 // registered accounts.
 func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	if prCfg, err := readPasswordResetConfig(r.Context(), h.db); err == nil && !prCfg.Enabled {
+		writeErrorResponse(w, http.StatusForbidden, "PASSWORD_RESET_DISABLED",
+			"la réinitialisation de mot de passe est désactivée — contactez l'administrateur")
+		return
+	}
+
 	var req struct {
 		Email string `json:"email"`
 	}
