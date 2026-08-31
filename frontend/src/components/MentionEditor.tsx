@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { Bold, Italic, List } from 'lucide-react'
 import { useCampaignMentions, type Mentionable } from '@/hooks/useCampaignMentions'
 import {
   MENTION_RE, MENTION_KIND_BADGE, MENTION_KIND_LABEL,
@@ -187,8 +188,119 @@ export default function MentionEditor({ campaignId, value, onChange, placeholder
 
   const found = dd ? search(dd.query) : []
 
+  /**
+   * Wrap the selection in `**bold**` / `*italic*` markers, or insert an empty
+   * pair with the caret in the middle when nothing is selected. Goes through
+   * execCommand('insertText') so it's indistinguishable from typing — the
+   * existing onInput -> handleInput path picks it up, same as everything else
+   * in this editor.
+   */
+  function applyMarker(marker: string) {
+    const el = editorRef.current
+    if (!el) return
+    el.focus()
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0) return
+    const range = sel.getRangeAt(0)
+    if (!el.contains(range.commonAncestorContainer)) return
+    const selected = sel.toString()
+    document.execCommand('insertText', false, marker + selected + marker)
+    if (selected === '') {
+      const sel2 = window.getSelection()
+      const node = sel2?.getRangeAt(0)?.startContainer
+      if (sel2 && node && node.nodeType === Node.TEXT_NODE) {
+        const r = document.createRange()
+        r.setStart(node, Math.max(0, sel2.getRangeAt(0).startOffset - marker.length))
+        r.collapse(true)
+        sel2.removeAllRanges()
+        sel2.addRange(r)
+      }
+    }
+  }
+
+  /**
+   * Prefix the current line with `- `. Line-level rather than
+   * selection-level, because the browser represents lines two different
+   * ways here: the first line is a flat run of siblings directly under the
+   * editor, every line after it is wrapped in its own <div> by the browser's
+   * native Enter handling. Doesn't check for or toggle off an existing `- ` —
+   * clicking twice stacks markers, a rough edge left for later rather than
+   * solved now.
+   */
+  function applyListPrefix() {
+    const el = editorRef.current
+    if (!el) return
+    el.focus()
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0) return
+    const range = sel.getRangeAt(0)
+    if (!el.contains(range.commonAncestorContainer)) return
+
+    let top: Node = range.startContainer
+    if (top !== el) {
+      while (top.parentNode && top.parentNode !== el) top = top.parentNode
+    }
+
+    const r = document.createRange()
+    if (top === el) {
+      // Cursor sits directly in the editor (empty field, or an ambiguous
+      // spot) — no specific line to anchor to, fall back to the very start.
+      r.setStart(el, 0)
+    } else if (top instanceof HTMLDivElement) {
+      // A later line: insert inside its own <div>, not before it — the div
+      // itself is the line, "before" it would land in the previous one.
+      r.setStart(top, 0)
+    } else {
+      // The first line: walk back past sibling nodes (text runs, mention
+      // chips) to the true start of the line, not just the node the cursor
+      // happens to be in.
+      let first = top
+      while (first.previousSibling
+        && !(first.previousSibling instanceof HTMLDivElement)
+        && !(first.previousSibling instanceof HTMLBRElement)) {
+        first = first.previousSibling
+      }
+      r.setStartBefore(first)
+    }
+    r.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(r)
+    document.execCommand('insertText', false, '- ')
+  }
+
   return (
     <div className="relative">
+      {!disabled && (
+        <div className="flex items-center gap-0.5 mb-1">
+          <button
+            type="button"
+            title="Gras (** **)"
+            className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => applyMarker('**')}
+          >
+            <Bold className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Italique (* *)"
+            className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => applyMarker('*')}
+          >
+            <Italic className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Liste à puces (- )"
+            className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+            onMouseDown={e => e.preventDefault()}
+            onClick={applyListPrefix}
+          >
+            <List className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
       <div
         ref={editorRef}
         contentEditable={!disabled}
