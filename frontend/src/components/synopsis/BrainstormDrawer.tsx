@@ -134,7 +134,7 @@ function SceneSuggestionCard({
         disabled={create.isPending}
         onClick={() => create.mutate(scenes.length)}
       >
-        {create.isPending ? 'Création…' : 'Ajouter au synopsis'}
+        {create.isPending ? 'Création…' : 'Ajouter au scénario'}
       </Button>
       {create.isError && <p className="text-xs text-destructive">{(create.error as Error).message}</p>}
     </div>
@@ -171,7 +171,7 @@ function MessageBubble({ msg, scenarioId }: { msg: BrainstormMessage; scenarioId
           />
         )}
         {sceneAdded && (
-          <p className="text-xs text-muted-foreground px-1">✓ Scène ajoutée au synopsis</p>
+          <p className="text-xs text-muted-foreground px-1">✓ Scène ajoutée au scénario</p>
         )}
       </div>
     </div>

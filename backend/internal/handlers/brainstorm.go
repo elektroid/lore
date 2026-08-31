@@ -27,7 +27,9 @@ func buildBrainstormSystemPrompt(ctx context.Context, database *sql.DB, campaign
 	sb.WriteString("You help brainstorm and develop scenarios in a conversational way.\n")
 	sb.WriteString("You ALWAYS reply with exactly this JSON format (nothing else):\n")
 	sb.WriteString(`{"message":"your reply here","scene_suggestion":null}` + "\n")
-	sb.WriteString("When you propose a concrete, developed scene, provide scene_suggestion:\n")
+	sb.WriteString("Most replies should just be conversation — ask questions, react, riff on ideas — with scene_suggestion left null. ")
+	sb.WriteString("Only set a non-null scene_suggestion once an idea has become genuinely concrete and ready to add (clear title, setting, outcome), and never two turns in a row. ")
+	sb.WriteString("When in doubt, keep talking instead of suggesting a scene:\n")
 	sb.WriteString(`{"message":"...","scene_suggestion":{"title":"...","description":"...","outcome":"..."}}` + "\n")
 	sb.WriteString("Be creative, concise and engaging.\n")
 
@@ -174,6 +176,22 @@ type sendMessageResponse struct {
 	Message *db.BrainstormMessage `json:"message"`
 }
 
+// lastAssistantHadSuggestion reports whether the most recent assistant message
+// in history already carried a non-null scene_suggestion.
+func lastAssistantHadSuggestion(history []db.BrainstormMessage) bool {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role != "assistant" {
+			continue
+		}
+		var envelope assistantEnvelope
+		if err := json.Unmarshal([]byte(history[i].Content), &envelope); err != nil {
+			return false
+		}
+		return envelope.SceneSuggestion != nil
+	}
+	return false
+}
+
 func (h *BrainstormHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	scenarioID := chi.URLParam(r, "id")
 	threadID := chi.URLParam(r, "threadId")
@@ -228,6 +246,11 @@ func (h *BrainstormHandler) SendMessage(w http.ResponseWriter, r *http.Request) 
 	if err := json.Unmarshal([]byte(parsed), &envelope); err != nil {
 		// Fallback: treat entire reply as plain message
 		envelope = assistantEnvelope{Message: raw}
+	}
+	// The model doesn't reliably follow the "don't suggest every turn" instruction on its own:
+	// never suggest a scene on the thread's very first reply, and never two turns in a row.
+	if envelope.SceneSuggestion != nil && (isFirst || lastAssistantHadSuggestion(history)) {
+		envelope.SceneSuggestion = nil
 	}
 	// Re-serialise to a clean envelope for storage
 	stored, _ := json.Marshal(envelope)
