@@ -6,6 +6,39 @@ import type { Scenario } from '@/types/scenario'
 import type { Campaign } from '@/types/campaign'
 import type { Synopsis, SynopsisNPC, Scene } from '@/types/synopsis'
 import { stripMentions } from '@/lib/mentions'
+import { parseRichText, type InlineRun } from '@/lib/richtext'
+
+function renderRun(run: InlineRun, key: number) {
+  if (run.type === 'bold') return <strong key={key}>{run.text}</strong>
+  if (run.type === 'italic') return <em key={key}>{run.text}</em>
+  // Mentions were already flattened to `@Name` before parsing — see printProse.
+  return <span key={key}>{run.type === 'text' ? run.text : run.storedName}</span>
+}
+
+/**
+ * Fields authored through MentionEditor may carry `**bold**` / `- list`
+ * markers (see lib/richtext.ts) alongside mentions. A print sheet has no
+ * entity list to resolve mentions against, so flatten those to `@Name` first,
+ * same as before, then render the formatting on top.
+ */
+function PrintProse({ text, className }: { text: string; className?: string }) {
+  const blocks = parseRichText(stripMentions(text))
+  return (
+    <div className={className}>
+      {blocks.map((block, bi) => block.type === 'list' ? (
+        <ul key={bi} className="list-disc pl-5 mb-1 last:mb-0">
+          {block.items.map((runs, li) => <li key={li}>{runs.map(renderRun)}</li>)}
+        </ul>
+      ) : (
+        <p key={bi} className="mb-1 last:mb-0">
+          {block.lines.map((runs, li) => (
+            <span key={li}>{li > 0 && <br />}{runs.map(renderRun)}</span>
+          ))}
+        </p>
+      ))}
+    </div>
+  )
+}
 
 function firstImage(imagesJson: string): string | null {
   try {
@@ -74,7 +107,7 @@ export default function PrintPage() {
   }
 
   let hookContent = ''
-  try { hookContent = stripMentions(JSON.parse(synopsis.hook)?.content ?? '') } catch {}
+  try { hookContent = JSON.parse(synopsis.hook)?.content ?? '' } catch {}
 
   const visibleScenes = scenes.filter(s => s.type === 'scene')
 
@@ -103,7 +136,7 @@ export default function PrintPage() {
       {hookContent && (
         <section className="print-section">
           <h2 className="print-section-title">Synopsis</h2>
-          <p className="print-prose">{hookContent}</p>
+          <PrintProse text={hookContent} className="print-prose" />
         </section>
       )}
 
@@ -122,7 +155,7 @@ export default function PrintPage() {
                   <div className="print-npc-body">
                     <div className="print-npc-name">{npc.name}</div>
                     {npc.role && <div className="print-npc-role">{npc.role}</div>}
-                    {npc.description && <p className="print-npc-desc">{stripMentions(npc.description)}</p>}
+                    {npc.description && <PrintProse text={npc.description} className="print-npc-desc" />}
                     {npc.motivation && <p className="print-npc-motivation"><em>Motivation : </em>{npc.motivation}</p>}
                     {npc.quote && <p className="print-npc-quote">« {npc.quote} »</p>}
                   </div>
@@ -150,7 +183,7 @@ export default function PrintPage() {
                     <span className="print-scene-location">📍 {scene.location_name}</span>
                   )}
                 </div>
-                {scene.description && <p className="print-prose mt-1">{stripMentions(scene.description)}</p>}
+                {scene.description && <PrintProse text={scene.description} className="print-prose mt-1" />}
                 {scene.outcome && (
                   <p className="print-outcome"><strong>Dénouement : </strong>{scene.outcome}</p>
                 )}
