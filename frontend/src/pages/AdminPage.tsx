@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Navigate } from 'react-router-dom'
-import { Shield, ShieldOff, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Shield, ShieldOff, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import AppShell from '@/components/AppShell'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import { useSyncMode } from '@/hooks/useSyncMode'
@@ -113,7 +116,90 @@ function UserRow({ user, currentUserId }: { user: PublicUser; currentUserId: str
   )
 }
 
+interface NewUserForm {
+  name: string
+  email: string
+  password: string
+  role: string
+}
+
+const emptyNewUserForm: NewUserForm = { name: '', email: '', password: '', role: 'player' }
+
+function CreateUserDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const queryClient = useQueryClient()
+  const [form, setForm] = useState<NewUserForm>(emptyNewUserForm)
+
+  const create = useMutation({
+    mutationFn: (data: NewUserForm) => api.post<PublicUser>('/users', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      onOpenChange(false)
+      setForm(emptyNewUserForm)
+    },
+  })
+
+  function field(key: keyof NewUserForm) {
+    return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setForm(f => ({ ...f, [key]: e.target.value }))
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={o => { onOpenChange(o); if (!o) setForm(emptyNewUserForm) }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Nouvel utilisateur</DialogTitle>
+        </DialogHeader>
+        <form
+          onSubmit={e => { e.preventDefault(); create.mutate(form) }}
+          className="space-y-4 mt-2"
+        >
+          <div className="space-y-2">
+            <Label htmlFor="name">Nom *</Label>
+            <Input id="name" value={form.name} onChange={field('name')} autoFocus />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="email">Email *</Label>
+            <Input id="email" type="email" value={form.email} onChange={field('email')} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="password">Mot de passe *</Label>
+            <Input id="password" type="text" value={form.password} onChange={field('password')} placeholder="8 caractères minimum" />
+            <p className="text-xs text-muted-foreground">
+              Communiquez-le vous-même — il n'y a pas d'email d'invitation.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="role">Rôle</Label>
+            <select
+              id="role"
+              value={form.role}
+              onChange={field('role')}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="player">Joueur</option>
+              <option value="superuser">Admin</option>
+            </select>
+          </div>
+          {create.error && (
+            <p className="text-destructive text-sm">{create.error.message}</p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button>
+            <Button
+              type="submit"
+              disabled={!form.name.trim() || !form.email.trim() || form.password.length < 8 || create.isPending}
+            >
+              {create.isPending ? 'Création…' : 'Créer'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function UsersTab({ currentUserId }: { currentUserId: string }) {
+  const [creating, setCreating] = useState(false)
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['admin-users'],
     queryFn: () => api.get<PublicUser[]>('/users'),
@@ -121,6 +207,12 @@ function UsersTab({ currentUserId }: { currentUserId: string }) {
 
   return (
     <>
+      <div className="flex items-center justify-end mb-4">
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus className="h-3.5 w-3.5 mr-1" />Nouvel utilisateur
+        </Button>
+      </div>
+
       {isLoading && (
         <p className="text-sm text-muted-foreground">Chargement…</p>
       )}
@@ -144,6 +236,8 @@ function UsersTab({ currentUserId }: { currentUserId: string }) {
           </ul>
         </>
       )}
+
+      <CreateUserDialog open={creating} onOpenChange={setCreating} />
     </>
   )
 }

@@ -72,6 +72,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 		users := &UserHandler{db: database}
 		r.Route("/users", func(r chi.Router) {
 			r.Get("/", users.List)
+			r.With(requireSuperuser).Post("/", users.Create)
 			r.Put("/{id}/role", users.UpdateRole)
 		})
 
