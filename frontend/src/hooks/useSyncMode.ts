@@ -12,11 +12,20 @@ import { useModeStore, type AppMode } from '@/stores/mode'
 // to "/admin" whenever mode is 'admin' — syncing unconditionally there would
 // set mode='admin' right before the redirect and the two pages would bounce
 // forever). Pass false for the visitors about to be redirected away.
+//
+// Deliberately reads the store's current value imperatively (getState())
+// rather than subscribing to it: subscribing would re-run this effect on
+// every mode change, including the one *this same page* is about to be
+// navigated away from — e.g. picking "Meneur de jeu" from the dropdown
+// while still mounted on an author page would set mode='gamemaster', which
+// would re-fire this effect before the navigation unmounts the page, and
+// it would "correct" the mode straight back to 'author'. Keying the effect
+// only on [mode, enabled] means it fires once on arrival (or when campaign
+// ownership resolves), not on every subsequent store change.
 export function useSyncMode(mode: AppMode, enabled = true) {
-  const current = useModeStore(s => s.mode)
   const setMode = useModeStore(s => s.setMode)
 
   useEffect(() => {
-    if (enabled && current !== mode) setMode(mode)
-  }, [mode, enabled, current, setMode])
+    if (enabled && useModeStore.getState().mode !== mode) setMode(mode)
+  }, [mode, enabled, setMode])
 }
