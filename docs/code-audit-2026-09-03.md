@@ -22,33 +22,46 @@ well-defined spots, not spread evenly through the app.
 
 ### Must
 
-- **`Import` game handler has no transaction wrapping.**
-  `backend/internal/handlers/games.go`, `Import` (~line 683–748). Restoring a
-  game export does a sequence of individual `Exec`/`Create*` calls — game row,
-  sheet template, then one `CreateGameLoreEntity`/`UpsertGameLoreEntityRelation`
-  per entity/relation in the import file — with no `Begin`/`Commit`/`Rollback`
-  around any of it. Every other multi-statement writer in the codebase
-  (`archive.go`, `game_lore.go`, `scenarios.go`, `synopses.go`) wraps in a
-  transaction; this one doesn't. A failure partway through an import (bad
-  entity 150 of 300, disk full, etc.) leaves an orphaned game row and a
-  half-populated lore graph, with no automatic way back — an admin has to
-  clean it up by hand in the DB. Fix: wrap the whole import body in one `Tx`.
+- ~~**`Import` game handler has no transaction wrapping.**~~ **Fixed
+  2026-09-03.** `backend/internal/handlers/games.go`'s `Import` now runs
+  its whole body inside one `h.db.BeginTx`/`tx.Commit`, with `defer
+  tx.Rollback()` covering every early return. This needed the db-layer
+  functions `Import` calls (`GetGame`, `GetGameBySlug`, `CreateGame`,
+  `UpdateGameVisualStyle`, `GetSheetTemplate`, `GetSheetTemplateByName`,
+  `CreateSheetTemplate`, `CreateGameLoreEntity`,
+  `UpsertGameLoreEntityRelation`) to accept a new `db.DBTX` interface
+  (satisfied by both `*sql.DB` and `*sql.Tx`) instead of a concrete
+  `*sql.DB`, added in `internal/db/db.go` — every other call site keeps
+  compiling unchanged since `*sql.DB` still satisfies the interface.
+  Verified: `go build`/`go vet`/`go test ./...` all pass, and a live
+  create/get/update/delete/generate-images/confirm-images round trip
+  against the running dev backend behaved identically to before.
 
 ### Should
 
-- **CRUD handlers are copy-pasted per entity type instead of shared.**
-  `backend/internal/handlers/entities.go` — `List/Get/Create/Update/Delete`
-  for NPC, Location, Artefact, Faction (lines 21–366) are ~90 lines each,
-  identical in shape and differing only in the type name and the French
-  error string. Same pattern repeats in
-  `backend/internal/handlers/entity_image_llm.go` (Generate/Confirm image
-  handling, ~60 lines × 3, plus a fourth near-copy for Artefact in
-  `artefact_llm.go`). A generic helper or table-driven dispatch would cut
-  roughly 250+ lines and — more importantly — mean a bug fix only has to
-  happen once. One drift already visible from this: `DevelopNPC/Location/
-  Faction` all hang off `*EntityHandler`, but `DevelopArtefact` hangs off a
-  different type (`*ImageLLMHandler`) — a sign Artefact support was bolted on
-  later without reconciling with its three siblings.
+- ~~**CRUD handlers are copy-pasted per entity type instead of shared.**~~
+  **Fixed 2026-09-03.** `backend/internal/handlers/entities.go`'s
+  `List/Get/Create/Update/Delete` for NPC/Location/Artefact/Faction now go
+  through four new generics in `router.go` — `writeList`, `writeEntity`,
+  `writeCreated`, `writeDeleted`, plus a `decodeJSON[T]` for the
+  Create/Update body — while every status code, error message string, and
+  db-call signature stayed byte-for-byte the same (verified by curl against
+  the live dev backend: create/get/get-404/update/delete/list all matched
+  prior behavior exactly). `entities.go` dropped from 379 to 246 lines. The
+  same pattern in `entity_image_llm.go`'s Generate/Confirm image handling
+  (NPC/Location/Faction) and `artefact_llm.go`'s Artefact copy is also
+  fixed: a shared `generateEntityImages`/`confirmEntityImages` pair now
+  does the config/pending-dir/agent/spawn scaffolding once, parameterized
+  by kind-specific closures for prompt-building and the one real
+  per-kind difference (`LocationImage`'s extra `Type` field). Combined,
+  `entity_image_llm.go` + `artefact_llm.go` dropped from ~592 to 402 lines.
+  Live-tested end to end (including an actual `generate-images` call against
+  the real dev backend) with no behavior change. One sub-finding is
+  deliberately left as-is: `DevelopNPC/Location/Faction` still hang off
+  `*EntityHandler` while `DevelopArtefact` hangs off `*ImageLLMHandler` —
+  moving it would mean reshuffling which handler struct owns which LLM
+  config/mention-resolver dependencies, which is a naming/organization
+  question, not duplicated logic, so it was left for a separate pass.
 - **`internal/db` (27 files, all persistence/transactional-write logic) has
   zero test files.** Contrast with `internal/handlers`, which has some
   coverage (`runs_test.go`, `access_test.go`, `proposal_test.go`). The
@@ -119,29 +132,33 @@ CLI tools. CORS defaults are conservative (`localhost:5173` only, not `*`).
 
 ### Should
 
-- **Image-management logic is hand-copied four times.**
-  `NPCEditorModal.tsx`, `LocationEditorModal.tsx`, `FactionEditorModal.tsx`
-  each define a near-identical local `ImageGrid` component (~130 lines each:
-  upload/delete/generate/confirm mutations, drag-drop, lightbox);
-  `ArtefactEditorModal.tsx` inlines the same five mutations again instead of
-  using a shared component (confirmed: `generateImages`, `confirmImages`,
-  `uploadImage`, `deleteImage` all redefined at lines 129–163). The
-  duplication has already caused drift: Location's copy gained a
-  `type`/`updateMeta` mutation the other three don't have. Extract one
-  `useEntityImages(kind, campaignId, entityId)` hook plus a generic
-  `<EntityImageGrid>`; today a bug fix or new feature here has to be applied
-  by hand in four places, and one already lags behind.
-- **`AutoTextarea` is separately redefined** in both `NPCEditorModal.tsx:37`
-  and `CharacterEditorModal.tsx:19` with slightly different props — smaller
-  version of the same problem.
-- **`onUpdated` callbacks lie about their type.** `NPCEditorModal.tsx:84`,
-  `LocationEditorModal.tsx:76`, `FactionEditorModal.tsx:47` all do
-  `onUpdated({ ...({} as CampaignNPC), images: ... })` — an empty object
-  cast to the full entity type to satisfy a callback that's really only
-  ever used as a partial patch. This defeats the type checker: nothing stops
-  a future callee from reading an unset field off the "full" object and
-  silently getting `undefined`. Type `onUpdated` as `(patch: Partial<T>) =>
-  void` instead.
+- ~~**Image-management logic is hand-copied four times.**~~ **Fixed
+  2026-09-03.** Extracted `frontend/src/hooks/useEntityImages.ts` — a
+  generic hook providing the upload/delete/generate/confirm mutations
+  shared by all four editors, parameterized by entity/image type and the
+  URL kind segment. `NPCEditorModal.tsx`, `LocationEditorModal.tsx`,
+  `FactionEditorModal.tsx` and `ArtefactEditorModal.tsx` now all call it;
+  Location's one genuine outlier (the `type`/label `updateMeta` mutation,
+  which has no equivalent on the other three kinds) stays local to
+  `LocationEditorModal.tsx` rather than being forced into the shared hook.
+  Each modal's own JSX/visual layout was deliberately left untouched —
+  Artefact's compact flex-wrap grid is a real, pre-existing design
+  difference from the other three's drag-and-drop grid, not slop, so
+  unifying presentation was out of scope for a duplication fix. Verified
+  with `tsc -b --noEmit`, `eslint`, and `vite build`, plus a full read of
+  every changed call site against the originals.
+- ~~**`AutoTextarea` is separately redefined**~~ **Fixed 2026-09-03.**
+  Extracted to `frontend/src/components/ui/AutoTextarea.tsx`, matching the
+  project's `components/ui/` primitives convention; both call sites updated.
+- ~~**`onUpdated` callbacks lie about their type.**~~ **Fixed 2026-09-03,**
+  as a consequence of centralizing the image mutations above — the shared
+  hook's `onUpdated` is now typed `(patch: Partial<TEntity>) => void`
+  everywhere, and every call site (all four modals) updates the cache via
+  `patchCachedItem`/`patchCachedListItem` instead of a full-object cast.
+  This is a real behavior improvement, not just a type fix: the old
+  `qc.setQueryData(['npc', id], { ...({} as CampaignNPC), images: ... })`
+  after a delete overwrote every other cached field with `undefined` until
+  the next refetch; the merge-patch never does.
 - **`PlayPage.tsx` is a 1029-line God-component.** The default export alone
   owns 10 `useState`, 12 `useQuery`, 11 `useMutation`, and the file also
   defines six more components inline (`SessionModal`, `RosterDialog`,
@@ -199,12 +216,13 @@ across NPCs/Locations/Factions/Artefacts and reused correctly in
 ## Suggested order of attack
 
 1. ~~Frontend `onError`/toast gap (Must)~~ — done, see above.
-2. Backend `Import` transaction (Must) — low-frequency but real data
-   integrity risk, and a small fix. Still open.
-3. The two duplication clusters (backend entity CRUD, frontend
-   `ImageGrid`/`AutoTextarea`) — same root cause on both sides
-   (copy-pasted-per-entity-type instead of parameterized), worth doing
-   together since fixing the pattern once teaches the fix for the other.
+2. ~~Backend `Import` transaction (Must)~~ — done, see above.
+3. ~~The two duplication clusters (backend entity CRUD + image-LLM,
+   frontend `ImageGrid`/`AutoTextarea`)~~ — done, see above. The one
+   deliberately-skipped sub-item (`DevelopArtefact`'s handler-struct
+   placement) is noted inline above.
 4. Test gaps (`internal/db`, `auth.go`) — before the next round of changes
-   to either, not urgent in isolation.
-5. Everything in Could — nice-to-haves, no forcing function.
+   to either, not urgent in isolation. Not attempted this pass (explicitly
+   out of scope).
+5. Everything in Could — nice-to-haves, no forcing function. Not attempted
+   this pass (explicitly out of scope).

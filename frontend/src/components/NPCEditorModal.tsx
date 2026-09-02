@@ -3,11 +3,13 @@ import { Sparkles, Trash2, X, Images } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { AutoTextarea } from '@/components/ui/AutoTextarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { CampaignNPC, NPCImage, PendingImage } from '@/types/entities'
 import { api } from '@/api/client'
 import { patchCachedItem, patchCachedListItem } from '@/api/cache'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
+import { useEntityImages } from '@/hooks/useEntityImages'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
 import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
 import MentionEditor from '@/components/MentionEditor'
@@ -32,26 +34,6 @@ export const NPC_SUGGESTION_FIELDS: SuggestionField[] = [
   { key: 'quote', label: 'Réplique type', multiline: true },
 ]
 
-// ── Auto-grow textarea ─────────────────────────────────────────────────────────
-
-function AutoTextarea({ value, onChange, placeholder, className = '', disabled }: {
-  value: string; onChange: (v: string) => void
-  placeholder?: string; className?: string; disabled?: boolean
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => {
-    const el = ref.current; if (!el) return
-    el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'
-  }, [value])
-  return (
-    <textarea
-      ref={ref} rows={3} value={value} placeholder={placeholder} disabled={disabled}
-      onChange={e => onChange(e.target.value)}
-      className={`w-full resize-none overflow-hidden rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 ${className}`}
-    />
-  )
-}
-
 // ── Image grid (illustrations only) ──────────────────────────────────────────
 
 function ImageGrid({
@@ -60,7 +42,7 @@ function ImageGrid({
   images: NPCImage[]
   npcId: string
   campaignId: string
-  onUpdated: (npc: CampaignNPC) => void
+  onUpdated: (patch: Partial<CampaignNPC>) => void
   readOnly?: boolean
 }) {
   const [lightbox, setLightbox] = useState<NPCImage | null>(null)
@@ -68,37 +50,13 @@ function ImageGrid({
   const [pickerOpen, setPickerOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const upload = useMutation({
-    mutationFn: (file: File) => {
-      const form = new FormData()
-      form.append('file', file)
-      return api.upload<CampaignNPC>(`/campaigns/${campaignId}/npcs/${npcId}/images`, form)
-    },
-    onSuccess: onUpdated,
-  })
-
-  const deleteImg = useMutation({
-    mutationFn: (imageId: string) =>
-      api.delete(`/campaigns/${campaignId}/npcs/${npcId}/images/${imageId}`),
-    onSuccess: (_, imageId) => {
-      onUpdated({ ...({} as CampaignNPC), images: JSON.stringify(images.filter(i => i.id !== imageId)) })
-    },
-  })
-
-  const generateImages = useMutation({
-    mutationFn: () => api.post<PendingImage[]>(`/campaigns/${campaignId}/npcs/${npcId}/llm/generate-images`, {}),
-    onSuccess: (data) => { setCandidates(data); setPickerOpen(true) },
-  })
-
-  const confirmImages = useMutation({
-    mutationFn: (selected: string[]) =>
-      api.post<CampaignNPC>(`/campaigns/${campaignId}/npcs/${npcId}/llm/confirm-images`, { selected }),
-    onSuccess: (updated) => { setPickerOpen(false); setCandidates([]); onUpdated(updated) },
+  const { upload, deleteImage: deleteImg, generateImages, confirmImages } = useEntityImages<CampaignNPC, NPCImage>({
+    campaignId, entityId: npcId, kind: 'npcs', images, onUpdated,
   })
 
   function handleFiles(files: FileList | null) {
     if (!files) return
-    Array.from(files).forEach(file => upload.mutate(file))
+    Array.from(files).forEach(file => upload.mutate({ file }))
   }
 
   return (
@@ -111,7 +69,7 @@ function ImageGrid({
             <Button
               size="sm" variant="ghost" className="h-7 px-2 text-xs"
               disabled={generateImages.isPending}
-              onClick={() => generateImages.mutate()}
+              onClick={() => generateImages.mutate(undefined, { onSuccess: data => { setCandidates(data); setPickerOpen(true) } })}
             >
               <Images className="h-3 w-3 mr-1" />
               {generateImages.isPending ? 'Génération…' : 'Générer'}
@@ -178,7 +136,7 @@ function ImageGrid({
     <ImageCandidatePicker
       candidates={candidates}
       open={pickerOpen}
-      onConfirm={selected => confirmImages.mutate(selected)}
+      onConfirm={selected => confirmImages.mutate(selected, { onSuccess: () => { setPickerOpen(false); setCandidates([]) } })}
       onClose={() => { setPickerOpen(false); setCandidates([]) }}
     />
     </>
@@ -280,8 +238,8 @@ export default function NPCEditorModal({ npcId, campaignId, gameId, open, onClos
     draft.schedule({ sheet: serialized }, patch => save.mutate({ id, patch }))
   }
 
-  function handleNPCUpdated(updated: CampaignNPC) {
-    qc.setQueryData(['npc', npcId], updated)
+  function handleNPCUpdated(patch: Partial<CampaignNPC>) {
+    patchNPC(npcId, patch)
     qc.invalidateQueries({ queryKey: ['campaign-npcs', campaignId] })
     qc.invalidateQueries({ queryKey: ['synopsis-npcs'] })
   }

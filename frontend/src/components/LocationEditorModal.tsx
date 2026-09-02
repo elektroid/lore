@@ -8,6 +8,7 @@ import type { CampaignLocation, LocationImage, PendingImage } from '@/types/enti
 import { api } from '@/api/client'
 import { patchCachedItem, patchCachedListItem } from '@/api/cache'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
+import { useEntityImages } from '@/hooks/useEntityImages'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
 import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
 import MentionEditor from '@/components/MentionEditor'
@@ -33,7 +34,7 @@ function ImageGrid({
   images: LocationImage[]
   locationId: string
   campaignId: string
-  onUpdated: (loc: CampaignLocation) => void
+  onUpdated: (patch: Partial<CampaignLocation>) => void
   readOnly?: boolean
 }) {
   const [lightbox, setLightbox] = useState<LocationImage | null>(null)
@@ -41,45 +42,22 @@ function ImageGrid({
   const [pickerOpen, setPickerOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const generateImages = useMutation({
-    mutationFn: () => api.post<PendingImage[]>(`/campaigns/${campaignId}/locations/${locationId}/llm/generate-images`, {}),
-    onSuccess: (data) => { setCandidates(data); setPickerOpen(true) },
+  const { upload, deleteImage: deleteImg, generateImages, confirmImages } = useEntityImages<CampaignLocation, LocationImage>({
+    campaignId, entityId: locationId, kind: 'locations', images, onUpdated,
   })
 
-  const confirmImages = useMutation({
-    mutationFn: (selected: string[]) =>
-      api.post<CampaignLocation>(`/campaigns/${campaignId}/locations/${locationId}/llm/confirm-images`, { selected }),
-    onSuccess: (updated) => { setPickerOpen(false); setCandidates([]); onUpdated(updated) },
-  })
-
-  const upload = useMutation({
-    mutationFn: ({ file, type }: { file: File; type: string }) => {
-      const form = new FormData()
-      form.append('file', file)
-      form.append('type', type)
-      return api.upload<CampaignLocation>(`/campaigns/${campaignId}/locations/${locationId}/images`, form)
-    },
-    onSuccess: onUpdated,
-  })
-
+  // Only Location's images carry a type (illustration/map), so the metadata
+  // update has no equivalent in the other three entity kinds — it stays here
+  // instead of joining useEntityImages.
   const updateMeta = useMutation({
     mutationFn: ({ imageId, label, type }: { imageId: string; label: string; type: string }) =>
       api.put<CampaignLocation>(`/campaigns/${campaignId}/locations/${locationId}/images/${imageId}`, { label, type }),
     onSuccess: onUpdated,
   })
 
-  const deleteImg = useMutation({
-    mutationFn: (imageId: string) =>
-      api.delete(`/campaigns/${campaignId}/locations/${locationId}/images/${imageId}`),
-    onSuccess: (_, imageId) => {
-      // optimistically remove
-      onUpdated({ ...({} as CampaignLocation), images: JSON.stringify(images.filter(i => i.id !== imageId)) })
-    },
-  })
-
   function handleFiles(files: FileList | null, type = 'illustration') {
     if (!files) return
-    Array.from(files).forEach(file => upload.mutate({ file, type }))
+    Array.from(files).forEach(file => upload.mutate({ file, extra: { type } }))
   }
 
   function onDrop(e: React.DragEvent) {
@@ -97,7 +75,7 @@ function ImageGrid({
             <Button
               size="sm" variant="ghost" className="h-7 px-2 text-xs"
               disabled={generateImages.isPending}
-              onClick={() => generateImages.mutate()}
+              onClick={() => generateImages.mutate(undefined, { onSuccess: data => { setCandidates(data); setPickerOpen(true) } })}
             >
               <Images className="h-3 w-3 mr-1" />
               {generateImages.isPending ? 'Génération…' : 'Générer'}
@@ -188,7 +166,7 @@ function ImageGrid({
     <ImageCandidatePicker
       candidates={candidates}
       open={pickerOpen}
-      onConfirm={selected => confirmImages.mutate(selected)}
+      onConfirm={selected => confirmImages.mutate(selected, { onSuccess: () => { setPickerOpen(false); setCandidates([]) } })}
       onClose={() => { setPickerOpen(false); setCandidates([]) }}
     />
     </>
@@ -244,7 +222,7 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
   })
 
   // Show the edit in the location list while the user types.
-  function patchLocation(id: string, patch: Partial<typeof local>) {
+  function patchLocation(id: string, patch: Partial<CampaignLocation>) {
     patchCachedItem<CampaignLocation>(qc, ['location', id], patch)
     patchCachedListItem<CampaignLocation>(qc, ['campaign-locations', campaignId], id, patch)
   }
@@ -277,8 +255,8 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
     draft.schedule({ [field]: value }, patch => save.mutate({ id, patch }))
   }
 
-  function handleLocationUpdated(updated: CampaignLocation) {
-    qc.setQueryData(['location', locationId], updated)
+  function handleLocationUpdated(patch: Partial<CampaignLocation>) {
+    patchLocation(locationId, patch)
     qc.invalidateQueries({ queryKey: ['campaign-locations', campaignId] })
   }
 

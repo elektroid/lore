@@ -559,3 +559,59 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
+
+// decodeJSON decodes the request body into a T, or writes a 400 and reports
+// failure. Shared by every Create/Update handler that just needs its body
+// struct populated before touching the db package.
+func decodeJSON[T any](w http.ResponseWriter, r *http.Request, badBodyMsg string) (T, bool) {
+	var b T
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, badBodyMsg)
+		return b, false
+	}
+	return b, true
+}
+
+// writeList is the common List response shape: a db error is a 500,
+// otherwise the list is written back as a 200.
+func writeList[T any](w http.ResponseWriter, list T, err error) {
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+// writeEntity is the common Get/Update response shape: a db error is a 500,
+// a nil result (not found) is a 404 with notFoundMsg, anything else is a 200.
+func writeEntity[T any](w http.ResponseWriter, entity *T, err error, notFoundMsg string) {
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if entity == nil {
+		writeError(w, http.StatusNotFound, notFoundMsg)
+		return
+	}
+	writeJSON(w, http.StatusOK, entity)
+}
+
+// writeCreated is the common Create response shape: a db error is a 500,
+// otherwise the new entity is written back as a 201.
+func writeCreated[T any](w http.ResponseWriter, entity *T, err error) {
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, entity)
+}
+
+// writeDeleted is the common Delete response shape: a db error is a 500,
+// otherwise a bare 204.
+func writeDeleted(w http.ResponseWriter, err error) {
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

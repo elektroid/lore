@@ -10,6 +10,7 @@ import type { CampaignNPC } from '@/types/entities'
 import { api } from '@/api/client'
 import { patchCachedItem, patchCachedListItem } from '@/api/cache'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
+import { useEntityImages } from '@/hooks/useEntityImages'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
 import MentionEditor from '@/components/MentionEditor'
 import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
@@ -93,9 +94,13 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
   })
 
   // Show the edit in the artefact list while the user types.
-  function patchArtefact(id: string, patch: Partial<typeof local>) {
+  function patchArtefact(id: string, patch: Partial<CampaignArtefact>) {
     patchCachedItem<CampaignArtefact>(qc, ['artefact', id], patch)
     patchCachedListItem<CampaignArtefact>(qc, ['campaign-artefacts', campaignId], id, patch)
+  }
+
+  function handleArtefactUpdated(patch: Partial<CampaignArtefact>) {
+    patchArtefact(artefactId, patch)
   }
 
   function handle(field: keyof typeof local, value: string) {
@@ -126,32 +131,8 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
     draft.saveNow({ [key]: value }, patch => save.mutate({ id, patch }))
   }
 
-  const generateImages = useMutation({
-    mutationFn: () => api.post<PendingImage[]>(
-      `/campaigns/${campaignId}/artefacts/${artefactId}/llm/generate-images`, {}
-    ),
-    onSuccess: (data) => { setCandidates(data); setCandidatePickerOpen(true) },
-  })
-
-  const confirmImages = useMutation({
-    mutationFn: (selected: string[]) => api.post<CampaignArtefact>(
-      `/campaigns/${campaignId}/artefacts/${artefactId}/llm/confirm-images`, { selected }
-    ),
-    onSuccess: () => { setCandidatePickerOpen(false); setCandidates([]); invalidateArtefact() },
-  })
-
-  const uploadImage = useMutation({
-    mutationFn: (file: File) => {
-      const fd = new FormData()
-      fd.append('file', file)
-      return api.upload<CampaignArtefact>(`/campaigns/${campaignId}/artefacts/${artefactId}/images`, fd)
-    },
-    onSuccess: invalidateArtefact,
-  })
-
-  const deleteImage = useMutation({
-    mutationFn: (imageId: string) => api.delete(`/campaigns/${campaignId}/artefacts/${artefactId}/images/${imageId}`),
-    onSuccess: invalidateArtefact,
+  const { upload: uploadImage, deleteImage, generateImages, confirmImages } = useEntityImages<CampaignArtefact, ArtefactImage>({
+    campaignId, entityId: artefactId, kind: 'artefacts', images, onUpdated: handleArtefactUpdated,
   })
 
   const invalidateLinks = () => qc.invalidateQueries({ queryKey: ['artefact-links', artefactId] })
@@ -244,7 +225,7 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
                       <Button
                         size="sm" variant="ghost" className="h-6 px-2 text-xs"
                         disabled={generateImages.isPending || !local.name.trim()}
-                        onClick={() => generateImages.mutate()}
+                        onClick={() => generateImages.mutate(undefined, { onSuccess: data => { setCandidates(data); setCandidatePickerOpen(true) } })}
                       >
                         <Images className="h-3 w-3 mr-1" />
                         {generateImages.isPending ? 'Génération…' : 'Générer'}
@@ -288,7 +269,7 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
                 {!readOnly && (
                   <input
                     ref={fileRef} type="file" accept="image/*" className="hidden"
-                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage.mutate(f); e.target.value = '' }}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage.mutate({ file: f }); e.target.value = '' }}
                   />
                 )}
               </div>
@@ -342,7 +323,7 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
       <ImageCandidatePicker
         candidates={candidates}
         open={candidatePickerOpen}
-        onConfirm={selected => confirmImages.mutate(selected)}
+        onConfirm={selected => confirmImages.mutate(selected, { onSuccess: () => { setCandidatePickerOpen(false); setCandidates([]) } })}
         onClose={() => { setCandidatePickerOpen(false); setCandidates([]) }}
       />
 

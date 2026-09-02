@@ -8,6 +8,7 @@ import type { CampaignFaction, FactionImage, PendingImage } from '@/types/entiti
 import { api } from '@/api/client'
 import { patchCachedItem, patchCachedListItem } from '@/api/cache'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
+import { useEntityImages } from '@/hooks/useEntityImages'
 import ImageCandidatePicker from '@/components/ImageCandidatePicker'
 import LLMSuggestionReview, { type SuggestionField } from '@/components/LLMSuggestionReview'
 import MentionEditor from '@/components/MentionEditor'
@@ -23,7 +24,7 @@ function ImageGrid({
   images: FactionImage[]
   factionId: string
   campaignId: string
-  onUpdated: (f: CampaignFaction) => void
+  onUpdated: (patch: Partial<CampaignFaction>) => void
   readOnly?: boolean
 }) {
   const [lightbox, setLightbox] = useState<FactionImage | null>(null)
@@ -31,32 +32,8 @@ function ImageGrid({
   const [pickerOpen, setPickerOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const upload = useMutation({
-    mutationFn: (file: File) => {
-      const form = new FormData()
-      form.append('file', file)
-      return api.upload<CampaignFaction>(`/campaigns/${campaignId}/factions/${factionId}/images`, form)
-    },
-    onSuccess: onUpdated,
-  })
-
-  const deleteImg = useMutation({
-    mutationFn: (imageId: string) =>
-      api.delete(`/campaigns/${campaignId}/factions/${factionId}/images/${imageId}`),
-    onSuccess: (_, imageId) => {
-      onUpdated({ ...({} as CampaignFaction), images: JSON.stringify(images.filter(i => i.id !== imageId)) })
-    },
-  })
-
-  const generateImages = useMutation({
-    mutationFn: () => api.post<PendingImage[]>(`/campaigns/${campaignId}/factions/${factionId}/llm/generate-images`, {}),
-    onSuccess: (data) => { setCandidates(data); setPickerOpen(true) },
-  })
-
-  const confirmImages = useMutation({
-    mutationFn: (selected: string[]) =>
-      api.post<CampaignFaction>(`/campaigns/${campaignId}/factions/${factionId}/llm/confirm-images`, { selected }),
-    onSuccess: (updated) => { setPickerOpen(false); setCandidates([]); onUpdated(updated) },
+  const { upload, deleteImage: deleteImg, generateImages, confirmImages } = useEntityImages<CampaignFaction, FactionImage>({
+    campaignId, entityId: factionId, kind: 'factions', images, onUpdated,
   })
 
   return (
@@ -69,7 +46,7 @@ function ImageGrid({
             <Button
               size="sm" variant="ghost" className="h-7 px-2 text-xs"
               disabled={generateImages.isPending}
-              onClick={() => generateImages.mutate()}
+              onClick={() => generateImages.mutate(undefined, { onSuccess: data => { setCandidates(data); setPickerOpen(true) } })}
             >
               <Images className="h-3 w-3 mr-1" />
               {generateImages.isPending ? 'Génération…' : 'Générer'}
@@ -85,10 +62,10 @@ function ImageGrid({
         <>
           <input
             ref={inputRef} type="file" accept="image/*" multiple className="hidden"
-            onChange={e => { Array.from(e.target.files ?? []).forEach(f => upload.mutate(f)); e.target.value = '' }}
+            onChange={e => { Array.from(e.target.files ?? []).forEach(f => upload.mutate({ file: f })); e.target.value = '' }}
           />
           <div
-            onDrop={e => { e.preventDefault(); Array.from(e.dataTransfer.files).forEach(f => upload.mutate(f)) }}
+            onDrop={e => { e.preventDefault(); Array.from(e.dataTransfer.files).forEach(f => upload.mutate({ file: f })) }}
             onDragOver={e => e.preventDefault()}
             className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center text-xs text-muted-foreground hover:border-muted-foreground/40 transition-colors"
           >
@@ -128,7 +105,7 @@ function ImageGrid({
     <ImageCandidatePicker
       candidates={candidates}
       open={pickerOpen}
-      onConfirm={selected => confirmImages.mutate(selected)}
+      onConfirm={selected => confirmImages.mutate(selected, { onSuccess: () => { setPickerOpen(false); setCandidates([]) } })}
       onClose={() => { setPickerOpen(false); setCandidates([]) }}
     />
     </>
@@ -189,7 +166,7 @@ export default function FactionEditorModal({ factionId, campaignId, open, onClos
   })
 
   // Show the edit in the faction list while the user types.
-  function patchFaction(id: string, patch: Partial<typeof local>) {
+  function patchFaction(id: string, patch: Partial<CampaignFaction>) {
     patchCachedItem<CampaignFaction>(qc, ['faction', id], patch)
     patchCachedListItem<CampaignFaction>(qc, ['campaign-factions', campaignId], id, patch)
   }
@@ -222,8 +199,8 @@ export default function FactionEditorModal({ factionId, campaignId, open, onClos
     draft.schedule({ [field]: value }, patch => save.mutate({ id, patch }))
   }
 
-  function handleFactionUpdated(updated: CampaignFaction) {
-    qc.setQueryData(['faction', factionId], updated)
+  function handleFactionUpdated(patch: Partial<CampaignFaction>) {
+    patchFaction(factionId, patch)
     qc.invalidateQueries({ queryKey: ['campaign-factions', campaignId] })
   }
 

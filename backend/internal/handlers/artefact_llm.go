@@ -1,14 +1,10 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -93,63 +89,17 @@ func (h *ImageLLMHandler) GenerateArtefactImages(w http.ResponseWriter, r *http.
 		return
 	}
 
-	imgCfg, err := h.readImageConfig(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "error reading image config")
-		return
-	}
-	if err := requireImageProviderConfigured(imgCfg); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	pendingDir := filepath.Join(h.uploadsDir, "artefacts", artefactID, "pending")
-	os.RemoveAll(pendingDir)
-	if err := os.MkdirAll(pendingDir, 0755); err != nil {
-		writeError(w, http.StatusInternalServerError, "cannot create pending dir")
-		return
-	}
-
-	game, err := h.getGameForCampaign(r.Context(), campaignID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "error looking up game")
-		return
-	}
-
-	var agentID string
-	if imgCfg.Provider != "openrouter" {
-		agentID, err = h.ensureGameAgent(r.Context(), game, imgCfg.MistralAPIKey)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "Mistral agent error: "+err.Error())
-			return
-		}
-	}
-
 	mentions := newMentionResolver(r.Context(), h.db, campaignID)
-	prompt := appendVisualStyle(buildArtefactImagePrompt(artefact.Name, mentions.resolve(artefact.Description)), imgCfg, game)
-
-	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
-	defer cancel()
-
-	candidates, err := h.spawnImages(ctx, imgCfg, agentID, "artefacts", artefactID, pendingDir, prompt)
-	if err != nil {
-		writeError(w, http.StatusTooManyRequests, err.Error())
-		return
-	}
-	if candidates == nil {
-		candidates = []PendingImage{}
-	}
-	writeJSON(w, http.StatusOK, candidates)
+	h.generateEntityImages(w, r, campaignID, "artefacts", artefactID, func(imgCfg ImageConfig, game *db.Game) string {
+		return appendVisualStyle(buildArtefactImagePrompt(artefact.Name, mentions.resolve(artefact.Description)), imgCfg, game)
+	})
 }
 
 func (h *ImageLLMHandler) ConfirmArtefactImages(w http.ResponseWriter, r *http.Request) {
 	artefactID := chi.URLParam(r, "artefactId")
 
-	var body struct {
-		Selected []string `json:"selected"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
+	selected, ok := decodeSelectedImages(w, r)
+	if !ok {
 		return
 	}
 
@@ -159,40 +109,10 @@ func (h *ImageLLMHandler) ConfirmArtefactImages(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	pendingDir := filepath.Join(h.uploadsDir, "artefacts", artefactID, "pending")
-	finalDir := filepath.Join(h.uploadsDir, "artefacts", artefactID)
-	if err := os.MkdirAll(finalDir, 0755); err != nil {
-		writeError(w, http.StatusInternalServerError, "cannot create final dir")
-		return
-	}
-
-	var images []ArtefactImage
-	json.Unmarshal([]byte(artefact.Images), &images) //nolint:errcheck
-
-	for _, id := range body.Selected {
-		src := filepath.Join(pendingDir, id+".png")
-		dst := filepath.Join(finalDir, id+".png")
-		if err := os.Rename(src, dst); err != nil {
-			if copyFile(src, dst) == nil {
-				os.Remove(src)
-			}
-		}
-		url := fmt.Sprintf("/uploads/artefacts/%s/%s.png", artefactID, id)
-		images = append(images, ArtefactImage{ID: id, URL: url, Label: ""})
-	}
-
-	os.RemoveAll(pendingDir)
-
-	if images == nil {
-		images = []ArtefactImage{}
-	}
-	imagesJSON, _ := json.Marshal(images)
-	updated, err := db.UpdateArtefactImages(r.Context(), h.db, artefactID, string(imagesJSON))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, updated)
+	confirmEntityImages(w, r, h, "artefacts", artefactID, artefact.Images, selected,
+		func(id, url string) ArtefactImage { return ArtefactImage{ID: id, URL: url, Label: ""} },
+		db.UpdateArtefactImages,
+	)
 }
 
 func buildArtefactImagePrompt(name, description string) string {

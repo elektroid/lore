@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"database/sql"
-	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -20,24 +19,12 @@ type EntityHandler struct {
 
 func (h *EntityHandler) ListNPCs(w http.ResponseWriter, r *http.Request) {
 	list, err := db.ListCampaignNPCs(r.Context(), h.db, chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, list)
+	writeList(w, list, err)
 }
 
 func (h *EntityHandler) GetNPC(w http.ResponseWriter, r *http.Request) {
 	npc, err := db.GetCampaignNPC(r.Context(), h.db, chi.URLParam(r, "npcId"))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if npc == nil {
-		writeError(w, http.StatusNotFound, "PNJ introuvable")
-		return
-	}
-	writeJSON(w, http.StatusOK, npc)
+	writeEntity(w, npc, err, "PNJ introuvable")
 }
 
 type npcBody struct {
@@ -50,67 +37,38 @@ type npcBody struct {
 }
 
 func (h *EntityHandler) CreateNPC(w http.ResponseWriter, r *http.Request) {
-	var b npcBody
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "corps invalide")
+	b, ok := decodeJSON[npcBody](w, r, "corps invalide")
+	if !ok {
 		return
 	}
 	npc, err := db.CreateCampaignNPC(r.Context(), h.db, chi.URLParam(r, "id"), b.Name, b.Role, b.Description, b.Quote, b.Motivation, b.Sheet)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, npc)
+	writeCreated(w, npc, err)
 }
 
 func (h *EntityHandler) UpdateNPC(w http.ResponseWriter, r *http.Request) {
-	var b npcBody
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "corps invalide")
+	b, ok := decodeJSON[npcBody](w, r, "corps invalide")
+	if !ok {
 		return
 	}
 	npc, err := db.UpdateCampaignNPC(r.Context(), h.db, chi.URLParam(r, "npcId"), b.Name, b.Role, b.Description, b.Quote, b.Motivation, b.Sheet)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if npc == nil {
-		writeError(w, http.StatusNotFound, "PNJ introuvable")
-		return
-	}
-	writeJSON(w, http.StatusOK, npc)
+	writeEntity(w, npc, err, "PNJ introuvable")
 }
 
 func (h *EntityHandler) DeleteNPC(w http.ResponseWriter, r *http.Request) {
-	if err := db.DeleteCampaignNPC(r.Context(), h.db, chi.URLParam(r, "npcId")); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	err := db.DeleteCampaignNPC(r.Context(), h.db, chi.URLParam(r, "npcId"))
+	writeDeleted(w, err)
 }
 
 // ── Campaign Locations ────────────────────────────────────────────────────────
 
 func (h *EntityHandler) ListLocations(w http.ResponseWriter, r *http.Request) {
 	list, err := db.ListCampaignLocations(r.Context(), h.db, chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, list)
+	writeList(w, list, err)
 }
 
 func (h *EntityHandler) GetLocation(w http.ResponseWriter, r *http.Request) {
 	loc, err := db.GetCampaignLocation(r.Context(), h.db, chi.URLParam(r, "locationId"))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if loc == nil {
-		writeError(w, http.StatusNotFound, "lieu introuvable")
-		return
-	}
-	writeJSON(w, http.StatusOK, loc)
+	writeEntity(w, loc, err, "lieu introuvable")
 }
 
 type locationBody struct {
@@ -123,23 +81,17 @@ type locationBody struct {
 }
 
 func (h *EntityHandler) CreateLocation(w http.ResponseWriter, r *http.Request) {
-	var b locationBody
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "corps invalide")
+	b, ok := decodeJSON[locationBody](w, r, "corps invalide")
+	if !ok {
 		return
 	}
 	loc, err := db.CreateCampaignLocation(r.Context(), h.db, chi.URLParam(r, "id"), b.Name, b.City, b.District, b.Description, b.Atmosphere)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, loc)
+	writeCreated(w, loc, err)
 }
 
 func (h *EntityHandler) UpdateLocation(w http.ResponseWriter, r *http.Request) {
-	var b locationBody
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "corps invalide")
+	b, ok := decodeJSON[locationBody](w, r, "corps invalide")
+	if !ok {
 		return
 	}
 	images := b.Images
@@ -147,47 +99,24 @@ func (h *EntityHandler) UpdateLocation(w http.ResponseWriter, r *http.Request) {
 		images = "[]"
 	}
 	loc, err := db.UpdateCampaignLocation(r.Context(), h.db, chi.URLParam(r, "locationId"), b.Name, b.City, b.District, b.Description, b.Atmosphere, images)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if loc == nil {
-		writeError(w, http.StatusNotFound, "lieu introuvable")
-		return
-	}
-	writeJSON(w, http.StatusOK, loc)
+	writeEntity(w, loc, err, "lieu introuvable")
 }
 
 func (h *EntityHandler) DeleteLocation(w http.ResponseWriter, r *http.Request) {
-	if err := db.DeleteCampaignLocation(r.Context(), h.db, chi.URLParam(r, "locationId")); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	err := db.DeleteCampaignLocation(r.Context(), h.db, chi.URLParam(r, "locationId"))
+	writeDeleted(w, err)
 }
 
 // ── Campaign Artefacts ────────────────────────────────────────────────────────
 
 func (h *EntityHandler) ListArtefacts(w http.ResponseWriter, r *http.Request) {
 	list, err := db.ListCampaignArtefacts(r.Context(), h.db, chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, list)
+	writeList(w, list, err)
 }
 
 func (h *EntityHandler) GetArtefact(w http.ResponseWriter, r *http.Request) {
 	a, err := db.GetCampaignArtefact(r.Context(), h.db, chi.URLParam(r, "artefactId"))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if a == nil {
-		writeError(w, http.StatusNotFound, "artefact not found")
-		return
-	}
-	writeJSON(w, http.StatusOK, a)
+	writeEntity(w, a, err, "artefact not found")
 }
 
 type artefactBody struct {
@@ -197,23 +126,17 @@ type artefactBody struct {
 }
 
 func (h *EntityHandler) CreateArtefact(w http.ResponseWriter, r *http.Request) {
-	var b artefactBody
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
+	b, ok := decodeJSON[artefactBody](w, r, "invalid body")
+	if !ok {
 		return
 	}
 	a, err := db.CreateCampaignArtefact(r.Context(), h.db, chi.URLParam(r, "id"), b.Name, b.Description)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, a)
+	writeCreated(w, a, err)
 }
 
 func (h *EntityHandler) UpdateArtefact(w http.ResponseWriter, r *http.Request) {
-	var b artefactBody
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
+	b, ok := decodeJSON[artefactBody](w, r, "invalid body")
+	if !ok {
 		return
 	}
 	images := b.Images
@@ -221,34 +144,19 @@ func (h *EntityHandler) UpdateArtefact(w http.ResponseWriter, r *http.Request) {
 		images = "[]"
 	}
 	a, err := db.UpdateCampaignArtefact(r.Context(), h.db, chi.URLParam(r, "artefactId"), b.Name, b.Description, images)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if a == nil {
-		writeError(w, http.StatusNotFound, "artefact not found")
-		return
-	}
-	writeJSON(w, http.StatusOK, a)
+	writeEntity(w, a, err, "artefact not found")
 }
 
 func (h *EntityHandler) DeleteArtefact(w http.ResponseWriter, r *http.Request) {
-	if err := db.DeleteCampaignArtefact(r.Context(), h.db, chi.URLParam(r, "artefactId")); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	err := db.DeleteCampaignArtefact(r.Context(), h.db, chi.URLParam(r, "artefactId"))
+	writeDeleted(w, err)
 }
 
 // ── NPC-Artefact Links ────────────────────────────────────────────────────────
 
 func (h *EntityHandler) ListArtefactLinks(w http.ResponseWriter, r *http.Request) {
 	list, err := db.ListNPCArtefactLinks(r.Context(), h.db, chi.URLParam(r, "artefactId"))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, list)
+	writeList(w, list, err)
 }
 
 type artefactLinkBody struct {
@@ -257,9 +165,8 @@ type artefactLinkBody struct {
 }
 
 func (h *EntityHandler) CreateArtefactLink(w http.ResponseWriter, r *http.Request) {
-	var b artefactLinkBody
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
+	b, ok := decodeJSON[artefactLinkBody](w, r, "invalid body")
+	if !ok {
 		return
 	}
 	if b.NPCId == "" {
@@ -271,43 +178,24 @@ func (h *EntityHandler) CreateArtefactLink(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	link, err := db.CreateNPCArtefactLink(r.Context(), h.db, b.NPCId, chi.URLParam(r, "artefactId"), b.Nature)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, link)
+	writeCreated(w, link, err)
 }
 
 func (h *EntityHandler) DeleteArtefactLink(w http.ResponseWriter, r *http.Request) {
-	if err := db.DeleteNPCArtefactLink(r.Context(), h.db, chi.URLParam(r, "linkId")); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	err := db.DeleteNPCArtefactLink(r.Context(), h.db, chi.URLParam(r, "linkId"))
+	writeDeleted(w, err)
 }
 
 // ── Campaign Factions ─────────────────────────────────────────────────────────
 
 func (h *EntityHandler) ListFactions(w http.ResponseWriter, r *http.Request) {
 	list, err := db.ListCampaignFactions(r.Context(), h.db, chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, list)
+	writeList(w, list, err)
 }
 
 func (h *EntityHandler) GetFaction(w http.ResponseWriter, r *http.Request) {
 	f, err := db.GetCampaignFaction(r.Context(), h.db, chi.URLParam(r, "factionId"))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if f == nil {
-		writeError(w, http.StatusNotFound, "faction introuvable")
-		return
-	}
-	writeJSON(w, http.StatusOK, f)
+	writeEntity(w, f, err, "faction introuvable")
 }
 
 type factionBody struct {
@@ -319,23 +207,17 @@ type factionBody struct {
 }
 
 func (h *EntityHandler) CreateFaction(w http.ResponseWriter, r *http.Request) {
-	var b factionBody
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "corps invalide")
+	b, ok := decodeJSON[factionBody](w, r, "corps invalide")
+	if !ok {
 		return
 	}
 	f, err := db.CreateCampaignFaction(r.Context(), h.db, chi.URLParam(r, "id"), b.Name, b.Type, b.Description, b.Motivation)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, f)
+	writeCreated(w, f, err)
 }
 
 func (h *EntityHandler) UpdateFaction(w http.ResponseWriter, r *http.Request) {
-	var b factionBody
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "corps invalide")
+	b, ok := decodeJSON[factionBody](w, r, "corps invalide")
+	if !ok {
 		return
 	}
 	images := b.Images
@@ -343,23 +225,12 @@ func (h *EntityHandler) UpdateFaction(w http.ResponseWriter, r *http.Request) {
 		images = "[]"
 	}
 	f, err := db.UpdateCampaignFaction(r.Context(), h.db, chi.URLParam(r, "factionId"), b.Name, b.Type, b.Description, b.Motivation, images)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if f == nil {
-		writeError(w, http.StatusNotFound, "faction introuvable")
-		return
-	}
-	writeJSON(w, http.StatusOK, f)
+	writeEntity(w, f, err, "faction introuvable")
 }
 
 func (h *EntityHandler) DeleteFaction(w http.ResponseWriter, r *http.Request) {
-	if err := db.DeleteCampaignFaction(r.Context(), h.db, chi.URLParam(r, "factionId")); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	err := db.DeleteCampaignFaction(r.Context(), h.db, chi.URLParam(r, "factionId"))
+	writeDeleted(w, err)
 }
 
 // ── Global search ─────────────────────────────────────────────────────────────
@@ -371,9 +242,5 @@ func (h *EntityHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	results, err := db.SearchCampaign(r.Context(), h.db, chi.URLParam(r, "id"), q)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, results)
+	writeList(w, results, err)
 }

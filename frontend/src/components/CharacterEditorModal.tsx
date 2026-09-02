@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { AutoTextarea } from '@/components/ui/AutoTextarea'
 import SheetForm from '@/components/SheetForm'
 import type { GetCharacterResponse, PlayerCharacter } from '@/types/character'
 import type { SheetValues } from '@/types/sheetTemplate'
@@ -14,21 +15,6 @@ interface Props {
   characterId: string
   open: boolean
   onClose: () => void
-}
-
-function AutoTextarea({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => {
-    const el = ref.current; if (!el) return
-    el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'
-  }, [value])
-  return (
-    <textarea
-      ref={ref} rows={3} value={value} placeholder={placeholder}
-      onChange={e => onChange(e.target.value)}
-      className="w-full resize-none overflow-hidden rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-    />
-  )
 }
 
 interface Local { name: string; description: string; personal_story: string }
