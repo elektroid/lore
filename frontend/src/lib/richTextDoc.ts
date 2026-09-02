@@ -78,5 +78,11 @@ function blockToText(node: JSONContent): string {
 
 /** A TipTap document -> the plain-text value that gets saved. */
 export function docToText(doc: JSONContent): string {
-  return (doc.content ?? []).map(blockToText).join('\n\n')
+  // parseRichText only starts a new block when a line's list-item-ness
+  // flips (see richtext.ts) — consecutive lines of the same kind always
+  // stay in one block, blank lines included (as hardBreaks). So adjacent
+  // blocks are always exactly one line boundary apart in the source text;
+  // joining with '\n\n' here invented a blank line that was never there,
+  // compounding by one extra line on every load/edit/save cycle.
+  return (doc.content ?? []).map(blockToText).join('\n')
 }
