@@ -99,6 +99,10 @@ export default function MentionEditor({ campaignId, value, onChange, placeholder
         },
       }),
     ],
+    // TipTap fires onUpdate below for this initial content too, not just for
+    // later edits — so textToDoc/docToText (richTextDoc.ts) must round-trip
+    // exactly, or the very first render silently rewrites `value` and the
+    // page reads as dirty before anyone's touched it.
     content: textToDoc(value),
     editable: !disabled,
     editorProps: {
