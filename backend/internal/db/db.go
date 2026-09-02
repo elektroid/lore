@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	_ "embed"
 	"log"
@@ -12,6 +13,16 @@ import (
 
 //go:embed schema.sql
 var schema string
+
+// DBTX is satisfied by both *sql.DB and *sql.Tx. Functions typed against it
+// instead of the concrete *sql.DB can run standalone or be composed inside a
+// caller-managed transaction — see GameHandler.Import, which needs several
+// of these calls to commit or roll back together.
+type DBTX interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
 
 func Open(path string) (*sql.DB, error) {
 	database, err := sql.Open("sqlite", path)

@@ -58,19 +58,19 @@ func ListGames(ctx context.Context, database *sql.DB) ([]Game, error) {
 	return list, rows.Err()
 }
 
-func GetGame(ctx context.Context, database *sql.DB, id string) (*Game, error) {
+func GetGame(ctx context.Context, database DBTX, id string) (*Game, error) {
 	row := database.QueryRowContext(ctx,
 		`SELECT `+gameSelectCols+` `+gameSelectFrom+` WHERE g.id = ?`, id)
 	return scanGame(row)
 }
 
-func GetGameBySlug(ctx context.Context, database *sql.DB, slug string) (*Game, error) {
+func GetGameBySlug(ctx context.Context, database DBTX, slug string) (*Game, error) {
 	row := database.QueryRowContext(ctx,
 		`SELECT `+gameSelectCols+` `+gameSelectFrom+` WHERE g.slug = ?`, slug)
 	return scanGame(row)
 }
 
-func CreateGame(ctx context.Context, database *sql.DB, name, slug, genre, description string, sheetTemplateID *string) (*Game, error) {
+func CreateGame(ctx context.Context, database DBTX, name, slug, genre, description string, sheetTemplateID *string) (*Game, error) {
 	id := uuid.New().String()
 	_, err := database.ExecContext(ctx,
 		`INSERT INTO games (id, name, slug, genre, description, sheet_template_id) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -91,7 +91,7 @@ func UpdateGame(ctx context.Context, database *sql.DB, id, name, slug, genre, de
 	return GetGame(ctx, database, id)
 }
 
-func UpdateGameVisualStyle(ctx context.Context, database *sql.DB, id, visualStyle string) (*Game, error) {
+func UpdateGameVisualStyle(ctx context.Context, database DBTX, id, visualStyle string) (*Game, error) {
 	_, err := database.ExecContext(ctx,
 		`UPDATE games SET visual_style=?, mistral_agent_id='' WHERE id=?`, visualStyle, id)
 	if err != nil {

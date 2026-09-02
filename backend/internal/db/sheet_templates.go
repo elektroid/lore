@@ -37,7 +37,7 @@ func ListSheetTemplates(ctx context.Context, database *sql.DB) ([]SheetTemplate,
 	return list, rows.Err()
 }
 
-func GetSheetTemplate(ctx context.Context, database *sql.DB, id string) (*SheetTemplate, error) {
+func GetSheetTemplate(ctx context.Context, database DBTX, id string) (*SheetTemplate, error) {
 	var t SheetTemplate
 	err := database.QueryRowContext(ctx,
 		`SELECT id, name, schema, created_at, updated_at FROM sheet_templates WHERE id = ?`, id).
@@ -54,7 +54,7 @@ func GetSheetTemplate(ctx context.Context, database *sql.DB, id string) (*SheetT
 // duplicate every time the same ruleset gets imported. Names aren't unique
 // at the database level (templates are admin-curated, not slugged), so this
 // returns the first match.
-func GetSheetTemplateByName(ctx context.Context, database *sql.DB, name string) (*SheetTemplate, error) {
+func GetSheetTemplateByName(ctx context.Context, database DBTX, name string) (*SheetTemplate, error) {
 	var t SheetTemplate
 	err := database.QueryRowContext(ctx,
 		`SELECT id, name, schema, created_at, updated_at FROM sheet_templates WHERE name = ? LIMIT 1`, name).
@@ -65,7 +65,7 @@ func GetSheetTemplateByName(ctx context.Context, database *sql.DB, name string) 
 	return &t, err
 }
 
-func CreateSheetTemplate(ctx context.Context, database *sql.DB, name, schema string) (*SheetTemplate, error) {
+func CreateSheetTemplate(ctx context.Context, database DBTX, name, schema string) (*SheetTemplate, error) {
 	id := uuid.New().String()
 	_, err := database.ExecContext(ctx,
 		`INSERT INTO sheet_templates (id, name, schema) VALUES (?, ?, ?)`, id, name, schema)

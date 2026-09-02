@@ -726,7 +726,18 @@ func (h *GameHandler) Import(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	existing, err := db.GetGameBySlug(ctx, h.db, doc.Game.Slug)
+	// A manifest can carry hundreds of entities and relations; running the
+	// whole import in one transaction means a failure partway (a bad entity,
+	// a dropped connection) leaves neither an orphaned game row nor a
+	// half-populated lore graph — see docs/code-audit-2026-09-03.md.
+	tx, err := h.db.BeginTx(ctx, nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck — no-op once committed
+
+	existing, err := db.GetGameBySlug(ctx, tx, doc.Game.Slug)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -743,7 +754,7 @@ func (h *GameHandler) Import(w http.ResponseWriter, r *http.Request) {
 	// export isn't allowed to silently overwrite an admin's edits.
 	var sheetTemplateID *string
 	if doc.SheetTemplate != nil && doc.SheetTemplate.Name != "" {
-		existing, err := db.GetSheetTemplateByName(ctx, h.db, doc.SheetTemplate.Name)
+		existing, err := db.GetSheetTemplateByName(ctx, tx, doc.SheetTemplate.Name)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -751,7 +762,7 @@ func (h *GameHandler) Import(w http.ResponseWriter, r *http.Request) {
 		if existing != nil {
 			sheetTemplateID = &existing.ID
 		} else {
-			tmpl, err := db.CreateSheetTemplate(ctx, h.db, doc.SheetTemplate.Name, doc.SheetTemplate.Schema)
+			tmpl, err := db.CreateSheetTemplate(ctx, tx, doc.SheetTemplate.Name, doc.SheetTemplate.Schema)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
@@ -760,13 +771,13 @@ func (h *GameHandler) Import(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	game, err := db.CreateGame(ctx, h.db, doc.Game.Name, doc.Game.Slug, doc.Game.Genre, doc.Game.Description, sheetTemplateID)
+	game, err := db.CreateGame(ctx, tx, doc.Game.Name, doc.Game.Slug, doc.Game.Genre, doc.Game.Description, sheetTemplateID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if doc.Game.VisualStyle != "" {
-		if _, err := db.UpdateGameVisualStyle(ctx, h.db, game.ID, doc.Game.VisualStyle); err != nil {
+		if _, err := db.UpdateGameVisualStyle(ctx, tx, game.ID, doc.Game.VisualStyle); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -780,7 +791,7 @@ func (h *GameHandler) Import(w http.ResponseWriter, r *http.Request) {
 		if e.Kind == "" || e.Name == "" {
 			continue
 		}
-		entity, err := db.CreateGameLoreEntity(ctx, h.db, db.CreateGameLoreEntityParams{
+		entity, err := db.CreateGameLoreEntity(ctx, tx, db.CreateGameLoreEntityParams{
 			GameID:      game.ID,
 			Kind:        e.Kind,
 			Name:        e.Name,
@@ -807,7 +818,7 @@ func (h *GameHandler) Import(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			continue
 		}
-		if err := db.UpsertGameLoreEntityRelation(ctx, h.db, db.CreateGameLoreEntityRelationParams{
+		if err := db.UpsertGameLoreEntityRelation(ctx, tx, db.CreateGameLoreEntityRelationParams{
 			GameID:       game.ID,
 			FromEntityID: fromID,
 			ToEntityID:   toID,
@@ -820,8 +831,13 @@ func (h *GameHandler) Import(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	game, err = db.GetGame(ctx, h.db, game.ID)
+	game, err = db.GetGame(ctx, tx, game.ID)
 	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

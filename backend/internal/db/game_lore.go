@@ -190,7 +190,7 @@ type CreateGameLoreEntityParams struct {
 	SourcePage  int
 }
 
-func CreateGameLoreEntity(ctx context.Context, database *sql.DB, p CreateGameLoreEntityParams) (*GameLoreEntity, error) {
+func CreateGameLoreEntity(ctx context.Context, database DBTX, p CreateGameLoreEntityParams) (*GameLoreEntity, error) {
 	id := uuid.New().String()
 	_, err := database.ExecContext(ctx,
 		`INSERT INTO game_lore_entities(id, game_id, kind, name, tags, summary, excerpt, source_title, source_page)
@@ -380,7 +380,7 @@ type CreateGameLoreEntityRelationParams struct {
 // to_entity_id) UNIQUE constraint: re-indexing the same book, or the same
 // relation turning up again from an overlapping chunk, refreshes source_page
 // in place instead of piling up duplicate rows.
-func UpsertGameLoreEntityRelation(ctx context.Context, database *sql.DB, p CreateGameLoreEntityRelationParams) error {
+func UpsertGameLoreEntityRelation(ctx context.Context, database DBTX, p CreateGameLoreEntityRelationParams) error {
 	id := uuid.New().String()
 	_, err := database.ExecContext(ctx,
 		`INSERT INTO game_lore_entity_relations(id, game_id, from_entity_id, to_entity_id, relation, source_title, source_page)
