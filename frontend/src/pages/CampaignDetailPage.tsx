@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard'
-import { BookOpen, Download, Plus, Users, Trash2, UserPlus, Wand2, ChevronDown, ChevronRight, GripVertical } from 'lucide-react'
+import { BookOpen, Download, Plus, Users, Trash2, UserPlus, Wand2, ChevronDown, ChevronRight, GripVertical, Swords } from 'lucide-react'
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor,
   useSensor, useSensors, type DragEndEvent,
@@ -278,6 +278,39 @@ function isDirty(form: FormState, c: Campaign): boolean {
   )
 }
 
+/** Read-only mirror of CampaignForm for a delegated Meneur — see docs/users-authors.md §4. */
+function CampaignOverviewReadOnly({ campaign }: { campaign: Campaign }) {
+  const navigate = useNavigate()
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-3xl font-bold">{campaign.name}</h1>
+        <Button onClick={() => navigate(`/campaigns/${campaign.id}/runs`)}>
+          Mener <Swords className="h-3.5 w-3.5 ml-1.5" />
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Jeu</p>
+          <p className="text-sm">{campaign.game_name || '—'}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Genre</p>
+          <p className="text-sm">{campaign.genre || '—'}</p>
+        </div>
+      </div>
+
+      {campaign.pitch && (
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Pitch</p>
+          <MentionEditor campaignId={campaign.id} value={campaign.pitch} onChange={() => {}} disabled />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CampaignForm({ campaign }: { campaign: Campaign }) {
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
@@ -399,6 +432,19 @@ const scenarioStatusLabel: Record<string, string> = {
   archived: 'Archivé',
 }
 
+function ScenarioRowReadOnly({ scenario, onOpen }: { scenario: Scenario; onOpen: () => void }) {
+  return (
+    <li
+      onClick={onOpen}
+      className="flex items-center gap-3 p-3 rounded-md border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
+    >
+      <BookOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+      <span className="flex-1 text-sm font-medium">{scenario.name}</span>
+      <span className="text-xs text-muted-foreground">{scenarioStatusLabel[scenario.status] ?? scenario.status}</span>
+    </li>
+  )
+}
+
 function ScenarioRow({ scenario, onOpen }: { scenario: Scenario; onOpen: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: scenario.id })
@@ -428,7 +474,7 @@ function ScenarioRow({ scenario, onOpen }: { scenario: Scenario; onOpen: () => v
   )
 }
 
-function ScenarioList({ campaignId }: { campaignId: string }) {
+function ScenarioList({ campaignId, readOnly = false }: { campaignId: string; readOnly?: boolean }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -497,14 +543,18 @@ function ScenarioList({ campaignId }: { campaignId: string }) {
             <Users className="h-3.5 w-3.5 mr-1" />
             Entités
           </Button>
-          <Button size="sm" onClick={() => setOpen(true)}>
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            Nouveau scénario
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => navigate(`/campaigns/${campaignId}/factory`)}>
-            <Wand2 className="h-3.5 w-3.5 mr-1" />
-            Fabrique
-          </Button>
+          {!readOnly && (
+            <>
+              <Button size="sm" onClick={() => setOpen(true)}>
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Nouveau scénario
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => navigate(`/campaigns/${campaignId}/factory`)}>
+                <Wand2 className="h-3.5 w-3.5 mr-1" />
+                Fabrique
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -512,7 +562,15 @@ function ScenarioList({ campaignId }: { campaignId: string }) {
         <p className="text-xs text-muted-foreground">Aucun scénario pour l'instant.</p>
       )}
 
-      {active.length > 0 && (
+      {active.length > 0 && readOnly && (
+        <ul className="space-y-1.5">
+          {active.map(s => (
+            <ScenarioRowReadOnly key={s.id} scenario={s} onOpen={() => navigate(`/scenarios/${s.id}/synopsis`)} />
+          ))}
+        </ul>
+      )}
+
+      {active.length > 0 && !readOnly && (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={active.map(s => s.id)} strategy={verticalListSortingStrategy}>
             <ul className="space-y-1.5">
@@ -585,14 +643,11 @@ export default function CampaignDetailPage() {
 
   useDocTitle(campaign ? `lore: ${campaign.name}` : 'lore')
 
-  // Author mode is owner-only. A delegated account (access === 'member') has
-  // real gamemaster rights but never authoring ones — send it to the hub it
-  // actually has, rather than a form whose Enregistrer would just 403.
+  // Writing is owner-only, but a delegated Meneur can still browse the
+  // material read-only — the story and cast they need before deciding to run
+  // a session. See docs/users-authors.md §4.
   const isNonOwner = campaign != null && campaign.access !== 'owner'
-  useSyncMode('author', !isNonOwner)
-  useEffect(() => {
-    if (isNonOwner) navigate(`/campaigns/${id}/runs`, { replace: true })
-  }, [isNonOwner, id, navigate])
+  useSyncMode(isNonOwner ? 'gamemaster' : 'author')
 
   if (isLoading) {
     return (
@@ -615,7 +670,17 @@ export default function CampaignDetailPage() {
     )
   }
 
-  if (isNonOwner) return null
+  if (isNonOwner) {
+    return (
+      <AppShell crumbs={[{ label: campaign.name }]}>
+        <main className="max-w-3xl mx-auto px-6 py-8">
+          <CampaignOverviewReadOnly campaign={campaign} />
+          <ScenarioList campaignId={id!} readOnly />
+          <AccessSection campaignId={id!} ownerID={campaign.owner_id} />
+        </main>
+      </AppShell>
+    )
+  }
 
   return (
     <AppShell crumbs={[{ label: campaign.name }]}>

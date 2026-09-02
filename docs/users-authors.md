@@ -140,18 +140,38 @@ campaign.
 
 ---
 
-## 4. The delegated Meneur — access without authorship
+## 4. The delegated Meneur — read, but never write
 
 `AccessSection`'s comment in `CampaignDetailPage.tsx` states the rule plainly:
 *"a delegated account (`access === 'member'`) can run this campaign's tables
-but never write to the campaign itself."* A member added via **Accès** sees
-only the Meneur tab — they can pick a scenario, open the play console, project
-to the table, and run sessions for a group, but the Auteur tab (entities,
-synopsis editing, Fabrique, Brainstorm) does not render for them at all.
+but never write to the campaign itself."* A member added via **Accès** never
+sees the Auteur tab's write controls — no editing entities, no editing the
+synopsis, no Fabrique, no Brainstorm — but they can browse everything an
+author writes, read-only, before deciding to run a session:
+
+- The campaign overview (`/campaigns/:id`) — pitch, genre, and the scenario
+  list (no drag-reorder, no "Nouveau scénario"/"Fabrique", but Accès and
+  Export JSON stay visible).
+- Entities (`/campaigns/:id/entities`) — NPCs, artefacts, locations, factions,
+  opened in the same editor modals an author uses, with every write control
+  (edit fields, image upload, LLM actions, delete) hidden.
+- A scenario's synopsis (`/scenarios/:id/synopsis`) — scenes, hooks, attached
+  NPCs/factions, same treatment.
+
+Landing on the Meneur dashboard's "Mener une table" list sends a delegated
+member to the read-only overview first, not straight into the run console —
+browse the story, then hit **Mener** when ready. An owner using the same
+dashboard still jumps straight to `/campaigns/:id/runs`, since they already
+know the material.
+
+Scenario Factory (`/campaigns/:id/factory`) stays fully hidden — it's a
+mid-draft generation workbench, not finished story, and "read-only" doesn't
+map cleanly onto it.
 
 This is the app's answer to "my co-GM runs half the sessions but I'm the one
-who writes the campaign" — one role, granted per account, with a hard line
-where writing begins.
+who writes the campaign, and they need to actually know the story before they
+run it" — one role, granted per account, with a hard line where writing
+begins but no line at all on reading.
 
 ---
 

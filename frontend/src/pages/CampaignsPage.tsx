@@ -220,9 +220,12 @@ function AuthorDashboard({ campaigns }: { campaigns: Campaign[] }) {
 //
 // Every campaign this account can run a table for — owned (write access) and
 // delegated (access === 'member', see docs/users-authors.md §4 "the
-// delegated Meneur"). Unlike AuthorDashboard, rows open the Meneur console
-// directly (/campaigns/:id/runs) rather than the authoring page, and there
-// is no "create campaign" here — creating is an authoring action.
+// delegated Meneur"). An owner already knows the campaign and can jump
+// straight into the run console. A delegated member lands on the campaign
+// overview first instead — browse the story and cast read-only, then
+// "Mener" from there when ready, per the same doc's §4 "browse before you
+// run" flow. There is no "create campaign" here — creating is an authoring
+// action.
 
 function GamemasterDashboard({ campaigns }: { campaigns: Campaign[] }) {
   const navigate = useNavigate()
@@ -239,7 +242,7 @@ function GamemasterDashboard({ campaigns }: { campaigns: Campaign[] }) {
           {campaigns.map(c => (
             <li
               key={c.id}
-              onClick={() => navigate(`/campaigns/${c.id}/runs`)}
+              onClick={() => navigate(c.access === 'member' ? `/campaigns/${c.id}` : `/campaigns/${c.id}/runs`)}
               className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
             >
               <div>
