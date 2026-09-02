@@ -50,6 +50,28 @@ func (h *ScenarioHandler) Create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, scenario)
 }
 
+func (h *ScenarioHandler) Reorder(w http.ResponseWriter, r *http.Request) {
+	campaignID := chi.URLParam(r, "campaignID")
+
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, "ids requis")
+		return
+	}
+	if err := db.ReorderScenariosIn(r.Context(), h.db, campaignID, body.IDs); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	scenarios, err := db.ListScenarios(r.Context(), h.db, campaignID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, scenarios)
+}
+
 func (h *ScenarioHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	scenario, err := db.GetScenario(r.Context(), h.db, id)

@@ -310,6 +310,7 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 				r.Use(requireCampaignAccessByParam(database, "campaignID"))
 				r.Get("/", scenarios.List)
 				r.With(requireCampaignOwnerByParam(database, "campaignID")).Post("/", scenarios.Create)
+				r.With(requireCampaignOwnerByParam(database, "campaignID")).Post("/reorder", scenarios.Reorder)
 			})
 		})
 

@@ -1,8 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard'
-import { BookOpen, Download, Plus, Users, Trash2, UserPlus, Wand2, ChevronDown, ChevronRight } from 'lucide-react'
+import { BookOpen, Download, Plus, Users, Trash2, UserPlus, Wand2, ChevronDown, ChevronRight, GripVertical } from 'lucide-react'
+import {
+  DndContext, closestCenter, PointerSensor, KeyboardSensor,
+  useSensor, useSensors, type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext, sortableKeyboardCoordinates, useSortable,
+  verticalListSortingStrategy, arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -384,16 +393,65 @@ function CampaignForm({ campaign }: { campaign: Campaign }) {
   )
 }
 
+const scenarioStatusLabel: Record<string, string> = {
+  draft: 'Brouillon',
+  active: 'Actif',
+  archived: 'Archivé',
+}
+
+function ScenarioRow({ scenario, onOpen }: { scenario: Scenario; onOpen: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: scenario.id })
+
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      onClick={onOpen}
+      className="flex items-center gap-3 p-3 rounded-md border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
+    >
+      <button
+        type="button"
+        className="text-muted-foreground/50 hover:text-muted-foreground cursor-grab active:cursor-grabbing shrink-0"
+        onClick={e => e.stopPropagation()}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <BookOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+      <span className="flex-1 text-sm font-medium">{scenario.name}</span>
+      <span className="text-xs text-muted-foreground">{scenarioStatusLabel[scenario.status] ?? scenario.status}</span>
+    </li>
+  )
+}
+
 function ScenarioList({ campaignId }: { campaignId: string }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
   const { data: scenarios } = useQuery({
     queryKey: ['scenarios', campaignId],
     queryFn: () => api.get<Scenario[]>(`/campaigns/${campaignId}/scenarios`),
   })
+
+  const active = (scenarios ?? []).filter(s => s.status !== 'archived')
+  const archived = [...(scenarios ?? []).filter(s => s.status === 'archived')]
+    .sort((a, b) => {
+      if (!a.archived_at && !b.archived_at) return 0
+      if (!a.archived_at) return 1
+      if (!b.archived_at) return -1
+      return b.archived_at.localeCompare(a.archived_at)
+    })
 
   const create = useMutation({
     mutationFn: (n: string) =>
@@ -406,10 +464,21 @@ function ScenarioList({ campaignId }: { campaignId: string }) {
     },
   })
 
-  const statusLabel: Record<string, string> = {
-    draft: 'Brouillon',
-    active: 'Actif',
-    archived: 'Archivé',
+  const reorder = useMutation({
+    mutationFn: (ids: string[]) =>
+      api.post<Scenario[]>(`/campaigns/${campaignId}/scenarios/reorder`, { ids }),
+    onSuccess: (data) => queryClient.setQueryData(['scenarios', campaignId], data),
+  })
+
+  function onDragEnd(event: DragEndEvent) {
+    const { active: draggedItem, over } = event
+    if (!over || draggedItem.id === over.id) return
+    const oldIndex = active.findIndex(s => s.id === draggedItem.id)
+    const newIndex = active.findIndex(s => s.id === over.id)
+    const reordered = arrayMove(active, oldIndex, newIndex)
+    queryClient.setQueryData(['scenarios', campaignId], [...reordered, ...archived])
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => reorder.mutate(reordered.map(s => s.id)), 400)
   }
 
   return (
@@ -443,20 +512,35 @@ function ScenarioList({ campaignId }: { campaignId: string }) {
         <p className="text-xs text-muted-foreground">Aucun scénario pour l'instant.</p>
       )}
 
-      {scenarios && scenarios.length > 0 && (
-        <ul className="space-y-1.5">
-          {scenarios.map(s => (
-            <li
-              key={s.id}
-              onClick={() => navigate(`/scenarios/${s.id}/synopsis`)}
-              className="flex items-center gap-3 p-3 rounded-md border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
-            >
-              <BookOpen className="h-4 w-4 text-muted-foreground shrink-0" />
-              <span className="flex-1 text-sm font-medium">{s.name}</span>
-              <span className="text-xs text-muted-foreground">{statusLabel[s.status] ?? s.status}</span>
-            </li>
-          ))}
-        </ul>
+      {active.length > 0 && (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={active.map(s => s.id)} strategy={verticalListSortingStrategy}>
+            <ul className="space-y-1.5">
+              {active.map(s => (
+                <ScenarioRow key={s.id} scenario={s} onOpen={() => navigate(`/scenarios/${s.id}/synopsis`)} />
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
+      )}
+
+      {archived.length > 0 && (
+        <div className="space-y-1.5 pt-2">
+          <p className="text-xs text-muted-foreground">Archivés</p>
+          <ul className="space-y-1.5">
+            {archived.map(s => (
+              <li
+                key={s.id}
+                onClick={() => navigate(`/scenarios/${s.id}/synopsis`)}
+                className="flex items-center gap-3 p-3 rounded-md border bg-muted/40 hover:bg-accent/50 transition-colors cursor-pointer text-muted-foreground"
+              >
+                <BookOpen className="h-4 w-4 shrink-0" />
+                <span className="flex-1 text-sm font-medium">{s.name}</span>
+                <span className="text-xs">{scenarioStatusLabel[s.status] ?? s.status}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>

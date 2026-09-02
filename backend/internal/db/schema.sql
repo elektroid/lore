@@ -127,6 +127,8 @@ CREATE TABLE IF NOT EXISTS scenarios (
     campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
     name        TEXT NOT NULL,
     status      TEXT NOT NULL DEFAULT 'draft',
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    archived_at DATETIME,
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );

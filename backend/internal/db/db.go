@@ -78,6 +78,8 @@ func MigrateAlters(database *sql.DB) {
 		`ALTER TABLE player_characters ADD COLUMN sheet TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE campaign_npcs ADD COLUMN sheet TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE campaigns ADD COLUMN pitch TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE scenarios ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE scenarios ADD COLUMN archived_at DATETIME`,
 	}
 	for _, stmt := range alters {
 		database.Exec(stmt) //nolint:errcheck — duplicate column error is expected on re-run
