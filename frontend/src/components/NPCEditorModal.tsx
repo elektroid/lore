@@ -22,6 +22,7 @@ interface Props {
   gameId?: string
   open: boolean
   onClose: () => void
+  readOnly?: boolean
 }
 
 export const NPC_SUGGESTION_FIELDS: SuggestionField[] = [
@@ -54,12 +55,13 @@ function AutoTextarea({ value, onChange, placeholder, className = '', disabled }
 // ── Image grid (illustrations only) ──────────────────────────────────────────
 
 function ImageGrid({
-  images, npcId, campaignId, onUpdated,
+  images, npcId, campaignId, onUpdated, readOnly,
 }: {
   images: NPCImage[]
   npcId: string
   campaignId: string
   onUpdated: (npc: CampaignNPC) => void
+  readOnly?: boolean
 }) {
   const [lightbox, setLightbox] = useState<NPCImage | null>(null)
   const [candidates, setCandidates] = useState<PendingImage[]>([])
@@ -104,34 +106,40 @@ function ImageGrid({
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Illustrations</p>
-        <div className="flex gap-1">
-          <Button
-            size="sm" variant="ghost" className="h-7 px-2 text-xs"
-            disabled={generateImages.isPending}
-            onClick={() => generateImages.mutate()}
-          >
-            <Images className="h-3 w-3 mr-1" />
-            {generateImages.isPending ? 'Génération…' : 'Générer'}
-          </Button>
-          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => inputRef.current?.click()}>
-            Ajouter
-          </Button>
-        </div>
+        {!readOnly && (
+          <div className="flex gap-1">
+            <Button
+              size="sm" variant="ghost" className="h-7 px-2 text-xs"
+              disabled={generateImages.isPending}
+              onClick={() => generateImages.mutate()}
+            >
+              <Images className="h-3 w-3 mr-1" />
+              {generateImages.isPending ? 'Génération…' : 'Générer'}
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => inputRef.current?.click()}>
+              Ajouter
+            </Button>
+          </div>
+        )}
       </div>
       {generateImages.isError && <p className="text-xs text-destructive">{(generateImages.error as Error).message}</p>}
 
-      <input
-        ref={inputRef} type="file" accept="image/*" multiple className="hidden"
-        onChange={e => { handleFiles(e.target.files); e.target.value = '' }}
-      />
+      {!readOnly && (
+        <>
+          <input
+            ref={inputRef} type="file" accept="image/*" multiple className="hidden"
+            onChange={e => { handleFiles(e.target.files); e.target.value = '' }}
+          />
 
-      <div
-        onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files) }}
-        onDragOver={e => e.preventDefault()}
-        className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center text-xs text-muted-foreground hover:border-muted-foreground/40 transition-colors"
-      >
-        {upload.isPending ? 'Upload en cours…' : 'Glissez des illustrations ici'}
-      </div>
+          <div
+            onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files) }}
+            onDragOver={e => e.preventDefault()}
+            className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center text-xs text-muted-foreground hover:border-muted-foreground/40 transition-colors"
+          >
+            {upload.isPending ? 'Upload en cours…' : 'Glissez des illustrations ici'}
+          </div>
+        </>
+      )}
 
       {images.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
@@ -143,11 +151,13 @@ function ImageGrid({
                 className="w-full h-24 object-cover cursor-pointer"
                 onClick={() => setLightbox(img)}
               />
-              <div className="absolute inset-x-0 bottom-0 bg-black/60 p-1 opacity-0 group-hover:opacity-100 transition-opacity flex justify-end">
-                <button onClick={() => deleteImg.mutate(img.id)} className="text-white/70 hover:text-red-400">
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              </div>
+              {!readOnly && (
+                <div className="absolute inset-x-0 bottom-0 bg-black/60 p-1 opacity-0 group-hover:opacity-100 transition-opacity flex justify-end">
+                  <button onClick={() => deleteImg.mutate(img.id)} className="text-white/70 hover:text-red-400">
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -177,7 +187,7 @@ function ImageGrid({
 
 // ── Main modal ─────────────────────────────────────────────────────────────────
 
-export default function NPCEditorModal({ npcId, campaignId, gameId, open, onClose }: Props) {
+export default function NPCEditorModal({ npcId, campaignId, gameId, open, onClose, readOnly }: Props) {
   const qc = useQueryClient()
   const draft = useDebouncedSave<Partial<{ name: string; role: string; description: string; motivation: string; quote: string; sheet: string }>>()
 
@@ -285,7 +295,11 @@ export default function NPCEditorModal({ npcId, campaignId, gameId, open, onClos
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {isLoading ? 'Chargement…' : (
+              {isLoading ? 'Chargement…' : readOnly ? (
+                <p className="w-full text-lg font-semibold">
+                  {local.name || <span className="text-muted-foreground italic">(sans nom)</span>}
+                </p>
+              ) : (
                 <input
                   value={local.name}
                   onChange={e => handle('name', e.target.value)}
@@ -300,13 +314,17 @@ export default function NPCEditorModal({ npcId, campaignId, gameId, open, onClos
             <div className="space-y-4">
               <div className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rôle</p>
-                <Input value={local.role} onChange={e => handle('role', e.target.value)} placeholder="Rôle dans l'histoire" className="h-8 text-sm" />
+                {readOnly ? (
+                  <p className="text-sm">{local.role || '—'}</p>
+                ) : (
+                  <Input value={local.role} onChange={e => handle('role', e.target.value)} placeholder="Rôle dans l'histoire" className="h-8 text-sm" />
+                )}
               </div>
 
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</p>
-                  {!suggestion && (
+                  {!readOnly && !suggestion && (
                     <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={develop.isPending} onClick={() => develop.mutate()}>
                       <Sparkles className="h-3 w-3 mr-1" />
                       {develop.isPending ? 'Génération…' : 'Développer avec le LLM'}
@@ -320,29 +338,40 @@ export default function NPCEditorModal({ npcId, campaignId, gameId, open, onClos
                   onChange={v => handle('description', v)}
                   placeholder="Description physique, psychologie… tapez @ pour citer un PNJ, un lieu, une faction"
                   className="min-h-[100px]"
+                  disabled={readOnly}
                 />
               </div>
 
               <div className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Motivation</p>
-                <Input value={local.motivation} onChange={e => handle('motivation', e.target.value)} placeholder="Ce qui le fait agir" className="h-8 text-sm" />
+                {readOnly ? (
+                  <p className="text-sm">{local.motivation || '—'}</p>
+                ) : (
+                  <Input value={local.motivation} onChange={e => handle('motivation', e.target.value)} placeholder="Ce qui le fait agir" className="h-8 text-sm" />
+                )}
               </div>
 
               <div className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Réplique type</p>
-                <AutoTextarea value={local.quote} onChange={v => handle('quote', v)} placeholder="«…»" className="italic" />
-              </div>
-
-              <div className="space-y-1 pt-2 border-t">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide pt-3">Fiche</p>
-                {schemaLoading ? (
-                  <p className="text-xs text-muted-foreground">Chargement…</p>
-                ) : schema ? (
-                  <SheetForm schema={schema} values={sheetValues} scope="npc" onChange={handleSheetChange} />
+                {readOnly ? (
+                  <p className="text-sm italic">{local.quote || '—'}</p>
                 ) : (
-                  <p className="text-xs text-muted-foreground italic">Pas encore de fiche pour ce système.</p>
+                  <AutoTextarea value={local.quote} onChange={v => handle('quote', v)} placeholder="«…»" className="italic" />
                 )}
               </div>
+
+              {!readOnly && (
+                <div className="space-y-1 pt-2 border-t">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide pt-3">Fiche</p>
+                  {schemaLoading ? (
+                    <p className="text-xs text-muted-foreground">Chargement…</p>
+                  ) : schema ? (
+                    <SheetForm schema={schema} values={sheetValues} scope="npc" onChange={handleSheetChange} />
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">Pas encore de fiche pour ce système.</p>
+                  )}
+                </div>
+              )}
 
               {suggestion && (
                 <LLMSuggestionReview
@@ -354,7 +383,7 @@ export default function NPCEditorModal({ npcId, campaignId, gameId, open, onClos
                 />
               )}
 
-              <ImageGrid images={images} npcId={npcId} campaignId={campaignId} onUpdated={handleNPCUpdated} />
+              <ImageGrid images={images} npcId={npcId} campaignId={campaignId} onUpdated={handleNPCUpdated} readOnly={readOnly} />
 
               {save.isPending && <p className="text-xs text-muted-foreground text-right">Sauvegarde…</p>}
             </div>

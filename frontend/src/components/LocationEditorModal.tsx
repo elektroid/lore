@@ -17,6 +17,7 @@ interface Props {
   campaignId: string
   open: boolean
   onClose: () => void
+  readOnly?: boolean
 }
 
 const LOCATION_SUGGESTION_FIELDS: SuggestionField[] = [
@@ -27,12 +28,13 @@ const LOCATION_SUGGESTION_FIELDS: SuggestionField[] = [
 // ── Image grid ─────────────────────────────────────────────────────────────────
 
 function ImageGrid({
-  images, locationId, campaignId, onUpdated,
+  images, locationId, campaignId, onUpdated, readOnly,
 }: {
   images: LocationImage[]
   locationId: string
   campaignId: string
   onUpdated: (loc: CampaignLocation) => void
+  readOnly?: boolean
 }) {
   const [lightbox, setLightbox] = useState<LocationImage | null>(null)
   const [candidates, setCandidates] = useState<PendingImage[]>([])
@@ -90,42 +92,48 @@ function ImageGrid({
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Images</p>
-        <div className="flex gap-1">
-          <Button
-            size="sm" variant="ghost" className="h-7 px-2 text-xs"
-            disabled={generateImages.isPending}
-            onClick={() => generateImages.mutate()}
-          >
-            <Images className="h-3 w-3 mr-1" />
-            {generateImages.isPending ? 'Génération…' : 'Générer'}
-          </Button>
-          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { if (inputRef.current) { inputRef.current.setAttribute('data-type', 'illustration'); inputRef.current.click() } }}>
-            <ImageIcon className="h-3 w-3 mr-1" /> Illustration
-          </Button>
-          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { if (inputRef.current) { inputRef.current.setAttribute('data-type', 'map'); inputRef.current.click() } }}>
-            <Map className="h-3 w-3 mr-1" /> Plan / Carte
-          </Button>
-        </div>
+        {!readOnly && (
+          <div className="flex gap-1">
+            <Button
+              size="sm" variant="ghost" className="h-7 px-2 text-xs"
+              disabled={generateImages.isPending}
+              onClick={() => generateImages.mutate()}
+            >
+              <Images className="h-3 w-3 mr-1" />
+              {generateImages.isPending ? 'Génération…' : 'Générer'}
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { if (inputRef.current) { inputRef.current.setAttribute('data-type', 'illustration'); inputRef.current.click() } }}>
+              <ImageIcon className="h-3 w-3 mr-1" /> Illustration
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { if (inputRef.current) { inputRef.current.setAttribute('data-type', 'map'); inputRef.current.click() } }}>
+              <Map className="h-3 w-3 mr-1" /> Plan / Carte
+            </Button>
+          </div>
+        )}
       </div>
       {generateImages.isError && <p className="text-xs text-destructive">{(generateImages.error as Error).message}</p>}
 
-      <input
-        ref={inputRef} type="file" accept="image/*" multiple className="hidden"
-        onChange={e => {
-          const type = inputRef.current?.getAttribute('data-type') ?? 'illustration'
-          handleFiles(e.target.files, type)
-          e.target.value = ''
-        }}
-      />
+      {!readOnly && (
+        <>
+          <input
+            ref={inputRef} type="file" accept="image/*" multiple className="hidden"
+            onChange={e => {
+              const type = inputRef.current?.getAttribute('data-type') ?? 'illustration'
+              handleFiles(e.target.files, type)
+              e.target.value = ''
+            }}
+          />
 
-      {/* Drop zone */}
-      <div
-        onDrop={onDrop}
-        onDragOver={e => e.preventDefault()}
-        className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center text-xs text-muted-foreground hover:border-muted-foreground/40 transition-colors"
-      >
-        {upload.isPending ? 'Upload en cours…' : 'Glissez des images ici'}
-      </div>
+          {/* Drop zone */}
+          <div
+            onDrop={onDrop}
+            onDragOver={e => e.preventDefault()}
+            className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center text-xs text-muted-foreground hover:border-muted-foreground/40 transition-colors"
+          >
+            {upload.isPending ? 'Upload en cours…' : 'Glissez des images ici'}
+          </div>
+        </>
+      )}
 
       {images.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
@@ -137,25 +145,27 @@ function ImageGrid({
                 className="w-full h-24 object-cover cursor-pointer"
                 onClick={() => setLightbox(img)}
               />
-              <div className="absolute inset-x-0 bottom-0 bg-black/60 p-1 space-y-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <input
-                  defaultValue={img.label}
-                  onBlur={e => updateMeta.mutate({ imageId: img.id, label: e.target.value, type: img.type })}
-                  placeholder="Label…"
-                  className="w-full bg-transparent text-white text-xs outline-none placeholder:text-white/50"
-                />
-                <div className="flex items-center justify-between">
-                  <button
-                    onClick={() => updateMeta.mutate({ imageId: img.id, label: img.label, type: img.type === 'map' ? 'illustration' : 'map' })}
-                    className="text-white/70 hover:text-white text-xs"
-                  >
-                    {img.type === 'map' ? '🗺 Plan' : '🖼 Illus.'}
-                  </button>
-                  <button onClick={() => deleteImg.mutate(img.id)} className="text-white/70 hover:text-red-400">
-                    <Trash2 className="h-3 w-3" />
-                  </button>
+              {!readOnly && (
+                <div className="absolute inset-x-0 bottom-0 bg-black/60 p-1 space-y-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <input
+                    defaultValue={img.label}
+                    onBlur={e => updateMeta.mutate({ imageId: img.id, label: e.target.value, type: img.type })}
+                    placeholder="Label…"
+                    className="w-full bg-transparent text-white text-xs outline-none placeholder:text-white/50"
+                  />
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => updateMeta.mutate({ imageId: img.id, label: img.label, type: img.type === 'map' ? 'illustration' : 'map' })}
+                      className="text-white/70 hover:text-white text-xs"
+                    >
+                      {img.type === 'map' ? '🗺 Plan' : '🖼 Illus.'}
+                    </button>
+                    <button onClick={() => deleteImg.mutate(img.id)} className="text-white/70 hover:text-red-400">
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           ))}
         </div>
@@ -187,7 +197,7 @@ function ImageGrid({
 
 // ── Main modal ─────────────────────────────────────────────────────────────────
 
-export default function LocationEditorModal({ locationId, campaignId, open, onClose }: Props) {
+export default function LocationEditorModal({ locationId, campaignId, open, onClose, readOnly }: Props) {
   const qc = useQueryClient()
   const draft = useDebouncedSave<Partial<{ name: string; city: string; district: string; description: string; atmosphere: string }>>()
 

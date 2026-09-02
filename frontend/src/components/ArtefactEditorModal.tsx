@@ -19,6 +19,7 @@ interface Props {
   campaignId: string
   open: boolean
   onClose: () => void
+  readOnly?: boolean
 }
 
 const ARTEFACT_SUGGESTION_FIELDS: SuggestionField[] = [
@@ -27,7 +28,7 @@ const ARTEFACT_SUGGESTION_FIELDS: SuggestionField[] = [
 
 // ── Main modal ────────────────────────────────────────────────────────────────
 
-export default function ArtefactEditorModal({ artefactId, campaignId, open, onClose }: Props) {
+export default function ArtefactEditorModal({ artefactId, campaignId, open, onClose, readOnly }: Props) {
   const qc = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
   const draft = useDebouncedSave<Partial<{ name: string; description: string }>>()
@@ -191,14 +192,18 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
               {/* Name */}
               <div className="space-y-1">
                 <Label className="text-xs">Nom</Label>
-                <Input value={local.name} onChange={e => handle('name', e.target.value)} placeholder="Nom de l'artefact" className="h-8 text-sm" />
+                {readOnly ? (
+                  <p className="text-sm">{local.name || <span className="text-muted-foreground italic">(sans nom)</span>}</p>
+                ) : (
+                  <Input value={local.name} onChange={e => handle('name', e.target.value)} placeholder="Nom de l'artefact" className="h-8 text-sm" />
+                )}
               </div>
 
               {/* Description */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs">Description</Label>
-                  {!suggestion && (
+                  {!readOnly && !suggestion && (
                     <Button
                       size="sm" variant="ghost" className="h-6 px-2 text-xs"
                       disabled={develop.isPending || !local.name.trim()}
@@ -216,6 +221,7 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
                   onChange={v => handle('description', v)}
                   placeholder="Description mystérieuse de l'artefact… tapez @ pour citer un PNJ, un lieu, une faction"
                   className="min-h-[100px]"
+                  disabled={readOnly}
                 />
               </div>
 
@@ -233,19 +239,21 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs">Illustrations</Label>
-                  <div className="flex gap-1.5">
-                    <Button
-                      size="sm" variant="ghost" className="h-6 px-2 text-xs"
-                      disabled={generateImages.isPending || !local.name.trim()}
-                      onClick={() => generateImages.mutate()}
-                    >
-                      <Images className="h-3 w-3 mr-1" />
-                      {generateImages.isPending ? 'Génération…' : 'Générer'}
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => fileRef.current?.click()}>
-                      <Upload className="h-3 w-3 mr-1" /> Importer
-                    </Button>
-                  </div>
+                  {!readOnly && (
+                    <div className="flex gap-1.5">
+                      <Button
+                        size="sm" variant="ghost" className="h-6 px-2 text-xs"
+                        disabled={generateImages.isPending || !local.name.trim()}
+                        onClick={() => generateImages.mutate()}
+                      >
+                        <Images className="h-3 w-3 mr-1" />
+                        {generateImages.isPending ? 'Génération…' : 'Générer'}
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => fileRef.current?.click()}>
+                        <Upload className="h-3 w-3 mr-1" /> Importer
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 {generateImages.isError && <p className="text-xs text-destructive">{(generateImages.error as Error).message}</p>}
 
@@ -264,34 +272,40 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
                           className="h-20 w-20 rounded object-cover cursor-pointer hover:opacity-80 transition-opacity"
                           onClick={() => setLightboxUrl(img.url)}
                         />
-                        <button
-                          className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => deleteImage.mutate(img.id)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+                        {!readOnly && (
+                          <button
+                            className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => deleteImage.mutate(img.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
                 )}
 
-                <input
-                  ref={fileRef} type="file" accept="image/*" className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage.mutate(f); e.target.value = '' }}
-                />
+                {!readOnly && (
+                  <input
+                    ref={fileRef} type="file" accept="image/*" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage.mutate(f); e.target.value = '' }}
+                  />
+                )}
               </div>
 
               {/* NPC links */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs">PNJs liés</Label>
-                  <Button
-                    size="sm" variant="ghost" className="h-6 px-2 text-xs"
-                    onClick={() => setLinkDialogOpen(true)}
-                    disabled={availableNpcs.length === 0}
-                  >
-                    <Link2 className="h-3 w-3 mr-1" /> Lier un PNJ
-                  </Button>
+                  {!readOnly && (
+                    <Button
+                      size="sm" variant="ghost" className="h-6 px-2 text-xs"
+                      onClick={() => setLinkDialogOpen(true)}
+                      disabled={availableNpcs.length === 0}
+                    >
+                      <Link2 className="h-3 w-3 mr-1" /> Lier un PNJ
+                    </Button>
+                  )}
                 </div>
                 {links.length === 0 ? (
                   <p className="text-xs text-muted-foreground">Aucun PNJ lié.</p>
@@ -301,12 +315,14 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
                       <li key={link.id} className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-1.5 text-sm">
                         <span className="font-medium text-sm">{link.npc_name}</span>
                         {link.nature && <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{link.nature}</span>}
-                        <Button
-                          size="sm" variant="ghost" className="h-5 w-5 p-0 ml-auto text-muted-foreground hover:text-destructive"
-                          onClick={() => deleteLink.mutate(link.id)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
+                        {!readOnly && (
+                          <Button
+                            size="sm" variant="ghost" className="h-5 w-5 p-0 ml-auto text-muted-foreground hover:text-destructive"
+                            onClick={() => deleteLink.mutate(link.id)}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
                       </li>
                     ))}
                   </ul>
