@@ -11,6 +11,7 @@ export interface Campaign {
   genre: string
   game_id: string
   game_name: string
+  pitch: string
   llm_config: string
   owner_id: string
   owner_name: string

@@ -44,6 +44,7 @@ type campaignExportMeta struct {
 	Genre     string `json:"genre"`
 	GameID    string `json:"game_id"`
 	GameName  string `json:"game_name"`
+	Pitch     string `json:"pitch"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -152,6 +153,7 @@ type createCampaignBody struct {
 	Name      string `json:"name"`
 	Genre     string `json:"genre"`
 	GameID    string `json:"game_id"`
+	Pitch     string `json:"pitch"`
 	LLMConfig string `json:"llm_config"`
 }
 
@@ -182,6 +184,7 @@ func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Name:      body.Name,
 		Genre:     body.Genre,
 		GameID:    body.GameID,
+		Pitch:     body.Pitch,
 		LLMConfig: body.LLMConfig,
 		OwnerID:   user.ID,
 	})
@@ -196,6 +199,7 @@ type updateCampaignBody struct {
 	Name      string `json:"name"`
 	Genre     string `json:"genre"`
 	GameID    string `json:"game_id"`
+	Pitch     string `json:"pitch"`
 	LLMConfig string `json:"llm_config"`
 }
 
@@ -235,6 +239,7 @@ func (h *CampaignHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Name:      body.Name,
 		Genre:     body.Genre,
 		GameID:    body.GameID,
+		Pitch:     body.Pitch,
 		LLMConfig: body.LLMConfig,
 	})
 	if err != nil {
@@ -330,6 +335,7 @@ func (h *CampaignHandler) Export(w http.ResponseWriter, r *http.Request) {
 			Genre:     campaign.Genre,
 			GameID:    campaign.GameID,
 			GameName:  campaign.GameName,
+			Pitch:     campaign.Pitch,
 			CreatedAt: campaign.CreatedAt,
 			UpdatedAt: campaign.UpdatedAt,
 		},
@@ -429,6 +435,7 @@ func (h *CampaignHandler) Import(w http.ResponseWriter, r *http.Request) {
 		Name:    doc.Campaign.Name,
 		Genre:   doc.Campaign.Genre,
 		GameID:  gameID,
+		Pitch:   doc.Campaign.Pitch,
 		OwnerID: user.ID,
 	})
 	if err != nil {

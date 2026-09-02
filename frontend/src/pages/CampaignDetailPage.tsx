@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import AppShell from '@/components/AppShell'
+import MentionEditor from '@/components/MentionEditor'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import { useSyncMode } from '@/hooks/useSyncMode'
 import { api } from '@/api/client'
@@ -252,17 +253,19 @@ interface FormState {
   name: string
   genre: string
   game_id: string
+  pitch: string
 }
 
 function initForm(c: Campaign): FormState {
-  return { name: c.name, genre: c.genre, game_id: c.game_id }
+  return { name: c.name, genre: c.genre, game_id: c.game_id, pitch: c.pitch }
 }
 
 function isDirty(form: FormState, c: Campaign): boolean {
   return (
     form.name !== c.name ||
     form.genre !== c.genre ||
-    form.game_id !== c.game_id
+    form.game_id !== c.game_id ||
+    form.pitch !== c.pitch
   )
 }
 
@@ -284,6 +287,7 @@ function CampaignForm({ campaign }: { campaign: Campaign }) {
         name: f.name,
         genre: f.genre,
         game_id: f.game_id,
+        pitch: f.pitch,
       }),
     onSuccess: (updated) => {
       // PUT's response doesn't carry read-only fields like `access` (only GET
@@ -354,6 +358,18 @@ function CampaignForm({ campaign }: { campaign: Campaign }) {
             onChange={field('genre')}
           />
         </div>
+      </div>
+
+      {/* Pitch */}
+      <div className="space-y-2">
+        <Label htmlFor="pitch">Pitch</Label>
+        <MentionEditor
+          campaignId={id!}
+          value={form.pitch}
+          onChange={v => setForm(f => ({ ...f, pitch: v }))}
+          placeholder="Le pitch de la campagne… tapez @ pour citer un PNJ, un lieu, une faction"
+          className="min-h-[100px]"
+        />
       </div>
 
       {/* Scenario list */}

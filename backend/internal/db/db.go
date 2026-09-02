@@ -77,6 +77,7 @@ func MigrateAlters(database *sql.DB) {
 		`CREATE INDEX IF NOT EXISTS idx_games_sheet_template_id ON games(sheet_template_id)`,
 		`ALTER TABLE player_characters ADD COLUMN sheet TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE campaign_npcs ADD COLUMN sheet TEXT NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE campaigns ADD COLUMN pitch TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, stmt := range alters {
 		database.Exec(stmt) //nolint:errcheck — duplicate column error is expected on re-run
@@ -350,13 +351,17 @@ func dropCampaignGameFK(database *sql.DB) {
 			genre       TEXT NOT NULL DEFAULT '',
 			game        TEXT NOT NULL DEFAULT '',
 			game_id     TEXT NOT NULL DEFAULT '',
+			pitch       TEXT NOT NULL DEFAULT '',
 			llm_config  TEXT NOT NULL DEFAULT '{}',
 			owner_id    TEXT NOT NULL DEFAULT '',
 			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
-		`INSERT INTO campaigns_rebuilt (id,name,genre,game,game_id,llm_config,owner_id,created_at,updated_at)
-		 SELECT id,name,genre,game,game_id,llm_config,owner_id,created_at,updated_at FROM campaigns`,
+		// pitch is only ever selected here if the ADD COLUMN in MigrateAlters's
+		// `alters` slice already ran — that loop executes before this function is
+		// called, so the column exists on every path that reaches this INSERT.
+		`INSERT INTO campaigns_rebuilt (id,name,genre,game,game_id,pitch,llm_config,owner_id,created_at,updated_at)
+		 SELECT id,name,genre,game,game_id,pitch,llm_config,owner_id,created_at,updated_at FROM campaigns`,
 		`DROP TABLE campaigns`,
 		`ALTER TABLE campaigns_rebuilt RENAME TO campaigns`,
 		`CREATE INDEX IF NOT EXISTS idx_campaigns_game_id  ON campaigns(game_id)`,

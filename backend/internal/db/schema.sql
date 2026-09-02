@@ -82,6 +82,11 @@ CREATE TABLE IF NOT EXISTS campaigns (
     name        TEXT NOT NULL,
     genre       TEXT NOT NULL DEFAULT '',
     game        TEXT NOT NULL DEFAULT '',
+    -- The campaign's own pitch/premise — one paragraph of prose, author/GM
+    -- facing only (never shown to players). Distinct from a scenario's
+    -- synopsis (its scene graph): this is the campaign-wide throughline that
+    -- sits above any single scenario.
+    pitch       TEXT NOT NULL DEFAULT '',
     -- No REFERENCES here on purpose. The column is NOT NULL DEFAULT '', and ''
     -- is not a games.id, so a foreign key would reject the perfectly ordinary
     -- "campaign with no game system" — and would also reject its own
