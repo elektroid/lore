@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import FactionEditorModal from '@/components/FactionEditorModal'
 import type { SynopsisFaction } from '@/types/synopsis'
 import type { CampaignFaction } from '@/types/entities'
 import { api } from '@/api/client'
@@ -11,6 +12,7 @@ import { api } from '@/api/client'
 interface Props {
   scenarioId: string
   campaignId: string
+  readOnly?: boolean
 }
 
 function FactionPickerDialog({
@@ -75,9 +77,10 @@ function FactionPickerDialog({
   )
 }
 
-export default function FactionWidget({ scenarioId, campaignId }: Props) {
+export default function FactionWidget({ scenarioId, campaignId, readOnly }: Props) {
   const qc = useQueryClient()
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [viewFactionId, setViewFactionId] = useState<string | null>(null)
 
   const { data: factions = [] } = useQuery({
     queryKey: ['synopsis-factions', scenarioId],
@@ -103,38 +106,61 @@ export default function FactionWidget({ scenarioId, campaignId }: Props) {
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">Factions impliquées</h3>
-        <Button size="sm" variant="ghost" onClick={() => setPickerOpen(true)} className="h-7 px-2 text-xs">
-          <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter
-        </Button>
+        {!readOnly && (
+          <Button size="sm" variant="ghost" onClick={() => setPickerOpen(true)} className="h-7 px-2 text-xs">
+            <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter
+          </Button>
+        )}
       </div>
 
       {factions.length === 0 && (
-        <p className="text-xs text-muted-foreground">Aucune faction. Ajoutez-en une.</p>
+        <p className="text-xs text-muted-foreground">
+          {readOnly ? 'Aucune faction.' : 'Aucune faction. Ajoutez-en une.'}
+        </p>
       )}
 
       <ul className="space-y-1">
         {factions.map(f => (
           <li key={f.id} className="flex items-center gap-2 rounded-md border bg-card px-3 py-2">
             <ShieldAlert className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <span className="text-sm font-medium flex-1">{f.name}</span>
-            {f.type && <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{f.type}</span>}
-            <Button
-              size="sm" variant="ghost"
-              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive shrink-0"
-              onClick={() => removeFaction.mutate(f.id)}
+            <button
+              className="text-sm font-medium flex-1 text-left hover:underline"
+              onClick={() => setViewFactionId(f.id)}
             >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+              {f.name}
+            </button>
+            {f.type && <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{f.type}</span>}
+            {!readOnly && (
+              <Button
+                size="sm" variant="ghost"
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                onClick={() => removeFaction.mutate(f.id)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </li>
         ))}
       </ul>
 
-      <FactionPickerDialog
-        campaignId={campaignId}
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        onPick={f => addFaction.mutate(f.id)}
-      />
+      {!readOnly && (
+        <FactionPickerDialog
+          campaignId={campaignId}
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          onPick={f => addFaction.mutate(f.id)}
+        />
+      )}
+
+      {viewFactionId && (
+        <FactionEditorModal
+          factionId={viewFactionId}
+          campaignId={campaignId}
+          open={!!viewFactionId}
+          onClose={() => setViewFactionId(null)}
+          readOnly={readOnly}
+        />
+      )}
     </section>
   )
 }

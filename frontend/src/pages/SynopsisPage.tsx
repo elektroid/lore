@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, X, Sparkles, Printer, BookOpen, FolderOpen, Users } from 'lucide-react'
 import AppShell from '@/components/AppShell'
@@ -82,7 +82,6 @@ function DocumentsDialog({ gameId, gameName, onClose }: { gameId: string; gameNa
 export default function SynopsisPage() {
   const { id } = useParams<{ id: string }>()
   const scenarioId = id!
-  const navigate = useNavigate()
 
   const { data: scenario } = useQuery({
     queryKey: ['scenario', scenarioId],
@@ -146,17 +145,11 @@ export default function SynopsisPage() {
     return () => window.removeEventListener('keydown', handler)
   }, [selectedSceneId])
 
-  // Writing the story is authoring — owner-only, even for a delegated
-  // gamemaster (who runs sessions from PlayPage instead, which reads the
-  // synopsis it needs without exposing these editing controls). See
-  // AccessSection in CampaignDetailPage.tsx.
+  // Writing the story is authoring — owner-only. A delegated Meneur can
+  // still read it — the scenes and cast they need before running a session.
+  // See docs/users-authors.md §4.
   const isNonOwner = campaign != null && campaign.access !== 'owner'
-  const campaignId = campaign?.id
-  useSyncMode('author', !isNonOwner)
-  useEffect(() => {
-    if (isNonOwner) navigate(`/campaigns/${campaignId}/runs`, { replace: true })
-  }, [isNonOwner, campaignId, navigate])
-  if (isNonOwner) return null
+  useSyncMode(isNonOwner ? 'gamemaster' : 'author')
 
   return (
     <>
@@ -225,17 +218,19 @@ export default function SynopsisPage() {
                 Documents
               </button>
             )}
-            <button
-              onClick={() => setBrainstormOpen(v => !v)}
-              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-colors ${
-                brainstormOpen
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'text-muted-foreground hover:text-foreground border-border hover:bg-accent'
-              }`}
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              Brainstorm
-            </button>
+            {!isNonOwner && (
+              <button
+                onClick={() => setBrainstormOpen(v => !v)}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-colors ${
+                  brainstormOpen
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'text-muted-foreground hover:text-foreground border-border hover:bg-accent'
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Brainstorm
+              </button>
+            )}
           </div>
         </div>
 
@@ -259,10 +254,12 @@ export default function SynopsisPage() {
                   campaignId={scenario?.campaign_id ?? ''}
                   hook={parsed.hook}
                   onChange={onChange}
+                  readOnly={isNonOwner}
                 />
                 <FactionWidget
                   scenarioId={scenarioId}
                   campaignId={scenario?.campaign_id ?? ''}
+                  readOnly={isNonOwner}
                 />
               </div>
             )}
@@ -278,6 +275,7 @@ export default function SynopsisPage() {
               selectedId={selectedSceneId}
               onSelect={id => setSelectedSceneId(id === selectedSceneId ? '' : id)}
               sceneStates={sceneStates}
+              readOnly={isNonOwner}
             />
           </div>
 
@@ -299,6 +297,7 @@ export default function SynopsisPage() {
                   scenarioId={scenarioId}
                   campaignId={scenario?.campaign_id ?? ''}
                   scene={selectedScene}
+                  readOnly={isNonOwner}
                 />
               </div>
             ) : (
@@ -310,6 +309,7 @@ export default function SynopsisPage() {
                   onSelectScene={setSelectedSceneId}
                   sceneStates={sceneStates}
                   lensRunName={runs.find(r => r.id === lensRunId)?.name ?? ''}
+                  readOnly={isNonOwner}
                 />
               </div>
             )}

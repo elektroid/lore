@@ -18,12 +18,13 @@ const FACTION_SUGGESTION_FIELDS: SuggestionField[] = [
 ]
 
 function ImageGrid({
-  images, factionId, campaignId, onUpdated,
+  images, factionId, campaignId, onUpdated, readOnly,
 }: {
   images: FactionImage[]
   factionId: string
   campaignId: string
   onUpdated: (f: CampaignFaction) => void
+  readOnly?: boolean
 }) {
   const [lightbox, setLightbox] = useState<FactionImage | null>(null)
   const [candidates, setCandidates] = useState<PendingImage[]>([])
@@ -63,32 +64,38 @@ function ImageGrid({
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Illustrations</p>
-        <div className="flex gap-1">
-          <Button
-            size="sm" variant="ghost" className="h-7 px-2 text-xs"
-            disabled={generateImages.isPending}
-            onClick={() => generateImages.mutate()}
-          >
-            <Images className="h-3 w-3 mr-1" />
-            {generateImages.isPending ? 'Génération…' : 'Générer'}
-          </Button>
-          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => inputRef.current?.click()}>
-            Ajouter
-          </Button>
-        </div>
+        {!readOnly && (
+          <div className="flex gap-1">
+            <Button
+              size="sm" variant="ghost" className="h-7 px-2 text-xs"
+              disabled={generateImages.isPending}
+              onClick={() => generateImages.mutate()}
+            >
+              <Images className="h-3 w-3 mr-1" />
+              {generateImages.isPending ? 'Génération…' : 'Générer'}
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => inputRef.current?.click()}>
+              Ajouter
+            </Button>
+          </div>
+        )}
       </div>
       {generateImages.isError && <p className="text-xs text-destructive">{(generateImages.error as Error).message}</p>}
-      <input
-        ref={inputRef} type="file" accept="image/*" multiple className="hidden"
-        onChange={e => { Array.from(e.target.files ?? []).forEach(f => upload.mutate(f)); e.target.value = '' }}
-      />
-      <div
-        onDrop={e => { e.preventDefault(); Array.from(e.dataTransfer.files).forEach(f => upload.mutate(f)) }}
-        onDragOver={e => e.preventDefault()}
-        className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center text-xs text-muted-foreground hover:border-muted-foreground/40 transition-colors"
-      >
-        {upload.isPending ? 'Upload en cours…' : 'Glissez des illustrations ici'}
-      </div>
+      {!readOnly && (
+        <>
+          <input
+            ref={inputRef} type="file" accept="image/*" multiple className="hidden"
+            onChange={e => { Array.from(e.target.files ?? []).forEach(f => upload.mutate(f)); e.target.value = '' }}
+          />
+          <div
+            onDrop={e => { e.preventDefault(); Array.from(e.dataTransfer.files).forEach(f => upload.mutate(f)) }}
+            onDragOver={e => e.preventDefault()}
+            className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center text-xs text-muted-foreground hover:border-muted-foreground/40 transition-colors"
+          >
+            {upload.isPending ? 'Upload en cours…' : 'Glissez des illustrations ici'}
+          </div>
+        </>
+      )}
       {images.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
           {images.map(img => (
@@ -98,11 +105,13 @@ function ImageGrid({
                 className="w-full h-24 object-cover cursor-pointer"
                 onClick={() => setLightbox(img)}
               />
-              <div className="absolute inset-x-0 bottom-0 bg-black/60 p-1 opacity-0 group-hover:opacity-100 transition-opacity flex justify-end">
-                <button onClick={() => deleteImg.mutate(img.id)} className="text-white/70 hover:text-red-400">
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              </div>
+              {!readOnly && (
+                <div className="absolute inset-x-0 bottom-0 bg-black/60 p-1 opacity-0 group-hover:opacity-100 transition-opacity flex justify-end">
+                  <button onClick={() => deleteImg.mutate(img.id)} className="text-white/70 hover:text-red-400">
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -131,9 +140,10 @@ interface Props {
   campaignId: string
   open: boolean
   onClose: () => void
+  readOnly?: boolean
 }
 
-export default function FactionEditorModal({ factionId, campaignId, open, onClose }: Props) {
+export default function FactionEditorModal({ factionId, campaignId, open, onClose, readOnly }: Props) {
   const qc = useQueryClient()
   const draft = useDebouncedSave<Partial<{ name: string; type: string; description: string; motivation: string }>>()
 
@@ -226,7 +236,11 @@ export default function FactionEditorModal({ factionId, campaignId, open, onClos
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {isLoading ? 'Chargement…' : (
+            {isLoading ? 'Chargement…' : readOnly ? (
+              <p className="w-full text-lg font-semibold">
+                {local.name || <span className="text-muted-foreground italic">(sans nom)</span>}
+              </p>
+            ) : (
               <input
                 value={local.name}
                 onChange={e => handle('name', e.target.value)}
@@ -240,12 +254,16 @@ export default function FactionEditorModal({ factionId, campaignId, open, onClos
           <div className="space-y-4">
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Type</p>
-              <Input value={local.type} onChange={e => handle('type', e.target.value)} placeholder="Corporation, gang, culte…" className="h-8 text-sm" />
+              {readOnly ? (
+                <p className="text-sm">{local.type || '—'}</p>
+              ) : (
+                <Input value={local.type} onChange={e => handle('type', e.target.value)} placeholder="Corporation, gang, culte…" className="h-8 text-sm" />
+              )}
             </div>
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</p>
-                {!suggestion && (
+                {!readOnly && !suggestion && (
                   <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={develop.isPending} onClick={() => develop.mutate()}>
                     <Sparkles className="h-3 w-3 mr-1" />
                     {develop.isPending ? 'Génération…' : 'Développer avec le LLM'}
@@ -259,11 +277,16 @@ export default function FactionEditorModal({ factionId, campaignId, open, onClos
                 onChange={v => handle('description', v)}
                 placeholder="Présentation, structure, histoire… tapez @ pour citer un PNJ, un lieu"
                 className="min-h-[100px]"
+                disabled={readOnly}
               />
             </div>
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Motivation</p>
-              <Input value={local.motivation} onChange={e => handle('motivation', e.target.value)} placeholder="Ce qui fait agir la faction…" className="h-8 text-sm" />
+              {readOnly ? (
+                <p className="text-sm">{local.motivation || '—'}</p>
+              ) : (
+                <Input value={local.motivation} onChange={e => handle('motivation', e.target.value)} placeholder="Ce qui fait agir la faction…" className="h-8 text-sm" />
+              )}
             </div>
             {suggestion && (
               <LLMSuggestionReview
@@ -274,7 +297,7 @@ export default function FactionEditorModal({ factionId, campaignId, open, onClos
                 onDone={() => setSuggestion(null)}
               />
             )}
-            <ImageGrid images={images} factionId={factionId} campaignId={campaignId} onUpdated={handleFactionUpdated} />
+            <ImageGrid images={images} factionId={factionId} campaignId={campaignId} onUpdated={handleFactionUpdated} readOnly={readOnly} />
             {save.isPending && <p className="text-xs text-muted-foreground text-right">Sauvegarde…</p>}
           </div>
         )}

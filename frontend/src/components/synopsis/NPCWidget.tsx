@@ -16,6 +16,7 @@ import { NPC_SUGGESTION_FIELDS } from '@/components/NPCEditorModal'
 interface Props {
   scenarioId: string
   campaignId: string
+  readOnly?: boolean
 }
 
 // ── NPC picker dialog ─────────────────────────────────────────────────────
@@ -135,9 +136,9 @@ function NPCPickerDialog({
 
 // ── NPC row ───────────────────────────────────────────────────────────────
 
-function NPCRow({ npc, scenarioId }: { npc: SynopsisNPC; scenarioId: string }) {
+function NPCRow({ npc, scenarioId, readOnly }: { npc: SynopsisNPC; scenarioId: string; readOnly?: boolean }) {
   const qc = useQueryClient()
-  const locked = npc.status === 'confirmed'
+  const locked = readOnly || npc.status === 'confirmed'
 
   const [local, setLocal] = useState({
     name: npc.name, role: npc.role, description: npc.description, quote: npc.quote, motivation: npc.motivation ?? '',
@@ -241,7 +242,7 @@ function NPCRow({ npc, scenarioId }: { npc: SynopsisNPC; scenarioId: string }) {
             <UserRound className="h-4 w-4 text-muted-foreground/40" />
           </div>
         )}
-        <StatusBadge status={npc.status} onChange={status => updateStatus.mutate(status)} />
+        <StatusBadge status={npc.status} onChange={status => updateStatus.mutate(status)} disabled={readOnly} />
         <Input
           placeholder="Nom"
           value={local.name}
@@ -249,14 +250,16 @@ function NPCRow({ npc, scenarioId }: { npc: SynopsisNPC; scenarioId: string }) {
           className="h-7 text-sm font-medium flex-1"
           disabled={locked}
         />
-        <Button
-          size="sm" variant="ghost"
-          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive shrink-0"
-          onClick={() => remove.mutate()}
-          disabled={remove.isPending}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        {!readOnly && (
+          <Button
+            size="sm" variant="ghost"
+            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive shrink-0"
+            onClick={() => remove.mutate()}
+            disabled={remove.isPending}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
 
       <Input
@@ -293,20 +296,22 @@ function NPCRow({ npc, scenarioId }: { npc: SynopsisNPC; scenarioId: string }) {
         disabled={locked}
       />
 
-      <div className="flex items-center gap-2 pt-0.5">
-        {!suggestion && (
-          <Button
-            size="sm" variant="ghost" className="h-6 px-1.5 text-xs"
-            disabled={locked || develop.isPending}
-            onClick={() => develop.mutate()}
-          >
-            <Sparkles className="h-3 w-3 mr-0.5" />
-            {develop.isPending ? 'Développement…' : 'Développer'}
-          </Button>
-        )}
-        {develop.isError && <p className="text-xs text-destructive">{(develop.error as Error).message}</p>}
-        {save.isPending && <span className="text-xs text-muted-foreground ml-auto">Sauvegarde…</span>}
-      </div>
+      {!readOnly && (
+        <div className="flex items-center gap-2 pt-0.5">
+          {!suggestion && (
+            <Button
+              size="sm" variant="ghost" className="h-6 px-1.5 text-xs"
+              disabled={locked || develop.isPending}
+              onClick={() => develop.mutate()}
+            >
+              <Sparkles className="h-3 w-3 mr-0.5" />
+              {develop.isPending ? 'Développement…' : 'Développer'}
+            </Button>
+          )}
+          {develop.isError && <p className="text-xs text-destructive">{(develop.error as Error).message}</p>}
+          {save.isPending && <span className="text-xs text-muted-foreground ml-auto">Sauvegarde…</span>}
+        </div>
+      )}
 
       {suggestion && !locked && (
         <LLMSuggestionReview
@@ -323,7 +328,7 @@ function NPCRow({ npc, scenarioId }: { npc: SynopsisNPC; scenarioId: string }) {
 
 // ── Widget ────────────────────────────────────────────────────────────────
 
-export default function NPCWidget({ scenarioId, campaignId }: Props) {
+export default function NPCWidget({ scenarioId, campaignId, readOnly }: Props) {
   const qc = useQueryClient()
   const [pickerOpen, setPickerOpen] = useState(false)
 
@@ -353,41 +358,49 @@ export default function NPCWidget({ scenarioId, campaignId }: Props) {
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">PNJs principaux</h3>
-        <Button size="sm" variant="ghost" onClick={() => setPickerOpen(true)} className="h-7 px-2 text-xs">
-          <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter
-        </Button>
+        {!readOnly && (
+          <Button size="sm" variant="ghost" onClick={() => setPickerOpen(true)} className="h-7 px-2 text-xs">
+            <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter
+          </Button>
+        )}
       </div>
 
       {npcs.length === 0 && (
-        <p className="text-xs text-muted-foreground">Aucun PNJ. Ajoutez-en un ou demandez au LLM.</p>
+        <p className="text-xs text-muted-foreground">
+          {readOnly ? 'Aucun PNJ.' : 'Aucun PNJ. Ajoutez-en un ou demandez au LLM.'}
+        </p>
       )}
 
       <ul className="space-y-2">
         {npcs.map(npc => (
-          <NPCRow key={npc.id} npc={npc} scenarioId={scenarioId} />
+          <NPCRow key={npc.id} npc={npc} scenarioId={scenarioId} readOnly={readOnly} />
         ))}
       </ul>
 
-      <div className="flex items-center gap-2 pt-1">
-        <Button
-          size="sm" variant="outline" className="h-7 px-2 text-xs"
-          disabled={suggestNPCs.isPending}
-          onClick={() => suggestNPCs.mutate()}
-        >
-          <Sparkles className="h-3.5 w-3.5 mr-1" />
-          {suggestNPCs.isPending ? 'Génération…' : 'Suggérer des PNJs'}
-        </Button>
-        {suggestNPCs.isError && (
-          <p className="text-xs text-destructive">{(suggestNPCs.error as Error).message}</p>
-        )}
-      </div>
+      {!readOnly && (
+        <div className="flex items-center gap-2 pt-1">
+          <Button
+            size="sm" variant="outline" className="h-7 px-2 text-xs"
+            disabled={suggestNPCs.isPending}
+            onClick={() => suggestNPCs.mutate()}
+          >
+            <Sparkles className="h-3.5 w-3.5 mr-1" />
+            {suggestNPCs.isPending ? 'Génération…' : 'Suggérer des PNJs'}
+          </Button>
+          {suggestNPCs.isError && (
+            <p className="text-xs text-destructive">{(suggestNPCs.error as Error).message}</p>
+          )}
+        </div>
+      )}
 
-      <NPCPickerDialog
-        campaignId={campaignId}
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        onPick={npc => addNPC.mutate(npc.id)}
-      />
+      {!readOnly && (
+        <NPCPickerDialog
+          campaignId={campaignId}
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          onPick={npc => addNPC.mutate(npc.id)}
+        />
+      )}
     </section>
   )
 }

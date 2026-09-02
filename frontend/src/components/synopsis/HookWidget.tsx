@@ -10,9 +10,10 @@ interface Props {
   campaignId: string
   hook: HookData
   onChange: (data: Partial<SynopsisData>) => void
+  readOnly?: boolean
 }
 
-export default function HookWidget({ scenarioId, campaignId, hook, onChange }: Props) {
+export default function HookWidget({ scenarioId, campaignId, hook, onChange, readOnly }: Props) {
   const llm = useSynopsisLLM(scenarioId)
   const locked = hook.status === 'confirmed'
 
@@ -23,6 +24,7 @@ export default function HookWidget({ scenarioId, campaignId, hook, onChange }: P
         <StatusBadge
           status={hook.status}
           onChange={status => onChange({ hook: { ...hook, status } })}
+          disabled={readOnly}
         />
       </div>
       <MentionEditor
@@ -30,23 +32,25 @@ export default function HookWidget({ scenarioId, campaignId, hook, onChange }: P
         value={hook.content}
         onChange={content => onChange({ hook: { ...hook, content } })}
         placeholder="Une idée même vague… ex : 'Les PJs sont engagés pour récupérer un prototype, mais quelqu'un d'autre le veut aussi'"
-        disabled={locked || llm.completeHook.isPending}
+        disabled={readOnly || locked || llm.completeHook.isPending}
       />
-      <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 px-2 text-xs"
-          disabled={locked || llm.completeHook.isPending}
-          onClick={() => llm.completeHook.mutate()}
-        >
-          <Sparkles className="h-3.5 w-3.5 mr-1" />
-          {llm.completeHook.isPending ? 'Génération…' : 'Compléter avec le LLM'}
-        </Button>
-        {llm.completeHook.isError && (
-          <p className="text-xs text-destructive">{(llm.completeHook.error as Error).message}</p>
-        )}
-      </div>
+      {!readOnly && (
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs"
+            disabled={locked || llm.completeHook.isPending}
+            onClick={() => llm.completeHook.mutate()}
+          >
+            <Sparkles className="h-3.5 w-3.5 mr-1" />
+            {llm.completeHook.isPending ? 'Génération…' : 'Compléter avec le LLM'}
+          </Button>
+          {llm.completeHook.isError && (
+            <p className="text-xs text-destructive">{(llm.completeHook.error as Error).message}</p>
+          )}
+        </div>
+      )}
     </section>
   )
 }

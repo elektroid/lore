@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Pencil, Check, X, Search } from 'lucide-react'
@@ -77,10 +77,11 @@ function NPCFormFields({ f, set }: { f: NPCForm; set: (p: Partial<NPCForm>) => v
 
 // ── NPC tab ───────────────────────────────────────────────────────────────────
 
-function NPCTab({ campaignId, gameId, openId, creating, onCreatingChange, form, onFormChange }: {
+function NPCTab({ campaignId, gameId, openId, creating, onCreatingChange, form, onFormChange, readOnly }: {
   campaignId: string; gameId?: string; openId?: string
   creating: boolean; onCreatingChange: (v: boolean) => void
   form: NPCForm; onFormChange: (f: NPCForm) => void
+  readOnly?: boolean
 }) {
   const qc = useQueryClient()
   const [editId, setEditId] = useState<string | null>(null)
@@ -106,11 +107,13 @@ function NPCTab({ campaignId, gameId, openId, creating, onCreatingChange, form, 
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { onCreatingChange(true); onFormChange(emptyNPC()) }}>
-          <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter un PNJ
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { onCreatingChange(true); onFormChange(emptyNPC()) }}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter un PNJ
+          </Button>
+        </div>
+      )}
 
       {npcs.length === 0 && !creating && (
         <p className="text-xs text-muted-foreground">Aucun PNJ de campagne.</p>
@@ -131,14 +134,16 @@ function NPCTab({ campaignId, gameId, openId, creating, onCreatingChange, form, 
                   {npc.role && <p className="text-xs text-muted-foreground truncate">{npc.role}</p>}
                   {npc.motivation && npc.motivation !== npc.role && <p className="text-xs text-primary/80 italic truncate">{npc.motivation}</p>}
                 </div>
-                <div className="flex gap-1 shrink-0">
-                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(npc.id)}>
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive" onClick={() => remove.mutate(npc.id)}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
+                {!readOnly && (
+                  <div className="flex gap-1 shrink-0">
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(npc.id)}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive" onClick={() => remove.mutate(npc.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </li>
           )
@@ -167,6 +172,7 @@ function NPCTab({ campaignId, gameId, openId, creating, onCreatingChange, form, 
           gameId={gameId}
           open={!!editId}
           onClose={() => setEditId(null)}
+          readOnly={readOnly}
         />
       )}
 
@@ -211,10 +217,11 @@ function LocFormFields({ f, set }: { f: LocForm; set: (p: Partial<LocForm>) => v
 
 // ── Location tab ──────────────────────────────────────────────────────────────
 
-function LocationTab({ campaignId, openId, creating, onCreatingChange, form, onFormChange }: {
+function LocationTab({ campaignId, openId, creating, onCreatingChange, form, onFormChange, readOnly }: {
   campaignId: string; openId?: string
   creating: boolean; onCreatingChange: (v: boolean) => void
   form: LocForm; onFormChange: (f: LocForm) => void
+  readOnly?: boolean
 }) {
   const qc = useQueryClient()
   const [editId, setEditId] = useState<string | null>(null)
@@ -240,11 +247,13 @@ function LocationTab({ campaignId, openId, creating, onCreatingChange, form, onF
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { onCreatingChange(true); onFormChange(emptyLoc()) }}>
-          <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter un lieu
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { onCreatingChange(true); onFormChange(emptyLoc()) }}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter un lieu
+          </Button>
+        </div>
+      )}
 
       {locs.length === 0 && !creating && (
         <p className="text-xs text-muted-foreground">Aucun lieu de campagne.</p>
@@ -267,14 +276,16 @@ function LocationTab({ campaignId, openId, creating, onCreatingChange, form, onF
                     </p>
                   )}
                 </div>
-                <div className="flex gap-1 shrink-0">
-                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(loc.id)}>
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive" onClick={() => remove.mutate(loc.id)}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
+                {!readOnly && (
+                  <div className="flex gap-1 shrink-0">
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(loc.id)}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive" onClick={() => remove.mutate(loc.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </li>
           )
@@ -302,6 +313,7 @@ function LocationTab({ campaignId, openId, creating, onCreatingChange, form, onF
           campaignId={campaignId}
           open={!!editId}
           onClose={() => setEditId(null)}
+          readOnly={readOnly}
         />
       )}
 
@@ -326,10 +338,11 @@ function LocationTab({ campaignId, openId, creating, onCreatingChange, form, onF
 type FactionForm = { name: string; type: string; description: string; motivation: string }
 const emptyFaction = (): FactionForm => ({ name: '', type: '', description: '', motivation: '' })
 
-function FactionTab({ campaignId, openId, creating, onCreatingChange, form, onFormChange }: {
+function FactionTab({ campaignId, openId, creating, onCreatingChange, form, onFormChange, readOnly }: {
   campaignId: string; openId?: string
   creating: boolean; onCreatingChange: (v: boolean) => void
   form: FactionForm; onFormChange: (f: FactionForm) => void
+  readOnly?: boolean
 }) {
   const qc = useQueryClient()
   const [editId, setEditId] = useState<string | null>(null)
@@ -355,11 +368,13 @@ function FactionTab({ campaignId, openId, creating, onCreatingChange, form, onFo
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { onCreatingChange(true); onFormChange(emptyFaction()) }}>
-          <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter une faction
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { onCreatingChange(true); onFormChange(emptyFaction()) }}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter une faction
+          </Button>
+        </div>
+      )}
 
       {factions.length === 0 && !creating && (
         <p className="text-xs text-muted-foreground">Aucune faction de campagne.</p>
@@ -385,14 +400,16 @@ function FactionTab({ campaignId, openId, creating, onCreatingChange, form, onFo
                     </p>
                   )}
                 </div>
-                <div className="flex gap-1 shrink-0">
-                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(f.id)}>
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive" onClick={() => remove.mutate(f.id)}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
+                {!readOnly && (
+                  <div className="flex gap-1 shrink-0">
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(f.id)}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive" onClick={() => remove.mutate(f.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </li>
           )
@@ -439,6 +456,7 @@ function FactionTab({ campaignId, openId, creating, onCreatingChange, form, onFo
           campaignId={campaignId}
           open={!!editId}
           onClose={() => setEditId(null)}
+          readOnly={readOnly}
         />
       )}
 
@@ -460,10 +478,11 @@ function FactionTab({ campaignId, openId, creating, onCreatingChange, form, onFo
 type ArtefactForm = { name: string; description: string }
 const emptyArtefact = (): ArtefactForm => ({ name: '', description: '' })
 
-function ArtefactTab({ campaignId, openId, creating, onCreatingChange, form, onFormChange }: {
+function ArtefactTab({ campaignId, openId, creating, onCreatingChange, form, onFormChange, readOnly }: {
   campaignId: string; openId?: string
   creating: boolean; onCreatingChange: (v: boolean) => void
   form: ArtefactForm; onFormChange: (f: ArtefactForm) => void
+  readOnly?: boolean
 }) {
   const qc = useQueryClient()
   const [editId, setEditId] = useState<string | null>(null)
@@ -489,11 +508,13 @@ function ArtefactTab({ campaignId, openId, creating, onCreatingChange, form, onF
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { onCreatingChange(true); onFormChange(emptyArtefact()) }}>
-          <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter un artefact
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { onCreatingChange(true); onFormChange(emptyArtefact()) }}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter un artefact
+          </Button>
+        </div>
+      )}
 
       {artefacts.length === 0 && !creating && (
         <p className="text-xs text-muted-foreground">Aucun artefact de campagne.</p>
@@ -513,14 +534,16 @@ function ArtefactTab({ campaignId, openId, creating, onCreatingChange, form, onF
                   </button>
                   {a.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{stripMentions(a.description)}</p>}
                 </div>
-                <div className="flex gap-1 shrink-0">
-                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(a.id)}>
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive" onClick={() => remove.mutate(a.id)}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
+                {!readOnly && (
+                  <div className="flex gap-1 shrink-0">
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditId(a.id)}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive" onClick={() => remove.mutate(a.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </li>
           )
@@ -551,6 +574,7 @@ function ArtefactTab({ campaignId, openId, creating, onCreatingChange, form, onF
           campaignId={campaignId}
           open={!!editId}
           onClose={() => setEditId(null)}
+          readOnly={readOnly}
         />
       )}
 
@@ -571,7 +595,6 @@ function ArtefactTab({ campaignId, openId, creating, onCreatingChange, form, onF
 
 export default function CampaignEntitiesPage() {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('npcs')
   const [searchOpen, setSearchOpen] = useState(false)
   const [openIds, setOpenIds] = useState<Record<string, string | undefined>>({})
@@ -606,15 +629,10 @@ export default function CampaignEntitiesPage() {
     setOpenIds(prev => ({ ...prev, [tab]: entityId }))
   }
 
-  // Entity editing is authoring — owner-only, even for a delegated
-  // gamemaster (who reads NPCs/locations through PlayPage's own roster
-  // instead). See AccessSection in CampaignDetailPage.tsx.
+  // Entity editing is authoring — owner-only. A delegated Meneur can still
+  // browse the cast read-only, per docs/users-authors.md §4.
   const isNonOwner = campaign != null && campaign.access !== 'owner'
-  useSyncMode('author', !isNonOwner)
-  useEffect(() => {
-    if (isNonOwner) navigate(`/campaigns/${id}/runs`, { replace: true })
-  }, [isNonOwner, id, navigate])
-  if (isNonOwner) return null
+  useSyncMode(isNonOwner ? 'gamemaster' : 'author')
 
   return (
     <AppShell
@@ -634,10 +652,10 @@ export default function CampaignEntitiesPage() {
               Rechercher
             </Button>
           </div>
-          <TabsContent value="npcs"><NPCTab campaignId={id!} gameId={campaign?.game_id} openId={openIds['npcs']} creating={npcCreating} onCreatingChange={setNpcCreating} form={npcForm} onFormChange={setNpcForm} /></TabsContent>
-          <TabsContent value="locations"><LocationTab campaignId={id!} openId={openIds['locations']} creating={locCreating} onCreatingChange={setLocCreating} form={locForm} onFormChange={setLocForm} /></TabsContent>
-          <TabsContent value="artefacts"><ArtefactTab campaignId={id!} openId={openIds['artefacts']} creating={artCreating} onCreatingChange={setArtCreating} form={artForm} onFormChange={setArtForm} /></TabsContent>
-          <TabsContent value="factions"><FactionTab campaignId={id!} openId={openIds['factions']} creating={facCreating} onCreatingChange={setFacCreating} form={facForm} onFormChange={setFacForm} /></TabsContent>
+          <TabsContent value="npcs"><NPCTab campaignId={id!} gameId={campaign?.game_id} openId={openIds['npcs']} creating={npcCreating} onCreatingChange={setNpcCreating} form={npcForm} onFormChange={setNpcForm} readOnly={isNonOwner} /></TabsContent>
+          <TabsContent value="locations"><LocationTab campaignId={id!} openId={openIds['locations']} creating={locCreating} onCreatingChange={setLocCreating} form={locForm} onFormChange={setLocForm} readOnly={isNonOwner} /></TabsContent>
+          <TabsContent value="artefacts"><ArtefactTab campaignId={id!} openId={openIds['artefacts']} creating={artCreating} onCreatingChange={setArtCreating} form={artForm} onFormChange={setArtForm} readOnly={isNonOwner} /></TabsContent>
+          <TabsContent value="factions"><FactionTab campaignId={id!} openId={openIds['factions']} creating={facCreating} onCreatingChange={setFacCreating} form={facForm} onFormChange={setFacForm} readOnly={isNonOwner} /></TabsContent>
         </Tabs>
       </main>
 

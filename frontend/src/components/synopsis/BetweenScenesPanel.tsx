@@ -19,6 +19,7 @@ interface Props {
   sceneStates: Record<string, string>
   /** Name of that group, for labelling. Empty when no lens is active. */
   lensRunName: string
+  readOnly?: boolean
 }
 
 // ── Coming up card (compact) ──────────────────────────────────────────────────
@@ -39,7 +40,7 @@ function ComingUpCard({ scene, onSelect }: { scene: Scene; onSelect: () => void 
 // ── Panel ─────────────────────────────────────────────────────────────────────
 
 export default function BetweenScenesPanel({
-  scenarioId, campaignId, synopsis, onSelectScene, sceneStates, lensRunName,
+  scenarioId, campaignId, synopsis, onSelectScene, sceneStates, lensRunName, readOnly,
 }: Props & { onSelectScene: (id: string) => void }) {
   const llm = useSynopsisLLM(scenarioId)
   const [editNpcId, setEditNpcId] = useState<string | null>(null)
@@ -114,14 +115,16 @@ export default function BetweenScenesPanel({
       <section className="space-y-2">
         <div className="flex items-center gap-2">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex-1">Overview</p>
-          <Button
-            size="sm" variant="ghost" className="h-6 px-2 text-xs"
-            disabled={llm.generateOverview.isPending}
-            onClick={() => llm.generateOverview.mutate()}
-          >
-            <Sparkles className="h-3 w-3 mr-1" />
-            {llm.generateOverview.isPending ? 'Génération…' : synopsis?.overview_cache ? 'Regénérer' : 'Générer'}
-          </Button>
+          {!readOnly && (
+            <Button
+              size="sm" variant="ghost" className="h-6 px-2 text-xs"
+              disabled={llm.generateOverview.isPending}
+              onClick={() => llm.generateOverview.mutate()}
+            >
+              <Sparkles className="h-3 w-3 mr-1" />
+              {llm.generateOverview.isPending ? 'Génération…' : synopsis?.overview_cache ? 'Regénérer' : 'Générer'}
+            </Button>
+          )}
         </div>
         {synopsis?.overview_cache ? (
           <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">{synopsis.overview_cache}</p>
@@ -149,6 +152,7 @@ export default function BetweenScenesPanel({
           campaignId={campaignId}
           open={!!editNpcId}
           onClose={() => setEditNpcId(null)}
+          readOnly={readOnly}
         />
       )}
     </div>

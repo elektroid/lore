@@ -24,6 +24,7 @@ interface Props {
   scenarioId: string
   campaignId: string
   scene: Scene
+  readOnly?: boolean
 }
 
 type ScenePatch = Partial<{
@@ -303,7 +304,7 @@ function ArtefactPicker({
 
 // ── Scene detail panel ────────────────────────────────────────────────────────
 
-export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
+export default function SceneDetail({ scenarioId, campaignId, scene, readOnly }: Props) {
   const qc = useQueryClient()
   const draft = useDebouncedSave<ScenePatch>()
   const [local, setLocal] = useState({ title: scene.title, description: scene.description, outcome: scene.outcome, notes: scene.notes })
@@ -445,52 +446,72 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
     <div className="space-y-5">
       {/* Title + status */}
       <div className="flex items-center gap-3">
-        <Input
-          value={local.title}
-          onChange={e => handle('title', e.target.value)}
-          placeholder="Titre de la scène"
-          className="text-lg font-semibold border-none shadow-none px-0 focus-visible:ring-0 h-auto flex-1"
-        />
-        <select
-          value={scene.status}
-          onChange={e => saveNow({ status: e.target.value as SceneStatus })}
-          className="text-xs rounded border border-input bg-background px-2 py-1 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring shrink-0"
-        >
-          {(Object.entries(SCENE_STATUS_LABELS) as [SceneStatus, string][]).map(([val, label]) => (
-            <option key={val} value={val}>{label}</option>
-          ))}
-        </select>
+        {readOnly ? (
+          <p className="text-lg font-semibold flex-1">
+            {local.title || <span className="text-muted-foreground italic">Sans titre</span>}
+          </p>
+        ) : (
+          <Input
+            value={local.title}
+            onChange={e => handle('title', e.target.value)}
+            placeholder="Titre de la scène"
+            className="text-lg font-semibold border-none shadow-none px-0 focus-visible:ring-0 h-auto flex-1"
+          />
+        )}
+        {readOnly ? (
+          <span className="text-xs rounded border border-input px-2 py-1 text-muted-foreground shrink-0">
+            {SCENE_STATUS_LABELS[scene.status]}
+          </span>
+        ) : (
+          <select
+            value={scene.status}
+            onChange={e => saveNow({ status: e.target.value as SceneStatus })}
+            className="text-xs rounded border border-input bg-background px-2 py-1 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring shrink-0"
+          >
+            {(Object.entries(SCENE_STATUS_LABELS) as [SceneStatus, string][]).map(([val, label]) => (
+              <option key={val} value={val}>{label}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Start / end tags */}
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          title={scene.is_start ? 'Retirer le tag Départ' : 'Marquer comme scène de départ'}
-          onClick={() => saveNow({ is_start: !scene.is_start })}
-          className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded border transition-colors ${
-            scene.is_start
-              ? 'bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-950 dark:border-emerald-700 dark:text-emerald-400'
-              : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent'
-          }`}
-        >
-          <Play className="h-3 w-3" />
-          Départ
-        </button>
-        <button
-          type="button"
-          title={scene.is_end ? 'Retirer le tag Fin' : 'Marquer comme scène de fin'}
-          onClick={() => saveNow({ is_end: !scene.is_end })}
-          className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded border transition-colors ${
-            scene.is_end
-              ? 'bg-rose-50 border-rose-300 text-rose-700 dark:bg-rose-950 dark:border-rose-700 dark:text-rose-400'
-              : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent'
-          }`}
-        >
-          <Flag className="h-3 w-3" />
-          Fin
-        </button>
-      </div>
+      {(!readOnly || scene.is_start || scene.is_end) && (
+        <div className="flex items-center gap-2">
+          {(!readOnly || scene.is_start) && (
+            <button
+              type="button"
+              disabled={readOnly}
+              title={scene.is_start ? 'Retirer le tag Départ' : 'Marquer comme scène de départ'}
+              onClick={() => saveNow({ is_start: !scene.is_start })}
+              className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded border transition-colors ${
+                scene.is_start
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-950 dark:border-emerald-700 dark:text-emerald-400'
+                  : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent'
+              } ${readOnly ? 'pointer-events-none' : ''}`}
+            >
+              <Play className="h-3 w-3" />
+              Départ
+            </button>
+          )}
+          {(!readOnly || scene.is_end) && (
+            <button
+              type="button"
+              disabled={readOnly}
+              title={scene.is_end ? 'Retirer le tag Fin' : 'Marquer comme scène de fin'}
+              onClick={() => saveNow({ is_end: !scene.is_end })}
+              className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded border transition-colors ${
+                scene.is_end
+                  ? 'bg-rose-50 border-rose-300 text-rose-700 dark:bg-rose-950 dark:border-rose-700 dark:text-rose-400'
+                  : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent'
+              } ${readOnly ? 'pointer-events-none' : ''}`}
+            >
+              <Flag className="h-3 w-3" />
+              Fin
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Location */}
       <div className="space-y-0.5">
@@ -504,24 +525,30 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
               >
                 {scene.location_name}
               </button>
-              <button
-                title="Changer de lieu"
-                onClick={() => setLocationPickerOpen(true)}
-                className="text-muted-foreground/40 hover:text-muted-foreground"
-              >
-                <ArrowLeftRight className="h-3 w-3" />
-              </button>
-              <button onClick={clearLocation} className="text-muted-foreground/40 hover:text-destructive">
-                <X className="h-3 w-3" />
-              </button>
+              {!readOnly && (
+                <>
+                  <button
+                    title="Changer de lieu"
+                    onClick={() => setLocationPickerOpen(true)}
+                    className="text-muted-foreground/40 hover:text-muted-foreground"
+                  >
+                    <ArrowLeftRight className="h-3 w-3" />
+                  </button>
+                  <button onClick={clearLocation} className="text-muted-foreground/40 hover:text-destructive">
+                    <X className="h-3 w-3" />
+                  </button>
+                </>
+              )}
             </div>
-          ) : (
+          ) : !readOnly ? (
             <button
               onClick={() => setLocationPickerOpen(true)}
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               Lier un lieu…
             </button>
+          ) : (
+            <p className="text-sm text-muted-foreground">Aucun lieu.</p>
           )}
         </div>
         {locationData && (locationData.city || locationData.district) && (
@@ -550,7 +577,7 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
       <div className="space-y-1">
         <div className="flex items-center justify-between">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ce qui se passe</p>
-          {!suggestion && (
+          {!readOnly && !suggestion && (
             <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={develop.isPending} onClick={() => develop.mutate()}>
               <Sparkles className="h-3 w-3 mr-1" />
               {develop.isPending ? 'Génération…' : 'Développer'}
@@ -563,30 +590,39 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
           value={local.description}
           onChange={v => handle('description', v)}
           placeholder="Décrivez la scène — ambiance, enjeux, déclencheur…"
+          disabled={readOnly}
         />
       </div>
 
       {/* Outcome */}
       <div className="space-y-1">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Dénouement possible</p>
-        <AutoTextarea
-          value={local.outcome}
-          onChange={v => handle('outcome', v)}
-          placeholder="Ce qui pourrait en résulter…"
-        />
+        {readOnly ? (
+          <p className="text-sm whitespace-pre-wrap">{local.outcome || '—'}</p>
+        ) : (
+          <AutoTextarea
+            value={local.outcome}
+            onChange={v => handle('outcome', v)}
+            placeholder="Ce qui pourrait en résulter…"
+          />
+        )}
       </div>
 
       {/* Notes */}
       <div className="space-y-1">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Notes</p>
-        <AutoTextarea
-          value={local.notes}
-          onChange={v => handle('notes', v)}
-          placeholder="Ambiance, météo, détails de décor, fun facts…"
-        />
+        {readOnly ? (
+          <p className="text-sm whitespace-pre-wrap">{local.notes || '—'}</p>
+        ) : (
+          <AutoTextarea
+            value={local.notes}
+            onChange={v => handle('notes', v)}
+            placeholder="Ambiance, météo, détails de décor, fun facts…"
+          />
+        )}
       </div>
 
-      {suggestion && (
+      {!readOnly && suggestion && (
         <LLMSuggestionReview
           fields={SCENE_SUGGESTION_FIELDS}
           suggestion={suggestion}
@@ -600,16 +636,24 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">PNJs présents</p>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setNpcPickerOpen(true)}>
-            <Plus className="h-3 w-3 mr-0.5" /> Ajouter
-          </Button>
+          {!readOnly && (
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setNpcPickerOpen(true)}>
+              <Plus className="h-3 w-3 mr-0.5" /> Ajouter
+            </Button>
+          )}
         </div>
         {scene.npcs.length === 0 ? (
           <p className="text-xs text-muted-foreground">Aucun PNJ lié à cette scène.</p>
         ) : (
           <div className="space-y-2">
             {scene.npcs.map(npc => (
-              <NPCCard key={npc.id} npc={npc} campaignId={campaignId} onRemove={() => removeNPC.mutate(npc.id)} onEdit={() => setEditNpcId(npc.id)} />
+              <NPCCard
+                key={npc.id}
+                npc={npc}
+                campaignId={campaignId}
+                onRemove={readOnly ? undefined : () => removeNPC.mutate(npc.id)}
+                onEdit={() => setEditNpcId(npc.id)}
+              />
             ))}
           </div>
         )}
@@ -619,9 +663,11 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Artefacts</p>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setArtefactPickerOpen(true)}>
-            <Plus className="h-3 w-3 mr-0.5" /> Ajouter
-          </Button>
+          {!readOnly && (
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setArtefactPickerOpen(true)}>
+              <Plus className="h-3 w-3 mr-0.5" /> Ajouter
+            </Button>
+          )}
         </div>
         {scene.artefacts.length === 0 ? (
           <p className="text-xs text-muted-foreground">Aucun artefact dans cette scène.</p>
@@ -637,9 +683,11 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
                     : <Package className="h-3 w-3 text-muted-foreground shrink-0 ml-2" />
                   }
                   <button className="hover:underline ml-1" onClick={() => setEditArtefactId(a.id)}>{a.name}</button>
-                  <button onClick={() => removeArtefact.mutate(a.id)} className="text-muted-foreground/50 hover:text-destructive ml-0.5">
-                    <X className="h-3 w-3" />
-                  </button>
+                  {!readOnly && (
+                    <button onClick={() => removeArtefact.mutate(a.id)} className="text-muted-foreground/50 hover:text-destructive ml-0.5">
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
                 </div>
               )
             })}
@@ -647,34 +695,41 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
         )}
       </div>
 
-      <LocationPicker
-        campaignId={campaignId}
-        open={locationPickerOpen}
-        onClose={() => setLocationPickerOpen(false)}
-        onPick={pickLocation}
-      />
+      {!readOnly && (
+        <LocationPicker
+          campaignId={campaignId}
+          open={locationPickerOpen}
+          onClose={() => setLocationPickerOpen(false)}
+          onPick={pickLocation}
+        />
+      )}
       {scene.location_id && (
         <LocationEditorModal
           locationId={scene.location_id}
           campaignId={campaignId}
           open={locationEditorOpen}
           onClose={() => setLocationEditorOpen(false)}
+          readOnly={readOnly}
         />
       )}
-      <NPCPicker
-        campaignId={campaignId}
-        open={npcPickerOpen}
-        existingIds={scene.npcs.map(n => n.id)}
-        onClose={() => setNpcPickerOpen(false)}
-        onPick={npcId => addNPC.mutate(npcId)}
-      />
-      <ArtefactPicker
-        campaignId={campaignId}
-        open={artefactPickerOpen}
-        existingIds={scene.artefacts.map(a => a.id)}
-        onClose={() => setArtefactPickerOpen(false)}
-        onPick={artefactId => addArtefact.mutate(artefactId)}
-      />
+      {!readOnly && (
+        <>
+          <NPCPicker
+            campaignId={campaignId}
+            open={npcPickerOpen}
+            existingIds={scene.npcs.map(n => n.id)}
+            onClose={() => setNpcPickerOpen(false)}
+            onPick={npcId => addNPC.mutate(npcId)}
+          />
+          <ArtefactPicker
+            campaignId={campaignId}
+            open={artefactPickerOpen}
+            existingIds={scene.artefacts.map(a => a.id)}
+            onClose={() => setArtefactPickerOpen(false)}
+            onPick={artefactId => addArtefact.mutate(artefactId)}
+          />
+        </>
+      )}
 
       {lightboxImg && (
         <div
@@ -695,6 +750,7 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
           campaignId={campaignId}
           open={!!editNpcId}
           onClose={() => setEditNpcId(null)}
+          readOnly={readOnly}
         />
       )}
       {editArtefactId && (
@@ -703,6 +759,7 @@ export default function SceneDetail({ scenarioId, campaignId, scene }: Props) {
           campaignId={campaignId}
           open={!!editArtefactId}
           onClose={() => setEditArtefactId(null)}
+          readOnly={readOnly}
         />
       )}
 

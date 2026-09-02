@@ -32,6 +32,7 @@ interface Props {
    * session to attach it to. See docs/adr/0001-runs-separate-story-from-play.md.
    */
   sceneStates: Record<string, string>
+  readOnly?: boolean
 }
 
 // ── Status dot ────────────────────────────────────────────────────────────────
@@ -44,6 +45,67 @@ const STATUS_COLORS: Record<SceneStatus, string> = {
 
 function StatusDot({ status }: { status: SceneStatus }) {
   return <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${STATUS_COLORS[status] ?? STATUS_COLORS.idea}`} />
+}
+
+// ── Read-only row ─────────────────────────────────────────────────────────────
+
+function SceneRowReadOnly({
+  scene,
+  selected,
+  played,
+  voided,
+  onSelect,
+}: {
+  scene: Scene
+  selected: boolean
+  played: boolean
+  voided: boolean
+  onSelect: () => void
+}) {
+  if (scene.type === 'divider') {
+    return (
+      <li className="flex items-center gap-2 py-1">
+        <div className="flex-1 border-t border-dashed border-muted-foreground/30" />
+        {scene.title && <span className="text-xs text-muted-foreground/60 shrink-0">{scene.title}</span>}
+        <div className="flex-1 border-t border-dashed border-muted-foreground/30" />
+      </li>
+    )
+  }
+
+  return (
+    <li
+      onClick={onSelect}
+      className={`flex items-center gap-2 rounded-md border px-2 py-2 cursor-pointer transition-colors ${
+        selected
+          ? 'bg-accent border-accent-foreground/20 text-accent-foreground'
+          : played || voided
+            ? 'bg-muted/40 border-transparent text-muted-foreground'
+            : 'bg-card border-border hover:bg-accent/50'
+      }`}
+    >
+      {played && (
+        <span title="Jouée par ce groupe" className="shrink-0">
+          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+        </span>
+      )}
+      {voided && (
+        <span title="Annulée par ce groupe" className="shrink-0">
+          <CircleSlash className="h-3.5 w-3.5 text-muted-foreground/50" />
+        </span>
+      )}
+
+      <span className={`flex-1 text-sm truncate ${played ? 'line-through' : ''}`}>
+        {scene.title || <span className="text-muted-foreground italic">Sans titre</span>}
+      </span>
+      {scene.is_start && <span title="Scène de départ"><Play className="h-3 w-3 shrink-0 text-emerald-600" /></span>}
+      {scene.is_end && <span title="Scène de fin"><Flag className="h-3 w-3 shrink-0 text-rose-500" /></span>}
+      <StatusDot status={scene.status} />
+
+      {scene.location_name && (
+        <span className="text-xs text-muted-foreground shrink-0 truncate max-w-[80px]">{scene.location_name}</span>
+      )}
+    </li>
+  )
 }
 
 // ── Sortable row ──────────────────────────────────────────────────────────────
@@ -146,7 +208,7 @@ function SceneRow({
 
 // ── Widget ────────────────────────────────────────────────────────────────────
 
-export default function SceneList({ scenarioId, selectedId, onSelect, sceneStates }: Props) {
+export default function SceneList({ scenarioId, selectedId, onSelect, sceneStates, readOnly }: Props) {
   const qc = useQueryClient()
   const llm = useSynopsisLLM(scenarioId)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -204,17 +266,19 @@ export default function SceneList({ scenarioId, selectedId, onSelect, sceneState
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold">Scènes</h3>
-        <div className="flex gap-1">
-          <Button
-            size="sm" variant="ghost" className="h-7 px-2 text-xs"
-            onClick={() => setShowAdd(v => !v)}
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+        {!readOnly && (
+          <div className="flex gap-1">
+            <Button
+              size="sm" variant="ghost" className="h-7 px-2 text-xs"
+              onClick={() => setShowAdd(v => !v)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
       </div>
 
-      {showAdd && (
+      {!readOnly && showAdd && (
         <div className="flex gap-1 mb-2">
           <Button
             size="sm" variant="outline" className="h-7 text-xs flex-1"
@@ -237,39 +301,58 @@ export default function SceneList({ scenarioId, selectedId, onSelect, sceneState
         <p className="text-xs text-muted-foreground">Aucune scène. Ajoutez-en une ou demandez au LLM.</p>
       )}
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-        <SortableContext items={scenes.map(s => s.id)} strategy={verticalListSortingStrategy}>
-          <ul className="space-y-1 flex-1 overflow-y-auto">
-            {scenes.map(scene => (
-              <SceneRow
-                key={scene.id}
-                scene={scene}
-                selected={selectedId === scene.id}
-                onSelect={() => onSelect(scene.id)}
-                played={sceneStates[scene.id] === 'cleared'}
-                voided={sceneStates[scene.id] === 'void'}
-                onDelete={() => {
-                  const label = scene.type === 'divider' ? 'ce séparateur' : `la scène "${scene.title || 'sans titre'}"`
-                  if (confirm(`Supprimer ${label} ?`)) deleteScene.mutate(scene.id)
-                }}
-              />
-            ))}
-          </ul>
-        </SortableContext>
-      </DndContext>
+      {readOnly ? (
+        <ul className="space-y-1 flex-1 overflow-y-auto">
+          {scenes.map(scene => (
+            <SceneRowReadOnly
+              key={scene.id}
+              scene={scene}
+              selected={selectedId === scene.id}
+              onSelect={() => onSelect(scene.id)}
+              played={sceneStates[scene.id] === 'cleared'}
+              voided={sceneStates[scene.id] === 'void'}
+            />
+          ))}
+        </ul>
+      ) : (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={scenes.map(s => s.id)} strategy={verticalListSortingStrategy}>
+            <ul className="space-y-1 flex-1 overflow-y-auto">
+              {scenes.map(scene => (
+                <SceneRow
+                  key={scene.id}
+                  scene={scene}
+                  selected={selectedId === scene.id}
+                  onSelect={() => onSelect(scene.id)}
+                  played={sceneStates[scene.id] === 'cleared'}
+                  voided={sceneStates[scene.id] === 'void'}
+                  onDelete={() => {
+                    const label = scene.type === 'divider' ? 'ce séparateur' : `la scène "${scene.title || 'sans titre'}"`
+                    if (confirm(`Supprimer ${label} ?`)) deleteScene.mutate(scene.id)
+                  }}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
+      )}
 
-      <div className="mt-3 pt-3 border-t flex items-center gap-2">
-        <Button
-          size="sm" variant="outline" className="h-7 px-2 text-xs w-full"
-          disabled={llm.suggestScene.isPending}
-          onClick={() => llm.suggestScene.mutate()}
-        >
-          <Sparkles className="h-3.5 w-3.5 mr-1" />
-          {llm.suggestScene.isPending ? 'Génération…' : 'Suggérer une scène'}
-        </Button>
-      </div>
-      {llm.suggestScene.isError && (
-        <p className="text-xs text-destructive mt-1">{(llm.suggestScene.error as Error).message}</p>
+      {!readOnly && (
+        <>
+          <div className="mt-3 pt-3 border-t flex items-center gap-2">
+            <Button
+              size="sm" variant="outline" className="h-7 px-2 text-xs w-full"
+              disabled={llm.suggestScene.isPending}
+              onClick={() => llm.suggestScene.mutate()}
+            >
+              <Sparkles className="h-3.5 w-3.5 mr-1" />
+              {llm.suggestScene.isPending ? 'Génération…' : 'Suggérer une scène'}
+            </Button>
+          </div>
+          {llm.suggestScene.isError && (
+            <p className="text-xs text-destructive mt-1">{(llm.suggestScene.error as Error).message}</p>
+          )}
+        </>
       )}
     </div>
   )

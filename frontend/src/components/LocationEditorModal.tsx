@@ -291,7 +291,11 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {isLoading ? 'Chargement…' : (
+              {isLoading ? 'Chargement…' : readOnly ? (
+                <p className="w-full text-lg font-semibold">
+                  {local.name || <span className="text-muted-foreground italic">(sans nom)</span>}
+                </p>
+              ) : (
                 <input
                   value={local.name}
                   onChange={e => handle('name', e.target.value)}
@@ -308,30 +312,42 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ville</p>
-                  <Input value={local.city} onChange={e => handle('city', e.target.value)} placeholder="Ex : Martelburg" className="h-8 text-sm" />
+                  {readOnly ? (
+                    <p className="text-sm">{local.city || '—'}</p>
+                  ) : (
+                    <Input value={local.city} onChange={e => handle('city', e.target.value)} placeholder="Ex : Martelburg" className="h-8 text-sm" />
+                  )}
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Quartier</p>
-                  <Input value={local.district} onChange={e => handle('district', e.target.value)} placeholder="Ex : Quartier des docks" className="h-8 text-sm" />
+                  {readOnly ? (
+                    <p className="text-sm">{local.district || '—'}</p>
+                  ) : (
+                    <Input value={local.district} onChange={e => handle('district', e.target.value)} placeholder="Ex : Quartier des docks" className="h-8 text-sm" />
+                  )}
                 </div>
               </div>
 
               {/* Atmosphere */}
               <div className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Atmosphère</p>
-                <Input
-                  value={local.atmosphere}
-                  onChange={e => handle('atmosphere', e.target.value)}
-                  placeholder="Glauque, industriel, humide… une phrase courte"
-                  className="h-8 text-sm"
-                />
+                {readOnly ? (
+                  <p className="text-sm">{local.atmosphere || '—'}</p>
+                ) : (
+                  <Input
+                    value={local.atmosphere}
+                    onChange={e => handle('atmosphere', e.target.value)}
+                    placeholder="Glauque, industriel, humide… une phrase courte"
+                    className="h-8 text-sm"
+                  />
+                )}
               </div>
 
               {/* Description */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</p>
-                  {!suggestion && (
+                  {!readOnly && !suggestion && (
                     <Button
                       size="sm" variant="ghost" className="h-6 px-2 text-xs"
                       disabled={develop.isPending}
@@ -351,6 +367,7 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
                   onChange={v => handle('description', v)}
                   placeholder="Décrivez le lieu — décor, ambiance, odeurs… tapez @ pour citer un PNJ, une faction"
                   className="min-h-[120px]"
+                  disabled={readOnly}
                 />
               </div>
 
@@ -370,6 +387,7 @@ export default function LocationEditorModal({ locationId, campaignId, open, onCl
                 locationId={locationId}
                 campaignId={campaignId}
                 onUpdated={handleLocationUpdated}
+                readOnly={readOnly}
               />
 
               {save.isPending && (
