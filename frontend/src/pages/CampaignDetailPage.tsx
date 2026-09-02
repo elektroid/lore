@@ -685,7 +685,7 @@ export default function CampaignDetailPage() {
   return (
     <AppShell crumbs={[{ label: campaign.name }]}>
       <main className="max-w-3xl mx-auto px-6 py-8">
-        <CampaignForm campaign={campaign} />
+        <CampaignForm key={campaign.id} campaign={campaign} />
       </main>
     </AppShell>
   )
