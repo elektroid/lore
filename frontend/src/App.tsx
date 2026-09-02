@@ -26,6 +26,7 @@ import ResetPasswordPage from '@/pages/ResetPasswordPage'
 import { useUIStore } from '@/stores/ui'
 import { AuthProvider } from '@/components/AuthProvider'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
+import { Toaster } from '@/components/ui/Toaster'
 
 export default function App() {
   const theme = useUIStore((s) => s.theme)
@@ -38,164 +39,167 @@ export default function App() {
   }, [theme])
 
   return (
-    <AuthProvider>
-      <Routes>
-        {/* Public routes */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
+    <>
+      <Toaster />
+      <AuthProvider>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-        {/* Table surface — the share token in the URL is the credential, because
-            the projection screen is usually a TV nobody logs in on.
-            See docs/play-table.md. */}
-        <Route path="/table/:token" element={<TablePage />} />
-        <Route path="/table/:token/player" element={<PlayerSeatPage />} />
+          {/* Table surface — the share token in the URL is the credential, because
+              the projection screen is usually a TV nobody logs in on.
+              See docs/play-table.md. */}
+          <Route path="/table/:token" element={<TablePage />} />
+          <Route path="/table/:token/player" element={<PlayerSeatPage />} />
 
-        {/* Protected routes */}
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <CampaignsPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/campaigns/archives"
-          element={
-            <ProtectedRoute>
-              <ArchivesPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/campaigns/:id"
-          element={
-            <ProtectedRoute>
-              <CampaignDetailPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/campaigns/:id/entities"
-          element={
-            <ProtectedRoute>
-              <CampaignEntitiesPage />
-            </ProtectedRoute>
-          }
-        />
-        {/* Scenario factory — see docs/scenario-factory.md */}
-        <Route
-          path="/campaigns/:id/factory"
-          element={
-            <ProtectedRoute>
-              <ScenarioFactoryPage />
-            </ProtectedRoute>
-          }
-        />
-        {/* Gamemaster hub — prepare and manage the groups playing this campaign */}
-        <Route
-          path="/campaigns/:id/runs"
-          element={
-            <ProtectedRoute>
-              <GameMasterPage />
-            </ProtectedRoute>
-          }
-        />
-        {/* Player mode — a seated player's own view of one run */}
-        <Route
-          path="/runs/:runId"
-          element={
-            <ProtectedRoute>
-              <RunPlayerPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <ProtectedRoute>
-              <SettingsPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <ProfilePage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute>
-              <AdminPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/lore"
-          element={
-            <ProtectedRoute>
-              <LorePage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/games"
-          element={
-            <ProtectedRoute>
-              <GamesPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/sheet-templates"
-          element={
-            <ProtectedRoute>
-              <SheetTemplatesPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/sheet-templates/:id"
-          element={
-            <ProtectedRoute>
-              <SheetTemplateEditorPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/scenarios/:id/synopsis"
-          element={
-            <ProtectedRoute>
-              <SynopsisPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/scenarios/:id/print"
-          element={
-            <ProtectedRoute>
-              <PrintPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/scenarios/:id/play"
-          element={
-            <ProtectedRoute>
-              <PlayPage />
-            </ProtectedRoute>
-          }
-        />
+          {/* Protected routes */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <CampaignsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/campaigns/archives"
+            element={
+              <ProtectedRoute>
+                <ArchivesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/campaigns/:id"
+            element={
+              <ProtectedRoute>
+                <CampaignDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/campaigns/:id/entities"
+            element={
+              <ProtectedRoute>
+                <CampaignEntitiesPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Scenario factory — see docs/scenario-factory.md */}
+          <Route
+            path="/campaigns/:id/factory"
+            element={
+              <ProtectedRoute>
+                <ScenarioFactoryPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Gamemaster hub — prepare and manage the groups playing this campaign */}
+          <Route
+            path="/campaigns/:id/runs"
+            element={
+              <ProtectedRoute>
+                <GameMasterPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Player mode — a seated player's own view of one run */}
+          <Route
+            path="/runs/:runId"
+            element={
+              <ProtectedRoute>
+                <RunPlayerPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <ProfilePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AdminPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/lore"
+            element={
+              <ProtectedRoute>
+                <LorePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/games"
+            element={
+              <ProtectedRoute>
+                <GamesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sheet-templates"
+            element={
+              <ProtectedRoute>
+                <SheetTemplatesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sheet-templates/:id"
+            element={
+              <ProtectedRoute>
+                <SheetTemplateEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/scenarios/:id/synopsis"
+            element={
+              <ProtectedRoute>
+                <SynopsisPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/scenarios/:id/print"
+            element={
+              <ProtectedRoute>
+                <PrintPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/scenarios/:id/play"
+            element={
+              <ProtectedRoute>
+                <PlayPage />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Default redirect */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </AuthProvider>
+          {/* Default redirect */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AuthProvider>
+    </>
   )
 }

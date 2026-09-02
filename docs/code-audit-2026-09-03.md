@@ -97,17 +97,25 @@ CLI tools. CORS defaults are conservative (`localhost:5173` only, not `*`).
 
 ### Must
 
-- **29 of 31 files that call `useMutation` have no `onError` handler, and
-  the app has no toast/notification library at all** (`grep -ri toast` over
-  `frontend/src` returns nothing; only 10 files use any ad hoc `setError`,
-  almost all on auth forms). This spans all four entity editor modals,
-  `PlayPage.tsx` (12 mutations), `CampaignEntitiesPage.tsx` (9),
-  `GamesPage.tsx` (8), `SceneDetail.tsx` (9), and more. A failed save,
-  upload, or delete — network blip, validation error, backend 500 — fails
-  completely silently: no toast, no inline message, the UI just looks like
-  the click did nothing. This is a real, user-facing correctness gap (an
-  author or GM can lose an edit with zero indication anything went wrong),
-  not a style nit — worth fixing before anything else in this report.
+- ~~**29 of 31 files that call `useMutation` have no `onError` handler, and
+  the app has no toast/notification library at all.**~~ **Fixed 2026-09-03.**
+  Added `frontend/src/stores/toast.ts` (a small zustand store with an
+  imperative `toast.error()/success()` API) and
+  `frontend/src/components/ui/Toaster.tsx`, mounted once at the root in
+  `App.tsx`. Wired as a global fallback via
+  `new QueryClient({ mutationCache: new MutationCache({ onError }) })` in
+  `main.tsx`, so every mutation that doesn't define its own `onError` now
+  surfaces the backend's error message as a toast instead of failing
+  silently — no per-file changes needed across the 29 call sites. Mutations
+  that already show an inline error (`ImprovPanel.tsx`,
+  `ScenarioFactoryPage.tsx`) are unaffected; a mutation-level `onError`
+  still runs in addition to the global one. Verified: `tsc -b --noEmit`,
+  `eslint`, and `vite build` all pass; confirmed against the real dev
+  backend that a failed write (`PUT /api/campaigns/does-not-exist` →
+  `{"error":"campaign not found"}`, HTTP 404) produces exactly the message
+  the toast will render, end to end through `api/client.ts`'s error
+  parsing. No toast library was added as a dependency — this is ~70 lines
+  of new code reusing the project's existing zustand/Tailwind conventions.
 
 ### Should
 
@@ -190,10 +198,9 @@ across NPCs/Locations/Factions/Artefacts and reused correctly in
 
 ## Suggested order of attack
 
-1. Frontend `onError`/toast gap (Must) — silent data loss is the only
-   finding in this report that a real user will actually hit.
+1. ~~Frontend `onError`/toast gap (Must)~~ — done, see above.
 2. Backend `Import` transaction (Must) — low-frequency but real data
-   integrity risk, and a small fix.
+   integrity risk, and a small fix. Still open.
 3. The two duplication clusters (backend entity CRUD, frontend
    `ImageGrid`/`AutoTextarea`) — same root cause on both sides
    (copy-pasted-per-entity-type instead of parameterized), worth doing
