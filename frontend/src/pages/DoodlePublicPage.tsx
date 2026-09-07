@@ -10,12 +10,13 @@ import { api } from '@/api/client'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import type { DoodleAnswer, PublicDoodleDetail } from '@/types/doodle'
 
-// See DoodleResultsGrid's formatSlot for why timeZone: 'UTC' belongs here.
+// Slots are whole days — see DoodleResultsGrid's formatSlot for why
+// timeZone: 'UTC' belongs here.
 function formatSlotLong(startsAt: string): string {
   const d = new Date(startsAt)
   if (Number.isNaN(d.getTime())) return startsAt
-  return d.toLocaleString('fr-FR', {
-    weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
+  return d.toLocaleDateString('fr-FR', {
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC',
   })
 }
 

@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, Lock, Plus, Trash2, Unlock } from 'lucide-react'
+import { Check, Copy, Lock, Trash2, Unlock, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import AppShell from '@/components/AppShell'
 import DoodleResultsGrid from '@/components/doodle/DoodleResultsGrid'
+import DoodleCalendarPicker from '@/components/doodle/DoodleCalendarPicker'
 import { api } from '@/api/client'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import type { DoodleDetail } from '@/types/doodle'
@@ -27,7 +28,6 @@ export default function DoodleEditPage() {
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [newSlot, setNewSlot] = useState('')
   const [copied, setCopied] = useState(false)
   const loaded = useRef(false)
 
@@ -59,8 +59,8 @@ export default function DoodleEditPage() {
   })
 
   const addSlot = useMutation({
-    mutationFn: (startsAt: string) => api.post<DoodleDetail>(`/doodles/${id}/slots`, { starts_at: startsAt }),
-    onSuccess: (detail) => { onSuccess(detail); setNewSlot('') },
+    mutationFn: (date: string) => api.post<DoodleDetail>(`/doodles/${id}/slots`, { starts_at: date }),
+    onSuccess,
   })
 
   const deleteSlot = useMutation({
@@ -129,43 +129,37 @@ export default function DoodleEditPage() {
         )}
 
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold">Créneaux proposés</h2>
-          <ul className="space-y-1.5">
-            {slots.map(s => (
-              <li key={s.id} className="flex items-center gap-2 group">
-                <span className="text-sm flex-1">
+          <h2 className="text-sm font-semibold">Jours proposés</h2>
+          <p className="text-xs text-muted-foreground -mt-2">Cliquez sur un jour pour le proposer, cliquez à nouveau pour le retirer.</p>
+
+          {slots.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5">
+              {[...slots].sort((a, b) => a.starts_at.localeCompare(b.starts_at)).map(s => (
+                <li key={s.id} className="flex items-center gap-1 text-xs rounded-full border bg-card pl-2.5 pr-1 py-1">
                   {/* timeZone: 'UTC' — see DoodleResultsGrid's formatSlot */}
-                  {new Date(s.starts_at).toLocaleString('fr-FR', {
-                    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
+                  {new Date(s.starts_at).toLocaleDateString('fr-FR', {
+                    weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC',
                   })}
-                </span>
-                <button
-                  onClick={() => deleteSlot.mutate(s.id)}
-                  className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground/60 hover:text-destructive transition-opacity"
-                  title="Retirer ce créneau"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </li>
-            ))}
-            {slots.length === 0 && <p className="text-sm text-muted-foreground">Aucun créneau pour l'instant.</p>}
-          </ul>
-          <div className="flex items-center gap-2 pt-2">
-            <input
-              type="datetime-local"
-              value={newSlot}
-              onChange={e => setNewSlot(e.target.value)}
-              className="h-8 text-xs rounded border border-input bg-background px-2"
-            />
-            <Button
-              size="sm"
-              className="h-8 px-2 text-xs"
-              disabled={!newSlot || addSlot.isPending}
-              onClick={() => addSlot.mutate(newSlot)}
-            >
-              <Plus className="h-3.5 w-3.5 mr-1" />Ajouter
-            </Button>
-          </div>
+                  <button
+                    onClick={() => deleteSlot.mutate(s.id)}
+                    className="p-0.5 text-muted-foreground/60 hover:text-destructive"
+                    title="Retirer ce jour"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <DoodleCalendarPicker
+            selected={new Set(slots.map(s => s.starts_at.slice(0, 10)))}
+            onToggle={(date) => {
+              const existing = slots.find(s => s.starts_at.slice(0, 10) === date)
+              if (existing) deleteSlot.mutate(existing.id)
+              else addSlot.mutate(date)
+            }}
+          />
         </section>
 
         <section className="space-y-3">

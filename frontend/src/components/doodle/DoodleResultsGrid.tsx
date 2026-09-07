@@ -1,16 +1,17 @@
 import { Check, X, HelpCircle } from 'lucide-react'
 import type { DoodleAnswer, DoodleRespondentVotes, DoodleSlot } from '@/types/doodle'
 
+// Slots are whole days (see DoodleCalendarPicker), stored at midnight.
 // starts_at round-trips through a sqlite DATETIME column that the driver
-// normalizes to RFC3339 with a trailing Z — relabeling the GM's naive local
-// wall-clock input as UTC, not converting it. timeZone: 'UTC' here cancels
-// that relabeling back out instead of re-shifting the time by the viewer's
-// own offset.
+// normalizes to RFC3339 with a trailing Z — relabeling the naive date as
+// UTC midnight, not converting it. timeZone: 'UTC' here cancels that
+// relabeling back out instead of letting the viewer's own offset roll the
+// date to the day before or after.
 function formatSlot(startsAt: string): string {
   const d = new Date(startsAt)
   if (Number.isNaN(d.getTime())) return startsAt
-  return d.toLocaleString('fr-FR', {
-    weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
+  return d.toLocaleDateString('fr-FR', {
+    weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC',
   })
 }
 

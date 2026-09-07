@@ -149,11 +149,26 @@ func ListDoodleSlots(ctx context.Context, database DBTX, doodleID string) ([]Doo
 	return slots, rows.Err()
 }
 
+// AddDoodleSlot is idempotent per (doodle_id, starts_at): the calendar picker
+// lets a GM click the same day twice in quick succession before the first
+// request's result comes back, and there is no UNIQUE constraint on the
+// column to fall back on (schema.sql can't safely add one to an
+// already-created table — see CLAUDE.md's hot-reload migration warning), so
+// the dedup check lives here instead.
 func AddDoodleSlot(ctx context.Context, database *sql.DB, doodleID, startsAt string) (*DoodleSlot, error) {
+	var existingID string
+	err := database.QueryRowContext(ctx,
+		`SELECT id FROM doodle_slots WHERE doodle_id = ? AND starts_at = ?`, doodleID, startsAt).Scan(&existingID)
+	if err == nil {
+		return &DoodleSlot{ID: existingID, DoodleID: doodleID, StartsAt: startsAt}, nil
+	}
+	if err != sql.ErrNoRows {
+		return nil, err
+	}
+
 	id := uuid.New().String()
-	_, err := database.ExecContext(ctx,
-		`INSERT INTO doodle_slots (id, doodle_id, starts_at) VALUES (?, ?, ?)`, id, doodleID, startsAt)
-	if err != nil {
+	if _, err := database.ExecContext(ctx,
+		`INSERT INTO doodle_slots (id, doodle_id, starts_at) VALUES (?, ?, ?)`, id, doodleID, startsAt); err != nil {
 		return nil, err
 	}
 	return &DoodleSlot{ID: id, DoodleID: doodleID, StartsAt: startsAt}, nil

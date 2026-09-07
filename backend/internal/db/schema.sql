@@ -519,9 +519,9 @@ CREATE TABLE IF NOT EXISTS doodles (
 );
 CREATE INDEX IF NOT EXISTS idx_doodles_owner_id ON doodles(owner_id);
 
--- Proposed date/time options. Ordered by starts_at when listed — a real
--- date already sorts the way a GM expects, so there is no separate
--- sort_order column.
+-- Proposed dates — the GM picks whole days from a multi-month calendar, no
+-- time of day. Ordered by starts_at when listed — a real date already sorts
+-- the way a GM expects, so there is no separate sort_order column.
 CREATE TABLE IF NOT EXISTS doodle_slots (
     id        TEXT PRIMARY KEY,
     doodle_id TEXT NOT NULL REFERENCES doodles(id) ON DELETE CASCADE,
