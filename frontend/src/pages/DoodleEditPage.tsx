@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import AppShell from '@/components/AppShell'
 import DoodleResultsGrid from '@/components/doodle/DoodleResultsGrid'
 import DoodleCalendarPicker from '@/components/doodle/DoodleCalendarPicker'
+import DoodleQRCode from '@/components/doodle/DoodleQRCode'
 import { api } from '@/api/client'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import type { DoodleDetail } from '@/types/doodle'
@@ -118,11 +119,14 @@ export default function DoodleEditPage() {
           </div>
         </div>
 
-        <div className="rounded-lg border bg-card p-3 flex items-center gap-2">
-          <p className="text-xs text-muted-foreground flex-1 truncate font-mono">{shareUrl(doodle)}</p>
-          <Button size="sm" variant="outline" className="h-7 px-2 text-xs shrink-0" onClick={copyLink}>
-            {copied ? <><Check className="h-3.5 w-3.5 mr-1" />Copié</> : <><Copy className="h-3.5 w-3.5 mr-1" />Copier le lien</>}
-          </Button>
+        <div className="rounded-lg border bg-card p-3 flex items-center gap-3">
+          <DoodleQRCode value={shareUrl(doodle)} className="shrink-0" />
+          <div className="flex-1 min-w-0 space-y-2">
+            <p className="text-xs text-muted-foreground truncate font-mono">{shareUrl(doodle)}</p>
+            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={copyLink}>
+              {copied ? <><Check className="h-3.5 w-3.5 mr-1" />Copié</> : <><Copy className="h-3.5 w-3.5 mr-1" />Copier le lien</>}
+            </Button>
+          </div>
         </div>
         {doodle.closed && (
           <p className="text-xs text-amber-600 -mt-4">Ce sondage est clos : le lien reste consultable mais n'accepte plus de nouvelles réponses.</p>
