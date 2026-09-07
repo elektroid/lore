@@ -64,8 +64,8 @@ export default function DoodleEditPage() {
   })
 
   const deleteSlot = useMutation({
-    mutationFn: (slotId: string) => api.delete<DoodleDetail>(`/doodles/${id}/slots/${slotId}`),
-    onSuccess,
+    mutationFn: (slotId: string) => api.delete(`/doodles/${id}/slots/${slotId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['doodle', id] }),
   })
 
   const deleteDoodle = useMutation({

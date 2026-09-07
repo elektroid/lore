@@ -219,7 +219,7 @@ func (h *DoodleHandler) DeleteSlot(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.loadDetail(w, r, doodle)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ── Public (share token) ─────────────────────────────────────────────────────
