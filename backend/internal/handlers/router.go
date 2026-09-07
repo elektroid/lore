@@ -173,6 +173,29 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 			})
 		})
 
+		// Doodles: GM-shared scheduling polls, deliberately outside the
+		// campaign/run model — see schema.sql. /share/{token} is public (the
+		// share token is the credential, same trick as /api/table/{token}),
+		// so it needs its own literal segment ahead of /{id} to avoid a chi
+		// wildcard-name collision, same as /games/import above.
+		doodles := &DoodleHandler{db: database}
+		r.Route("/doodles", func(r chi.Router) {
+			r.Get("/", doodles.List)
+			r.Post("/", doodles.Create)
+			r.Route("/share/{token}", func(r chi.Router) {
+				r.Get("/", doodles.PublicGet)
+				r.Post("/votes", doodles.PublicVote)
+			})
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", doodles.Get)
+				r.Put("/", doodles.Update)
+				r.Delete("/", doodles.Delete)
+				r.Post("/slots", doodles.AddSlot)
+				r.Put("/slots/{slotId}", doodles.UpdateSlot)
+				r.Delete("/slots/{slotId}", doodles.DeleteSlot)
+			})
+		})
+
 		campaigns := &CampaignHandler{db: database}
 		archivedCampaigns := &ArchivedCampaignHandler{db: database}
 		runs := &RunHandler{db: database}

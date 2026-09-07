@@ -500,6 +500,56 @@ CREATE TABLE IF NOT EXISTS player_characters (
     updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Doodle: a lightweight scheduling poll a GM shares by URL to line up the
+-- next session. Deliberately outside the campaign/run/session model — it
+-- names no campaign, run or player list, just a title and a handful of
+-- proposed date/time slots (see docs/runs.md's authorization-vs-party split,
+-- which this sidesteps entirely on purpose). Anyone holding the share link
+-- can add their name and mark each slot yes/no/maybe; nothing on the voting
+-- side is authenticated. Only the owner's management view requires a login.
+CREATE TABLE IF NOT EXISTS doodles (
+    id          TEXT PRIMARY KEY,
+    owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    share_token TEXT NOT NULL UNIQUE,
+    closed_at   DATETIME,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_doodles_owner_id ON doodles(owner_id);
+
+-- Proposed date/time options. Ordered by starts_at when listed — a real
+-- date already sorts the way a GM expects, so there is no separate
+-- sort_order column.
+CREATE TABLE IF NOT EXISTS doodle_slots (
+    id        TEXT PRIMARY KEY,
+    doodle_id TEXT NOT NULL REFERENCES doodles(id) ON DELETE CASCADE,
+    starts_at DATETIME NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_doodle_slots_doodle_id ON doodle_slots(doodle_id);
+
+-- A named respondent — there is no account to log back in with, so
+-- (doodle_id, name) is the only identity a re-opened link has. Submitting
+-- again under the same name replaces that person's answers rather than
+-- creating a duplicate row.
+CREATE TABLE IF NOT EXISTS doodle_respondents (
+    id         TEXT PRIMARY KEY,
+    doodle_id  TEXT NOT NULL REFERENCES doodles(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(doodle_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_doodle_respondents_doodle_id ON doodle_respondents(doodle_id);
+
+CREATE TABLE IF NOT EXISTS doodle_votes (
+    respondent_id TEXT NOT NULL REFERENCES doodle_respondents(id) ON DELETE CASCADE,
+    slot_id       TEXT NOT NULL REFERENCES doodle_slots(id) ON DELETE CASCADE,
+    answer        TEXT NOT NULL CHECK (answer IN ('yes','no','maybe')),
+    PRIMARY KEY (respondent_id, slot_id)
+);
+CREATE INDEX IF NOT EXISTS idx_doodle_votes_slot_id ON doodle_votes(slot_id);
+
 -- Foreign key indexes
 
 CREATE INDEX IF NOT EXISTS idx_campaigns_game_id    ON campaigns(game_id);

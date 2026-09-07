@@ -10,6 +10,7 @@ func TestPublicEndpointBoundary(t *testing.T) {
 		"/uploads/locations/uuid/uuid.png",
 		"/api/auth/login", "/api/auth/register", "/api/auth/csrf",
 		"/api/table/deadbeef", "/api/table/deadbeef/stream",
+		"/api/doodles/share/deadbeef", "/api/doodles/share/deadbeef/votes",
 	}
 	for _, p := range open {
 		if !isPublicEndpoint(p) {
@@ -21,6 +22,7 @@ func TestPublicEndpointBoundary(t *testing.T) {
 		"/api/campaigns", "/api/campaigns/x/npcs", "/api/settings/llm",
 		"/api/users", "/api/scenarios/x/beats", "/api/auth/me",
 		"/external-material/rulebook.pdf",
+		"/api/doodles", "/api/doodles/abc-123",
 	}
 	for _, p := range closed {
 		if isPublicEndpoint(p) {

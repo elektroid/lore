@@ -14,6 +14,9 @@ import GamesPage from '@/pages/GamesPage'
 import SheetTemplatesPage from '@/pages/SheetTemplatesPage'
 import SheetTemplateEditorPage from '@/pages/SheetTemplateEditorPage'
 import LorePage from '@/pages/LorePage'
+import DoodlesPage from '@/pages/DoodlesPage'
+import DoodleEditPage from '@/pages/DoodleEditPage'
+import DoodlePublicPage from '@/pages/DoodlePublicPage'
 import SynopsisPage from '@/pages/SynopsisPage'
 import PrintPage from '@/pages/PrintPage'
 import PlayPage from '@/pages/PlayPage'
@@ -54,6 +57,10 @@ export default function App() {
               See docs/play-table.md. */}
           <Route path="/table/:token" element={<TablePage />} />
           <Route path="/table/:token/player" element={<PlayerSeatPage />} />
+
+          {/* Doodle voting page — the share token in the URL is the credential,
+              same trick as the table surface. No login, no campaign, no run. */}
+          <Route path="/doodles/share/:token" element={<DoodlePublicPage />} />
 
           {/* Protected routes */}
           <Route
@@ -152,6 +159,22 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <GamesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/doodles"
+            element={
+              <ProtectedRoute>
+                <DoodlesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/doodles/:id"
+            element={
+              <ProtectedRoute>
+                <DoodleEditPage />
               </ProtectedRoute>
             }
           />

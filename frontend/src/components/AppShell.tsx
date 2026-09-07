@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users, Dices, ClipboardList, LogOut, ChevronDown, Check } from 'lucide-react'
+import { ChevronRight, Sun, Moon, Zap, Settings, UserCircle, Users, Dices, ClipboardList, CalendarDays, LogOut, ChevronDown, Check } from 'lucide-react'
 import { useUIStore, type Theme } from '@/stores/ui'
 import { useAuthStore, useUser } from '@/stores/auth'
 import { useModeStore, type AppMode } from '@/stores/mode'
@@ -97,6 +97,10 @@ export default function AppShell({ crumbs = [], children }: AppShellProps) {
   // stay role-gated on top, unchanged.
   const showGames = mode === 'author' || mode === 'admin'
   const showSheetTemplates = mode === 'admin'
+  // Doodles are a scheduling utility for whoever is about to run a table —
+  // they don't belong to a campaign or run, so they live next to the
+  // Meneur workflow rather than under any one campaign.
+  const showDoodles = mode === 'gamemaster'
   const showAdminLink = user?.role === 'superuser' && mode === 'admin'
   const showSettingsLink = user?.role === 'superuser' && mode === 'admin'
 
@@ -179,6 +183,20 @@ export default function AppShell({ crumbs = [], children }: AppShellProps) {
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent>Jeux</TooltipContent>
+              </Tooltip>
+            )}
+            {showDoodles && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link
+                    to="/doodles"
+                    aria-label="Sondages"
+                    className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+                  >
+                    <CalendarDays className="h-3.5 w-3.5" />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>Sondages</TooltipContent>
               </Tooltip>
             )}
             {showSheetTemplates && (

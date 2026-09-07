@@ -61,9 +61,9 @@ func isPublicEndpoint(path string) bool {
 		"/api/version":
 		return true
 	}
-	// The table surface (projection screen, player seats) authenticates with the
-	// share token in the path.
-	return strings.HasPrefix(path, "/api/table/")
+	// The table surface (projection screen, player seats) and the doodle
+	// voting page both authenticate with a share token in the path.
+	return strings.HasPrefix(path, "/api/table/") || strings.HasPrefix(path, "/api/doodles/share/")
 }
 
 // AuthMiddleware creates a middleware that validates JWT tokens
