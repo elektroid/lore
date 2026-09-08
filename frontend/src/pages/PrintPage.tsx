@@ -21,16 +21,19 @@ function renderRun(run: InlineRun, key: number) {
  * entity list to resolve mentions against, so flatten those to `@Name` first,
  * same as before, then render the formatting on top.
  */
-function PrintProse({ text, className }: { text: string; className?: string }) {
+function PrintProse({ text, className, label }: { text: string; className?: string; label?: string }) {
   const blocks = parseRichText(stripMentions(text))
   return (
     <div className={className}>
       {blocks.map((block, bi) => block.type === 'list' ? (
         <ul key={bi} className="list-disc pl-5 mb-1 last:mb-0">
+          {/* A label only ever precedes prose, so a leading list gets its own line. */}
+          {bi === 0 && label && <strong>{label}</strong>}
           {block.items.map((runs, li) => <li key={li}>{runs.map(renderRun)}</li>)}
         </ul>
       ) : (
         <p key={bi} className="mb-1 last:mb-0">
+          {bi === 0 && label && <strong>{label}</strong>}
           {block.lines.map((runs, li) => (
             <span key={li}>{li > 0 && <br />}{runs.map(renderRun)}</span>
           ))}
@@ -185,10 +188,10 @@ export default function PrintPage() {
                 </div>
                 {scene.description && <PrintProse text={scene.description} className="print-prose mt-1" />}
                 {scene.outcome && (
-                  <p className="print-outcome"><strong>Dénouement : </strong>{scene.outcome}</p>
+                  <PrintProse text={scene.outcome} label="Dénouement : " className="print-outcome" />
                 )}
                 {scene.notes && (
-                  <p className="print-notes"><strong>Notes MJ : </strong>{scene.notes}</p>
+                  <PrintProse text={scene.notes} label="Notes MJ : " className="print-notes" />
                 )}
                 {scene.npcs.length > 0 && (
                   <div className="print-scene-npcs">

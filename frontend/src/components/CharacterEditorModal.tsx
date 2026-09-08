@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { AutoTextarea } from '@/components/ui/AutoTextarea'
+import MentionEditor from '@/components/MentionEditor'
 import SheetForm from '@/components/SheetForm'
 import type { GetCharacterResponse, PlayerCharacter } from '@/types/character'
 import type { SheetValues } from '@/types/sheetTemplate'
@@ -101,12 +101,12 @@ export default function CharacterEditorModal({ characterId, open, onClose }: Pro
           <div className="space-y-4">
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</p>
-              <AutoTextarea value={local.description} onChange={v => handle('description', v)} placeholder="Apparence, personnalité…" />
+              <MentionEditor value={local.description} onChange={v => handle('description', v)} placeholder="Apparence, personnalité…" />
             </div>
 
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Historique</p>
-              <AutoTextarea value={local.personal_story} onChange={v => handle('personal_story', v)} placeholder="D'où il/elle vient, ce qui l'a mené·e ici…" />
+              <MentionEditor value={local.personal_story} onChange={v => handle('personal_story', v)} placeholder="D'où il/elle vient, ce qui l'a mené·e ici…" />
             </div>
 
             <div className="space-y-1 pt-2 border-t">

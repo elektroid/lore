@@ -12,6 +12,7 @@ import { useUser } from '@/stores/auth'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import type { Game, GameDocument } from '@/types/game'
 import type { SheetTemplate } from '@/types/sheetTemplate'
+import MentionEditor from '@/components/MentionEditor'
 
 function slugify(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
@@ -362,12 +363,11 @@ export default function GamesPage() {
                       {sheetTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                     </select>
                   </div>
-                  <textarea
+                  <MentionEditor
                     value={editDescription}
-                    onChange={e => setEditDescription(e.target.value)}
+                    onChange={setEditDescription}
                     placeholder="Description — de quoi parle ce jeu, son univers, ses règles…"
-                    rows={3}
-                    className="w-full resize-none rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className="text-xs"
                   />
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
@@ -509,12 +509,11 @@ export default function GamesPage() {
                 {sheetTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
-            <textarea
+            <MentionEditor
               value={newDescription}
-              onChange={e => setNewDescription(e.target.value)}
+              onChange={setNewDescription}
               placeholder="Description — de quoi parle ce jeu, son univers, ses règles…"
-              rows={3}
-              className="w-full resize-none rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="text-xs"
             />
             {createGame.isError && (
               <p className="text-xs text-destructive">{(createGame.error as Error).message}</p>

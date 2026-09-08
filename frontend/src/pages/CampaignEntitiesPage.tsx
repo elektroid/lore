@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -19,38 +19,16 @@ import { api } from '@/api/client'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import { useSyncMode } from '@/hooks/useSyncMode'
 import { stripMentions } from '@/lib/mentions'
+import MentionEditor from '@/components/MentionEditor'
 import type { Campaign } from '@/types/campaign'
 import type { CampaignNPC, NPCImage, CampaignLocation, LocationImage, CampaignArtefact, ArtefactImage, CampaignFaction, FactionImage } from '@/types/entities'
-
-// ── Auto-resize textarea ──────────────────────────────────────────────────────
-
-function AutoTextarea({ value, onChange, placeholder, disabled, rows = 2 }: {
-  value: string; onChange: (v: string) => void
-  placeholder?: string; disabled?: boolean; rows?: number
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  return (
-    <textarea
-      ref={ref}
-      rows={rows}
-      value={value}
-      placeholder={placeholder}
-      disabled={disabled}
-      onChange={e => {
-        onChange(e.target.value)
-        if (ref.current) { ref.current.style.height = 'auto'; ref.current.style.height = ref.current.scrollHeight + 'px' }
-      }}
-      className="w-full resize-none overflow-hidden rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
-    />
-  )
-}
 
 // ── NPC form fields (module-level to avoid remount on re-render) ──────────────
 
 type NPCForm = { name: string; role: string; description: string; quote: string }
 const emptyNPC = (): NPCForm => ({ name: '', role: '', description: '', quote: '' })
 
-function NPCFormFields({ f, set }: { f: NPCForm; set: (p: Partial<NPCForm>) => void }) {
+function NPCFormFields({ campaignId, f, set }: { campaignId: string; f: NPCForm; set: (p: Partial<NPCForm>) => void }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
@@ -65,7 +43,7 @@ function NPCFormFields({ f, set }: { f: NPCForm; set: (p: Partial<NPCForm>) => v
       </div>
       <div className="space-y-1">
         <Label className="text-xs">Description</Label>
-        <AutoTextarea value={f.description} onChange={v => set({ description: v })} placeholder="Description physique, psychologie, motivations…" />
+        <MentionEditor campaignId={campaignId} value={f.description} onChange={v => set({ description: v })} placeholder="Description physique, psychologie… tapez @ pour citer un PNJ, un lieu, une faction" />
       </div>
       <div className="space-y-1">
         <Label className="text-xs">Réplique type</Label>
@@ -155,7 +133,7 @@ function NPCTab({ campaignId, gameId, openId, creating, onCreatingChange, form, 
           <DialogHeader>
             <DialogTitle>Ajouter un PNJ</DialogTitle>
           </DialogHeader>
-          <NPCFormFields f={form} set={p => onFormChange({ ...form, ...p })} />
+          <NPCFormFields campaignId={campaignId} f={form} set={p => onFormChange({ ...form, ...p })} />
           <DialogFooter>
             <Button variant="ghost" onClick={() => onCreatingChange(false)}><X className="h-3.5 w-3.5 mr-1" /> Annuler</Button>
             <Button disabled={!form.name.trim() || create.isPending} onClick={() => create.mutate(form)}>
@@ -194,7 +172,7 @@ function NPCTab({ campaignId, gameId, openId, creating, onCreatingChange, form, 
 type LocForm = { name: string; description: string; atmosphere: string }
 const emptyLoc = (): LocForm => ({ name: '', description: '', atmosphere: '' })
 
-function LocFormFields({ f, set }: { f: LocForm; set: (p: Partial<LocForm>) => void }) {
+function LocFormFields({ campaignId, f, set }: { campaignId: string; f: LocForm; set: (p: Partial<LocForm>) => void }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
@@ -209,7 +187,7 @@ function LocFormFields({ f, set }: { f: LocForm; set: (p: Partial<LocForm>) => v
       </div>
       <div className="space-y-1">
         <Label className="text-xs">Description</Label>
-        <AutoTextarea value={f.description} onChange={v => set({ description: v })} placeholder="Décor, odeurs, ambiance…" />
+        <MentionEditor campaignId={campaignId} value={f.description} onChange={v => set({ description: v })} placeholder="Décor, odeurs, ambiance…" />
       </div>
     </div>
   )
@@ -297,7 +275,7 @@ function LocationTab({ campaignId, openId, creating, onCreatingChange, form, onF
           <DialogHeader>
             <DialogTitle>Ajouter un lieu</DialogTitle>
           </DialogHeader>
-          <LocFormFields f={form} set={p => onFormChange({ ...form, ...p })} />
+          <LocFormFields campaignId={campaignId} f={form} set={p => onFormChange({ ...form, ...p })} />
           <DialogFooter>
             <Button variant="ghost" onClick={() => onCreatingChange(false)}><X className="h-3.5 w-3.5 mr-1" /> Annuler</Button>
             <Button disabled={!form.name.trim() || create.isPending} onClick={() => create.mutate(form)}>
@@ -434,7 +412,7 @@ function FactionTab({ campaignId, openId, creating, onCreatingChange, form, onFo
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Description</Label>
-              <AutoTextarea value={form.description} onChange={v => onFormChange({ ...form, description: v })} placeholder="Présentation, structure, histoire…" />
+              <MentionEditor campaignId={campaignId} value={form.description} onChange={v => onFormChange({ ...form, description: v })} placeholder="Présentation, structure, histoire…" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Motivation</Label>

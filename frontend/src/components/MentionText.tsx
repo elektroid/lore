@@ -3,7 +3,8 @@ import { MENTION_KIND_LABEL, type MentionKind } from '@/lib/mentions'
 import { parseRichText, type InlineRun } from '@/lib/richtext'
 
 interface Props {
-  campaignId: string
+  /** Campaign whose entity names resolve the chips. Omit outside a campaign. */
+  campaignId?: string
   text: string
   className?: string
   /** Called when a chip is clicked — open that entity. Omit for inert chips. */
@@ -19,7 +20,7 @@ interface Props {
  * markers show through. Where formatting cannot be drawn at all — a print
  * sheet, a truncated list preview — use stripMentions instead.
  */
-export default function MentionText({ campaignId, text, className, onOpen }: Props) {
+export default function MentionText({ campaignId = '', text, className, onOpen }: Props) {
   const { resolve } = useCampaignMentions(campaignId)
   const blocks = parseRichText(text)
 

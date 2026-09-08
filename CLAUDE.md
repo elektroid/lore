@@ -126,6 +126,29 @@ Show at most **two lines** of secondary metadata beneath the name:
 
 Do not show more than two metadata lines in the list view; additional detail belongs in the editor.
 
+## Prose fields — rich text, not textareas
+
+Any **multiline authored prose** field is a `MentionEditor`, and every place
+that *displays* it without editing is a `MentionText` (or `PrintProse` on the
+print sheet). A raw `<textarea>` there leaks `**bold**` markers into the reader's
+face and loses the `@` picker. The format itself is `lib/richtext.ts` — bold,
+italic, one level of bullets, mentions; stored as one plain string, so nothing
+about this reaches the database or `Export JSON`.
+
+`campaignId` is optional. Pass it and `@` offers the campaign's entities; omit it
+on prose that has no campaign (a player character, a game blurb, a player's own
+notes) and the same editor still gives bold/italic/lists.
+
+What stays a plain input, deliberately:
+
+- **Single-line fields** — `role`, `motivation`, `atmosphere`, `quote`, a name.
+  They are one short phrase by design; formatting them is noise.
+- **Machine-bound strings** — `games.visual_style` goes verbatim to an image
+  model, sheet-template JSON, the brainstorm chat box, LLM suggestion diffs.
+- **The scenario factory** (`components/factory/`). Draft cards pack four prose
+  fields into one compact card; four toolbars would drown them. Formatting typed
+  in a real scene survives materialization anyway.
+
 ## User management
 
 ### Email verification

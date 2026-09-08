@@ -441,13 +441,21 @@ function PlayScenePanel({ scene, campaignId }: { scene: Scene; campaignId: strin
       {scene.outcome && (
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dénouement</p>
-          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{scene.outcome}</p>
+          <MentionText
+            campaignId={campaignId}
+            text={scene.outcome}
+            className="text-sm text-muted-foreground leading-relaxed"
+          />
         </div>
       )}
       {scene.notes && (
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Notes MJ</p>
-          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{scene.notes}</p>
+          <MentionText
+            campaignId={campaignId}
+            text={scene.notes}
+            className="text-sm text-muted-foreground leading-relaxed"
+          />
         </div>
       )}
       {scene.npcs.length > 0 && (

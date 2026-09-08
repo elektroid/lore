@@ -11,6 +11,7 @@ import { api } from '@/api/client'
 import { patchCachedListItem } from '@/api/cache'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
 import LLMSuggestionReview from '@/components/LLMSuggestionReview'
+import MentionEditor from '@/components/MentionEditor'
 import { NPC_SUGGESTION_FIELDS } from '@/components/NPCEditorModal'
 
 interface Props {
@@ -147,7 +148,6 @@ function NPCRow({ npc, scenarioId, readOnly }: { npc: SynopsisNPC; scenarioId: s
   // localRef mirrors local state without closure staleness — timer always reads latest values
   const localRef = useRef({ name: npc.name, role: npc.role, description: npc.description, quote: npc.quote, motivation: npc.motivation ?? '' })
   const draft = useDebouncedSave<typeof local>()
-  const descRef = useRef<HTMLTextAreaElement>(null)
   const [suggestion, setSuggestion] = useState<Record<string, string> | null>(null)
 
   useEffect(() => {
@@ -164,13 +164,6 @@ function NPCRow({ npc, scenarioId, readOnly }: { npc: SynopsisNPC; scenarioId: s
       setLocal(l => ({ ...l, ...changed }))
     }
   }, [npc.name, npc.role, npc.description, npc.quote])
-
-  useEffect(() => {
-    const el = descRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-  }, [local.description])
 
   const save = useMutation({
     mutationFn: (data: typeof local) =>
@@ -270,13 +263,12 @@ function NPCRow({ npc, scenarioId, readOnly }: { npc: SynopsisNPC; scenarioId: s
         disabled={locked}
       />
 
-      <textarea
-        ref={descRef}
+      <MentionEditor
+        campaignId={npc.campaign_id}
         placeholder="Description (physique, psychologie, motivations…)"
         value={local.description}
-        onChange={e => handle('description', e.target.value)}
-        rows={2}
-        className="w-full resize-none overflow-hidden rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        onChange={v => handle('description', v)}
+        className="text-xs min-h-[48px]"
         disabled={locked}
       />
 

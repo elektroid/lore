@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { MapPin, Plus, X, Search, ArrowLeftRight, Sparkles, Package, Play, Flag } from 'lucide-react'
 import LocationEditorModal from '@/components/LocationEditorModal'
 import NPCEditorModal from '@/components/NPCEditorModal'
 import ArtefactEditorModal from '@/components/ArtefactEditorModal'
 import NPCCard from './NPCCard'
 import MentionEditor from '@/components/MentionEditor'
+import MentionText from '@/components/MentionText'
 import { stripMentions } from '@/lib/mentions'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -37,30 +38,6 @@ const SCENE_SUGGESTION_FIELDS: SuggestionField[] = [
   { key: 'outcome', label: 'Dénouement', multiline: true },
   { key: 'notes', label: 'Notes', multiline: true },
 ]
-
-// ── Auto-grow textarea ────────────────────────────────────────────────────────
-
-function AutoTextarea({ value, onChange, placeholder, className = '' }: {
-  value: string; onChange: (v: string) => void; placeholder?: string; className?: string
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = el.scrollHeight + 'px'
-  }, [value])
-  return (
-    <textarea
-      ref={ref}
-      rows={2}
-      value={value}
-      placeholder={placeholder}
-      onChange={e => onChange(e.target.value)}
-      className={`w-full resize-none overflow-hidden rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${className}`}
-    />
-  )
-}
 
 // ── Location picker ───────────────────────────────────────────────────────────
 
@@ -598,9 +575,12 @@ export default function SceneDetail({ scenarioId, campaignId, scene, readOnly }:
       <div className="space-y-1">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Dénouement possible</p>
         {readOnly ? (
-          <p className="text-sm whitespace-pre-wrap">{local.outcome || '—'}</p>
+          local.outcome
+            ? <MentionText campaignId={campaignId} text={local.outcome} className="text-sm" />
+            : <p className="text-sm">—</p>
         ) : (
-          <AutoTextarea
+          <MentionEditor
+            campaignId={campaignId}
             value={local.outcome}
             onChange={v => handle('outcome', v)}
             placeholder="Ce qui pourrait en résulter…"
@@ -612,9 +592,12 @@ export default function SceneDetail({ scenarioId, campaignId, scene, readOnly }:
       <div className="space-y-1">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Notes</p>
         {readOnly ? (
-          <p className="text-sm whitespace-pre-wrap">{local.notes || '—'}</p>
+          local.notes
+            ? <MentionText campaignId={campaignId} text={local.notes} className="text-sm" />
+            : <p className="text-sm">—</p>
         ) : (
-          <AutoTextarea
+          <MentionEditor
+            campaignId={campaignId}
             value={local.notes}
             onChange={v => handle('notes', v)}
             placeholder="Ambiance, météo, détails de décor, fun facts…"

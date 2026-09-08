@@ -9,7 +9,12 @@ import { textToDoc, docToText } from '@/lib/richTextDoc'
 import { Mention } from './mentionEditor/MentionExtension'
 
 interface Props {
-  campaignId: string
+  /**
+   * Campaign whose entities `@` offers. Omit on prose that lives outside a
+   * campaign (a player character, a game blurb, a player's own notes): the
+   * formatting toolbar stays, `@` is just an `@`.
+   */
+  campaignId?: string
   value: string
   onChange: (value: string) => void
   placeholder?: string
@@ -34,8 +39,12 @@ interface DropdownState {
  *
  * "Mode expert" swaps the rendered view for the raw string in a <textarea>,
  * for anyone who'd rather type `**bold**` directly than reach for a button.
+ *
+ * Without a `campaignId` the same editor still gives bold/italic/lists — only
+ * the mention dropdown goes away. The Mention node stays registered either
+ * way, so text that already holds a chip round-trips instead of losing it.
  */
-export default function MentionEditor({ campaignId, value, onChange, placeholder, disabled, className }: Props) {
+export default function MentionEditor({ campaignId = '', value, onChange, placeholder, disabled, className }: Props) {
   const [expert, setExpert] = useState(false)
   const [dd, setDd] = useState<DropdownState | null>(null)
   // TipTap's suggestion callbacks are built once (see the Mention.configure
@@ -71,7 +80,8 @@ export default function MentionEditor({ campaignId, value, onChange, placeholder
       Mention.configure({
         campaignId,
         suggestion: {
-          items: ({ query }) => mentionsRef.current.search(query),
+          // No campaign, nothing to suggest — `@` then types through as text.
+          items: ({ query }) => campaignId ? mentionsRef.current.search(query) : [],
           render: () => ({
             onStart: props => setDd({ items: props.items, activeIdx: 0, command: props.command }),
             onUpdate: props => setDd(d => ({ items: props.items, activeIdx: d ? Math.min(d.activeIdx, Math.max(props.items.length - 1, 0)) : 0, command: props.command })),

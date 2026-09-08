@@ -10,6 +10,7 @@ import { useSyncMode } from '@/hooks/useSyncMode'
 import { RUN_STATUS_LABELS } from '@/types/run'
 import type { PlayerRunDetail, RunNote } from '@/types/me'
 import type { ListCharactersResponse, PlayerCharacter } from '@/types/character'
+import MentionEditor from '@/components/MentionEditor'
 
 const NOTE_SAVE_DEBOUNCE_MS = 800
 
@@ -166,12 +167,11 @@ function NotesPanel({ runId }: { runId: string }) {
       <p className="text-xs text-muted-foreground">
         Privées — seulement visibles par vous.
       </p>
-      <textarea
+      <MentionEditor
         value={body}
-        onChange={e => handleChange(e.target.value)}
-        rows={8}
+        onChange={handleChange}
         placeholder="Vos souvenirs, théories, rappels…"
-        className="w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="min-h-[180px]"
       />
     </div>
   )
