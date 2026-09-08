@@ -135,6 +135,16 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
     campaignId, entityId: artefactId, kind: 'artefacts', images, onUpdated: handleArtefactUpdated,
   })
 
+  function handleFiles(files: FileList | null) {
+    if (!files) return
+    Array.from(files).forEach(file => uploadImage.mutate({ file }))
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault()
+    handleFiles(e.dataTransfer.files)
+  }
+
   const invalidateLinks = () => qc.invalidateQueries({ queryKey: ['artefact-links', artefactId] })
 
   const [npcLinkId, setNpcLinkId] = useState('')
@@ -238,6 +248,16 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
                 </div>
                 {generateImages.isError && <p className="text-xs text-destructive">{(generateImages.error as Error).message}</p>}
 
+                {!readOnly && (
+                  <div
+                    onDrop={onDrop}
+                    onDragOver={e => e.preventDefault()}
+                    className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center text-xs text-muted-foreground hover:border-muted-foreground/40 transition-colors"
+                  >
+                    {uploadImage.isPending ? 'Upload en cours…' : 'Glissez des images ici'}
+                  </div>
+                )}
+
                 {images.length === 0 ? (
                   <div className="rounded border border-dashed border-muted-foreground/30 p-6 flex flex-col items-center gap-2 text-muted-foreground">
                     <ImageIcon className="h-6 w-6 opacity-40" />
@@ -268,8 +288,8 @@ export default function ArtefactEditorModal({ artefactId, campaignId, open, onCl
 
                 {!readOnly && (
                   <input
-                    ref={fileRef} type="file" accept="image/*" className="hidden"
-                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage.mutate({ file: f }); e.target.value = '' }}
+                    ref={fileRef} type="file" accept="image/*" multiple className="hidden"
+                    onChange={e => { handleFiles(e.target.files); e.target.value = '' }}
                   />
                 )}
               </div>
