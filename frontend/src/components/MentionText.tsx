@@ -17,8 +17,9 @@ interface Props {
  * markers drawn as actual formatting — see lib/richtext.ts for the format.
  *
  * Anywhere authored text is displayed and not edited needs this, or the raw
- * markers show through. Where formatting cannot be drawn at all — a print
- * sheet, a truncated list preview — use stripMentions instead.
+ * markers show through. Where formatting cannot be drawn at all — a
+ * `line-clamp` preview, a one-line summary — use `toPlainText` from
+ * lib/richtext.ts, which flattens the markers as well as the mentions.
  */
 export default function MentionText({ campaignId = '', text, className, onOpen }: Props) {
   const { resolve } = useCampaignMentions(campaignId)

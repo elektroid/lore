@@ -6,7 +6,7 @@ import ArtefactEditorModal from '@/components/ArtefactEditorModal'
 import NPCCard from './NPCCard'
 import MentionEditor from '@/components/MentionEditor'
 import MentionText from '@/components/MentionText'
-import { stripMentions } from '@/lib/mentions'
+import { toPlainText } from '@/lib/richtext'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -268,7 +268,7 @@ function ArtefactPicker({
               <li key={a.id}>
                 <button onClick={() => { onPick(a.id); close() }} className="w-full text-left rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors">
                   <p className="font-medium">{a.name}</p>
-                  {a.description && <p className="text-xs text-muted-foreground line-clamp-1">{stripMentions(a.description)}</p>}
+                  {a.description && <p className="text-xs text-muted-foreground line-clamp-1">{toPlainText(a.description)}</p>}
                 </button>
               </li>
             ))}

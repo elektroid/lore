@@ -139,6 +139,12 @@ about this reaches the database or `Export JSON`.
 on prose that has no campaign (a player character, a game blurb, a player's own
 notes) and the same editor still gives bold/italic/lists.
 
+Where formatting genuinely cannot be drawn — a `line-clamp` preview, a one-line
+summary — flatten with `toPlainText` (`lib/richtext.ts`), never `stripMentions`.
+`stripMentions` only handles the `@[…](…)` tokens and leaves the asterisks on
+screen. LLM answers count as prose too: the model writes markdown, so anything
+displaying its output raw prints the markers.
+
 What stays a plain input, deliberately:
 
 - **Single-line fields** — `role`, `motivation`, `atmosphere`, `quote`, a name.

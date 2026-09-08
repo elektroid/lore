@@ -75,3 +75,22 @@ export function parseRichText(text: string): Block[] {
   }
   return blocks
 }
+
+const LIST_MARKER_RE = /^\s*[-*]\s+/
+
+/**
+ * The text as a reader would say it out loud: mentions become `@Name`, the
+ * `**`/`*` markers drop away, `- item` lines lose their bullet.
+ *
+ * For the places that cannot draw formatting at all — a `line-clamp` preview,
+ * a one-line summary. `stripMentions` alone is not enough there: it only
+ * handles the `@[…](…)` tokens and leaves the asterisks on screen.
+ */
+export function toPlainText(text: string): string {
+  return text
+    .split('\n')
+    .map(line => parseInline(line.replace(LIST_MARKER_RE, '')).map(run => (
+      run.type === 'mention' ? `@${run.storedName}` : run.text
+    )).join(''))
+    .join('\n')
+}

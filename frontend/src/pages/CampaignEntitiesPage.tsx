@@ -18,7 +18,7 @@ import SearchDialog from '@/components/SearchDialog'
 import { api } from '@/api/client'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import { useSyncMode } from '@/hooks/useSyncMode'
-import { stripMentions } from '@/lib/mentions'
+import { toPlainText } from '@/lib/richtext'
 import MentionEditor from '@/components/MentionEditor'
 import type { Campaign } from '@/types/campaign'
 import type { CampaignNPC, NPCImage, CampaignLocation, LocationImage, CampaignArtefact, ArtefactImage, CampaignFaction, FactionImage } from '@/types/entities'
@@ -250,7 +250,7 @@ function LocationTab({ campaignId, openId, creating, onCreatingChange, form, onF
                   {loc.atmosphere && <p className="text-xs text-muted-foreground truncate">{loc.atmosphere}</p>}
                   {loc.description && loc.description !== loc.atmosphere && (
                     <p className={`text-xs text-muted-foreground mt-1 ${loc.atmosphere ? 'truncate' : 'line-clamp-2'}`}>
-                      {stripMentions(loc.description)}
+                      {toPlainText(loc.description)}
                     </p>
                   )}
                 </div>
@@ -374,7 +374,7 @@ function FactionTab({ campaignId, openId, creating, onCreatingChange, form, onFo
                   {f.motivation && <p className="text-xs text-primary/80 italic truncate mt-0.5">{f.motivation}</p>}
                   {f.description && f.description !== f.motivation && (
                     <p className={`text-xs text-muted-foreground mt-1 ${f.motivation ? 'truncate' : 'line-clamp-2'}`}>
-                      {stripMentions(f.description)}
+                      {toPlainText(f.description)}
                     </p>
                   )}
                 </div>
@@ -510,7 +510,7 @@ function ArtefactTab({ campaignId, openId, creating, onCreatingChange, form, onF
                   <button className="text-sm font-medium truncate hover:underline text-left" onClick={() => setEditId(a.id)}>
                     {a.name || <span className="text-muted-foreground italic">(sans nom)</span>}
                   </button>
-                  {a.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{stripMentions(a.description)}</p>}
+                  {a.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{toPlainText(a.description)}</p>}
                 </div>
                 {!readOnly && (
                   <div className="flex gap-1 shrink-0">

@@ -9,7 +9,7 @@ import NPCCard from './NPCCard'
 import type { Scene, Synopsis, SynopsisNPC } from '@/types/synopsis'
 import type { SessionBeat } from '@/types/beat'
 import { api } from '@/api/client'
-import { stripMentions } from '@/lib/mentions'
+import { toPlainText } from '@/lib/richtext'
 
 interface Props {
   scenarioId: string
@@ -32,7 +32,7 @@ function ComingUpCard({ scene, onSelect }: { scene: Scene; onSelect: () => void 
     >
       <p className="text-sm font-medium truncate">{scene.title || <span className="italic text-muted-foreground">Sans titre</span>}</p>
       {scene.location_name && <p className="text-xs text-muted-foreground">{scene.location_name}</p>}
-      {scene.description && <p className="text-xs text-muted-foreground line-clamp-2">{stripMentions(scene.description)}</p>}
+      {scene.description && <p className="text-xs text-muted-foreground line-clamp-2">{toPlainText(scene.description)}</p>}
     </button>
   )
 }
