@@ -21,6 +21,62 @@ func appendCampaignContext(sb *strings.Builder, campaign *db.Campaign) {
 	}
 }
 
+// appendCampaignEntities appends the campaign's cast — the four entity tabs —
+// as bare name lists, so the model reuses what the author already wrote
+// instead of inventing a parallel set of NPCs and places.
+//
+// Names only, never descriptions, for the same two reasons as the scenario
+// factory (see promptContext): descriptions can carry unresolved @mention
+// refs, and the full cast of a long campaign would crowd the prompt out of
+// proportion to what it adds. A campaign with nothing authored yet appends
+// nothing at all.
+func appendCampaignEntities(ctx context.Context, sb *strings.Builder, database *sql.DB, campaignID string) {
+	sections := []struct {
+		label string
+		names []string
+	}{
+		{"PNJ", entityNames(ctx, database, campaignID, func(n db.CampaignNPC) string { return n.Name }, db.ListCampaignNPCs)},
+		{"Lieux", entityNames(ctx, database, campaignID, func(l db.CampaignLocation) string { return l.Name }, db.ListCampaignLocations)},
+		{"Factions", entityNames(ctx, database, campaignID, func(f db.CampaignFaction) string { return f.Name }, db.ListCampaignFactions)},
+		{"Artefacts", entityNames(ctx, database, campaignID, func(a db.CampaignArtefact) string { return a.Name }, db.ListCampaignArtefacts)},
+	}
+
+	var written bool
+	for _, sec := range sections {
+		if len(sec.names) == 0 {
+			continue
+		}
+		if !written {
+			sb.WriteString("\n\nÉléments déjà écrits pour cette campagne — réutilise-les quand c'est pertinent plutôt que d'en inventer d'autres :")
+			written = true
+		}
+		sb.WriteString(fmt.Sprintf("\n%s : %s", sec.label, strings.Join(sec.names, ", ")))
+	}
+}
+
+// entityNames lists one entity type and keeps the non-empty names. A listing
+// error yields no names: a prompt missing a section is a lesser failure than
+// the whole call erroring out.
+func entityNames[T any](
+	ctx context.Context,
+	database *sql.DB,
+	campaignID string,
+	name func(T) string,
+	list func(context.Context, *sql.DB, string) ([]T, error),
+) []string {
+	rows, err := list(ctx, database, campaignID)
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if n := strings.TrimSpace(name(row)); n != "" {
+			names = append(names, n)
+		}
+	}
+	return names
+}
+
 // joinMapValues concatenates a "current field values" map (name/role/
 // description/...) into one string — used as the keyword-search query text
 // for appendGameLoreContext, since together those fields describe what's

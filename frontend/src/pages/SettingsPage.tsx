@@ -15,6 +15,8 @@ interface LLMConfig {
   model: string
   provider?: string
   max_tokens: number
+  /** Tokens the model accepts per request, input + output. 0 = unknown. */
+  context_window?: number
 }
 
 interface ImageConfig {
@@ -27,6 +29,8 @@ interface ImageConfig {
 
 interface ModelInfo {
   id: string
+  /** Absent for providers that don't declare one (Ollama). */
+  context_length?: number
 }
 
 interface PasswordResetSetting {
@@ -160,7 +164,7 @@ export default function SettingsPage() {
   const [image, setImage] = useState<ImageConfig>(defaultImage)
   const [llmSaved, setLlmSaved] = useState(false)
   const [imageSaved, setImageSaved] = useState(false)
-  const [modelOptions, setModelOptions] = useState<string[]>([])
+  const [modelOptions, setModelOptions] = useState<ModelInfo[]>([])
 
   useEffect(() => { if (llmData) setLlm(llmData) }, [llmData])
   useEffect(() => { if (imageData) setImage(imageData) }, [imageData])
@@ -178,7 +182,17 @@ export default function SettingsPage() {
   })
   const listModels = useMutation({
     mutationFn: () => api.post<ModelInfo[]>('/settings/llm/models', { base_url: llm.base_url, api_key: llm.api_key }),
-    onSuccess: (models) => setModelOptions(models.map(m => m.id).sort()),
+    onSuccess: (models) => {
+      const sorted = [...models].sort((a, b) => a.id.localeCompare(b.id))
+      setModelOptions(sorted)
+      // Picking up the window for the model already selected saves the admin
+      // from looking it up; an explicit value they typed is left alone.
+      const current = sorted.find(m => m.id === llm.model)
+      if (current?.context_length && !llm.context_window) {
+        setLlmSaved(false)
+        setLlm(c => ({ ...c, context_window: current.context_length }))
+      }
+    },
   })
 
   const { guardDialog } = useUnsavedGuard(llmDirty || imageDirty, async () => {
@@ -189,7 +203,7 @@ export default function SettingsPage() {
   function llmField(key: keyof LLMConfig) {
     return (e: React.ChangeEvent<HTMLInputElement>) => {
       setLlmSaved(false)
-      const value = key === 'max_tokens' ? Number(e.target.value) : e.target.value
+      const value = key === 'max_tokens' || key === 'context_window' ? Number(e.target.value) : e.target.value
       setLlm(c => ({ ...c, [key]: value }))
     }
   }
@@ -320,14 +334,24 @@ export default function SettingsPage() {
                       <select
                         id="model"
                         value={llm.model}
-                        onChange={e => { setLlmSaved(false); setLlm(c => ({ ...c, model: e.target.value })) }}
+                        onChange={e => {
+                          setLlmSaved(false)
+                          const picked = modelOptions.find(m => m.id === e.target.value)
+                          setLlm(c => ({
+                            ...c,
+                            model: e.target.value,
+                            // Overwrite here, unlike on load: switching model is
+                            // exactly when the old window stops being true.
+                            context_window: picked?.context_length ?? 0,
+                          }))
+                        }}
                         className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       >
-                        {!modelOptions.includes(llm.model) && llm.model && (
+                        {!modelOptions.some(m => m.id === llm.model) && llm.model && (
                           <option value={llm.model}>{llm.model}</option>
                         )}
-                        {modelOptions.map(id => (
-                          <option key={id} value={id}>{id}</option>
+                        {modelOptions.map(m => (
+                          <option key={m.id} value={m.id}>{m.id}</option>
                         ))}
                       </select>
                     ) : llmProvider === 'mistral' ? (
@@ -366,6 +390,24 @@ export default function SettingsPage() {
                       value={llm.max_tokens}
                       onChange={llmField('max_tokens')}
                     />
+                    <p className="text-xs text-muted-foreground">Plafond de la réponse.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="context_window">Fenêtre de contexte</Label>
+                    <Input
+                      id="context_window"
+                      type="number"
+                      min={0}
+                      step={1024}
+                      placeholder="0"
+                      value={llm.context_window ?? 0}
+                      onChange={llmField('context_window')}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Rempli automatiquement par « Charger les modèles » quand le fournisseur
+                      la déclare (Mistral, OpenRouter — pas Ollama). 0 : inconnue, aucun
+                      avertissement de saturation.
+                    </p>
                   </div>
                 </div>
               </div>

@@ -35,6 +35,7 @@ func buildBrainstormSystemPrompt(ctx context.Context, database *sql.DB, campaign
 	sb.WriteString("Inside the JSON strings, write quoted words with typographic quotes (« » or “ ”) — never a raw \" — so the reply stays valid JSON.\n")
 
 	appendCampaignContext(&sb, campaign)
+	appendCampaignEntities(ctx, &sb, database, campaign.ID)
 
 	sb.WriteString(fmt.Sprintf("\n\nCurrent scenario: %s", scenario.Name))
 
@@ -227,6 +228,46 @@ type assistantEnvelope struct {
 type sendMessageResponse struct {
 	Thread  *db.BrainstormThread  `json:"thread"`
 	Message *db.BrainstormMessage `json:"message"`
+	// Warning is set only when the conversation is approaching the model's
+	// context window; empty the rest of the time, which is nearly always.
+	Warning string `json:"warning,omitempty"`
+}
+
+// contextWarnAt is the share of the model's context window above which the
+// conversation is worth flagging. Below it, nothing is said.
+const contextWarnAt = 0.75
+
+// estimateTokens approximates a token count from a byte length. Deliberately
+// crude — roughly four characters per token, the usual rule of thumb, and it
+// runs long on accented French, which is the safe direction for a warning.
+// Getting this exact would mean shipping the model's tokenizer.
+func estimateTokens(systemPrompt string, history []llm.Message) int {
+	total := len(systemPrompt)
+	for _, m := range history {
+		total += len(m.Content)
+	}
+	return total / 4
+}
+
+// contextWarning returns the message to show when the prompt is closing in on
+// the model's context window, or "" when it is not — including whenever the
+// window is unknown. The window is only known when the provider declares it
+// (Mistral's max_context_length, OpenRouter's context_length) or an admin
+// filled it in; guessing a limit would mean warning about a wall that may not
+// be there.
+func contextWarning(window int, systemPrompt string, history []llm.Message) string {
+	if window <= 0 {
+		return ""
+	}
+	used := estimateTokens(systemPrompt, history)
+	if float64(used) < float64(window)*contextWarnAt {
+		return ""
+	}
+	return fmt.Sprintf(
+		"Cette conversation occupe environ %d des %d tokens de contexte du modèle (%d %%). "+
+			"Au-delà, les premiers échanges commenceront à être tronqués — ouvrez une nouvelle conversation pour repartir léger.",
+		used, window, used*100/window,
+	)
 }
 
 // lastAssistantHadSuggestion reports whether the most recent assistant message
@@ -286,6 +327,8 @@ func (h *BrainstormHandler) SendMessage(w http.ResponseWriter, r *http.Request) 
 		msgs[i] = llm.Message{Role: m.Role, Content: m.Content}
 	}
 
+	warning := contextWarning(client.ContextWindow(), systemPrompt, msgs)
+
 	// Call LLM
 	raw, err := client.Chat(r.Context(), systemPrompt, msgs)
 	if err != nil {
@@ -335,5 +378,5 @@ func (h *BrainstormHandler) SendMessage(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	writeJSON(w, http.StatusOK, sendMessageResponse{Thread: thread, Message: assistantMsg})
+	writeJSON(w, http.StatusOK, sendMessageResponse{Thread: thread, Message: assistantMsg, Warning: warning})
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { X, Plus, Trash2, Send, Pencil, Check, Sparkles, Maximize2, Minimize2 } from 'lucide-react'
+import { X, Plus, Trash2, Send, Pencil, Check, Sparkles, Maximize2, Minimize2, AlertTriangle } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import MentionText from '@/components/MentionText'
@@ -357,6 +357,10 @@ export default function BrainstormDrawer({ scenarioId, onClose }: Props) {
   const qc = useQueryClient()
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [input, setInput] = useState('')
+  // Set by the backend when the conversation is nearing the model's context
+  // window; cleared whenever we move to another thread, since it measured
+  // that one.
+  const [contextWarning, setContextWarning] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { width, dragging, startDrag, maximized, toggleMaximized, sidebar } = usePanelWidth()
@@ -408,11 +412,12 @@ export default function BrainstormDrawer({ scenarioId, onClose }: Props) {
 
   const sendMessage = useMutation({
     mutationFn: (text: string) =>
-      api.post<{ thread: BrainstormThread; message: BrainstormMessage }>(
+      api.post<{ thread: BrainstormThread; message: BrainstormMessage; warning?: string }>(
         `/scenarios/${scenarioId}/brainstorm/threads/${activeThreadId}/messages`,
         { text },
       ),
-    onSuccess: ({ thread, message }) => {
+    onSuccess: ({ thread, message, warning }) => {
+      setContextWarning(warning ?? '')
       qc.setQueryData(['brainstorm-messages', activeThreadId], (old: BrainstormMessage[] = []) => [
         ...old.filter(m => m.id !== message.id),
         message,
@@ -446,7 +451,7 @@ export default function BrainstormDrawer({ scenarioId, onClose }: Props) {
           key={t.id}
           thread={t}
           active={t.id === activeThreadId}
-          onSelect={() => setActiveThreadId(t.id)}
+          onSelect={() => { setActiveThreadId(t.id); setContextWarning('') }}
           onDelete={() => deleteThread.mutate(t.id)}
           onRename={name => renameThread.mutate({ id: t.id, name })}
         />
@@ -550,6 +555,19 @@ export default function BrainstormDrawer({ scenarioId, onClose }: Props) {
 
       {/* Input */}
       <div className="border-t px-3 py-3 shrink-0">
+        {contextWarning && (
+          <div className="mx-auto w-full max-w-3xl mb-2 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-500" />
+            <p className="text-xs leading-relaxed flex-1">{contextWarning}</p>
+            <button
+              onClick={() => setContextWarning('')}
+              title="Masquer"
+              className="text-muted-foreground hover:text-foreground shrink-0"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
         <div className="mx-auto w-full max-w-3xl flex gap-2 items-end">
           <textarea
             ref={textareaRef}

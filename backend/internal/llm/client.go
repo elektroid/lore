@@ -31,6 +31,18 @@ type Config struct {
 	// the default. Batch callers making a handful of slow calls (the
 	// indexer, again) need more room than an interactive request does.
 	Timeout time.Duration `json:"-"`
+	// ContextWindow is how many tokens the model accepts in one request,
+	// input and output together. Never sent to the provider — it exists so
+	// callers can tell a user their conversation is filling up. Zero means
+	// unknown: the provider did not declare one (Ollama declares nothing)
+	// and nobody filled it in, in which case callers must stay silent rather
+	// than invent a limit.
+	ContextWindow int `json:"context_window,omitempty"`
+}
+
+// ContextWindow reports the configured window, or 0 when it is unknown.
+func (c *Client) ContextWindow() int {
+	return c.config.ContextWindow
 }
 
 type Client struct {
@@ -132,8 +144,28 @@ func (c *Client) Complete(ctx context.Context, systemPrompt, userPrompt string) 
 }
 
 // ModelInfo is one entry from a provider's GET /models listing.
+//
+// Providers disagree on what to call the context window: OpenRouter says
+// context_length, Mistral says max_context_length, Ollama says nothing at
+// all. Both spellings are parsed and folded into ContextLength, which stays
+// 0 when the provider is silent.
 type ModelInfo struct {
-	ID string `json:"id"`
+	ID               string `json:"id"`
+	ContextLength    int    `json:"context_length"`
+	MaxContextLength int    `json:"max_context_length,omitempty"`
+}
+
+// MarshalJSON emits a single context_length so the settings UI has one field
+// to read, whichever spelling the provider used.
+func (m ModelInfo) MarshalJSON() ([]byte, error) {
+	window := m.ContextLength
+	if window == 0 {
+		window = m.MaxContextLength
+	}
+	return json.Marshal(struct {
+		ID            string `json:"id"`
+		ContextLength int    `json:"context_length,omitempty"`
+	}{ID: m.ID, ContextLength: window})
 }
 
 type modelsResponse struct {
