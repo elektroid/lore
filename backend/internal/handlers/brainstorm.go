@@ -32,6 +32,7 @@ func buildBrainstormSystemPrompt(ctx context.Context, database *sql.DB, campaign
 	sb.WriteString("When in doubt, keep talking instead of suggesting a scene:\n")
 	sb.WriteString(`{"message":"...","scene_suggestion":{"title":"...","description":"...","outcome":"..."}}` + "\n")
 	sb.WriteString("Be creative, concise and engaging.\n")
+	sb.WriteString("Inside the JSON strings, write quoted words with typographic quotes (« » or “ ”) — never a raw \" — so the reply stays valid JSON.\n")
 
 	appendCampaignContext(&sb, campaign)
 
@@ -241,9 +242,8 @@ func (h *BrainstormHandler) SendMessage(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Parse envelope — store raw JSON as assistant message content
-	parsed := llm.ExtractJSON(raw)
 	var envelope assistantEnvelope
-	if err := json.Unmarshal([]byte(parsed), &envelope); err != nil {
+	if err := llm.UnmarshalReply(raw, &envelope); err != nil {
 		// Fallback: treat entire reply as plain message
 		envelope = assistantEnvelope{Message: raw}
 	}
