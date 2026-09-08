@@ -150,6 +150,58 @@ func (h *BrainstormHandler) DeleteThread(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// UpdateMessage rewrites one turn of the conversation. The whole history is
+// replayed to the model on every turn, so editing a reply is not cosmetic: it
+// changes what the model believes it said, and therefore every turn after it.
+//
+// What the caller sends is prose, never the storage format. An assistant turn
+// is stored as a JSON envelope, so the text is re-wrapped into one, keeping any
+// scene_suggestion the turn already carried — writing raw text into content
+// would break lastAssistantHadSuggestion and feed the model a malformed example
+// of its own output format.
+func (h *BrainstormHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Text) == "" {
+		writeError(w, http.StatusBadRequest, "invalid text")
+		return
+	}
+
+	messageID := chi.URLParam(r, "messageId")
+	msg, err := db.GetBrainstormMessage(r.Context(), h.db, messageID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if msg == nil {
+		writeError(w, http.StatusNotFound, "message introuvable")
+		return
+	}
+
+	content := body.Text
+	if msg.Role == "assistant" {
+		var envelope assistantEnvelope
+		// A turn stored before the envelope could be parsed carries no
+		// suggestion to preserve; the edit is what makes it well-formed again.
+		_ = json.Unmarshal([]byte(msg.Content), &envelope)
+		envelope.Message = body.Text
+		stored, err := json.Marshal(envelope)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		content = string(stored)
+	}
+
+	updated, err := db.UpdateBrainstormMessage(r.Context(), h.db, messageID, content)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
+}
+
 func (h *BrainstormHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	msgs, err := db.ListBrainstormMessages(r.Context(), h.db, chi.URLParam(r, "threadId"))
 	if err != nil {

@@ -144,40 +144,135 @@ function SceneSuggestionCard({
 
 // ── Message bubble ─────────────────────────────────────────────────────────────
 
+/**
+ * One turn of the conversation, editable in place.
+ *
+ * Editing an assistant turn is not cosmetic: the whole history is replayed to
+ * the model on every turn, so rewriting a reply changes what it believes it
+ * said — the fastest way to cut a thread of ideas that went the wrong way and
+ * carry on from the half that worked.
+ *
+ * A plain textarea, deliberately: the brainstorm box is a machine-bound string
+ * (it goes back to the model verbatim), so it stays consistent with the
+ * composer below rather than becoming a MentionEditor.
+ */
 function MessageBubble({ msg, scenarioId }: { msg: BrainstormMessage; scenarioId: string }) {
   const [sceneAdded, setSceneAdded] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const qc = useQueryClient()
+
+  // Assistant turns are stored as a JSON envelope; what is edited is the prose
+  // inside it, and the backend re-wraps it.
+  const parsed = msg.role === 'assistant' ? parseAssistantContent(msg.content) : null
+  const text = parsed ? parsed.message : msg.content
+  // An optimistic user bubble has no row behind it yet.
+  const saved = !msg.id.startsWith('opt-')
+
+  const update = useMutation({
+    mutationFn: (next: string) =>
+      api.put<BrainstormMessage>(
+        `/scenarios/${scenarioId}/brainstorm/threads/${msg.thread_id}/messages/${msg.id}`,
+        { text: next },
+      ),
+    onSuccess: (result) => {
+      qc.setQueryData(['brainstorm-messages', msg.thread_id], (old: BrainstormMessage[] = []) =>
+        old.map(m => (m.id === result.id ? result : m)),
+      )
+      setEditing(false)
+    },
+  })
+
+  function commit() {
+    const trimmed = draft.trim()
+    if (!trimmed || trimmed === text) { setEditing(false); return }
+    update.mutate(trimmed)
+  }
+
+  const editButton = saved && !editing && (
+    <button
+      onClick={() => { setDraft(text); setEditing(true) }}
+      title="Modifier"
+      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground p-0.5 mt-1.5 shrink-0 transition-opacity"
+    >
+      <Pencil className="h-3 w-3" />
+    </button>
+  )
+
+  const editor = (
+    <div className="w-full space-y-1.5">
+      <textarea
+        autoFocus
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Escape') setEditing(false)
+          // Enter inserts a newline — a reply is several paragraphs, not a line.
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit() }
+        }}
+        rows={Math.min(20, Math.max(3, draft.split('\n').length + 1))}
+        className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      />
+      <div className="flex items-center gap-2">
+        {update.isError && (
+          <p className="text-xs text-destructive mr-auto">{(update.error as Error).message}</p>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 px-2 text-xs ml-auto"
+          onClick={() => setEditing(false)}
+        >
+          Annuler
+        </Button>
+        <Button
+          size="sm"
+          className="h-6 px-2 text-xs"
+          disabled={update.isPending || !draft.trim()}
+          onClick={commit}
+        >
+          {update.isPending ? 'Enregistrement…' : 'Enregistrer'}
+        </Button>
+      </div>
+    </div>
+  )
 
   if (msg.role === 'user') {
     return (
-      <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-primary text-primary-foreground px-3 py-2 text-sm">
-          {msg.content}
-        </div>
+      <div className="group flex justify-end items-start gap-1">
+        {editButton}
+        {editing ? editor : (
+          <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-primary text-primary-foreground px-3 py-2 text-sm whitespace-pre-wrap">
+            {msg.content}
+          </div>
+        )}
       </div>
     )
   }
 
-  const parsed = parseAssistantContent(msg.content)
   return (
-    <div className="flex justify-start">
-      <div className="max-w-[90%] space-y-1">
-        {/* The model answers in markdown — bold, italics, `- ` bullets. Rendering
-            it raw put the markers on screen, which the wide panel made obvious. */}
-        <MentionText
-          text={parsed.message}
-          className="rounded-2xl rounded-tl-sm bg-muted px-3 py-2 text-sm leading-relaxed"
-        />
-        {parsed.scene_suggestion && !sceneAdded && (
-          <SceneSuggestionCard
-            suggestion={parsed.scene_suggestion}
-            scenarioId={scenarioId}
-            onCreated={() => setSceneAdded(true)}
+    <div className="group flex justify-start items-start gap-1">
+      {editing ? editor : (
+        <div className="max-w-[90%] space-y-1">
+          {/* The model answers in markdown — bold, italics, `- ` bullets. Rendering
+              it raw put the markers on screen, which the wide panel made obvious. */}
+          <MentionText
+            text={text}
+            className="rounded-2xl rounded-tl-sm bg-muted px-3 py-2 text-sm leading-relaxed"
           />
-        )}
-        {sceneAdded && (
-          <p className="text-xs text-muted-foreground px-1">✓ Scène ajoutée au scénario</p>
-        )}
-      </div>
+          {parsed?.scene_suggestion && !sceneAdded && (
+            <SceneSuggestionCard
+              suggestion={parsed.scene_suggestion}
+              scenarioId={scenarioId}
+              onCreated={() => setSceneAdded(true)}
+            />
+          )}
+          {sceneAdded && (
+            <p className="text-xs text-muted-foreground px-1">✓ Scène ajoutée au scénario</p>
+          )}
+        </div>
+      )}
+      {editButton}
     </div>
   )
 }

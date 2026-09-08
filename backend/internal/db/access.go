@@ -9,19 +9,21 @@ import (
 // compile-time constants from the router — never user input — so interpolating
 // them into the query below is safe.
 const (
-	TableNPCs       = "campaign_npcs"
-	TableLocations  = "campaign_locations"
-	TableFactions   = "campaign_factions"
-	TableArtefacts  = "campaign_artefacts"
-	TableScenes     = "synopsis_scenes"
-	TableRuns       = "runs"
-	TableSessions   = "sessions"
-	TableBeats      = "session_beats"
-	TableThreads    = "brainstorm_threads"
-	TableScenarios  = "scenarios"
+	TableNPCs      = "campaign_npcs"
+	TableLocations = "campaign_locations"
+	TableFactions  = "campaign_factions"
+	TableArtefacts = "campaign_artefacts"
+	TableScenes    = "synopsis_scenes"
+	TableRuns      = "runs"
+	TableSessions  = "sessions"
+	TableBeats     = "session_beats"
+	TableThreads   = "brainstorm_threads"
+	TableMessages  = "brainstorm_messages"
+	TableScenarios = "scenarios"
 
 	ColCampaignID = "campaign_id"
 	ColScenarioID = "scenario_id"
+	ColThreadID   = "thread_id"
 )
 
 // ChildBelongsTo reports whether row childID of table has parentCol = parentID.

@@ -100,6 +100,17 @@ func ListBrainstormMessages(ctx context.Context, database *sql.DB, threadID stri
 	return list, rows.Err()
 }
 
+func GetBrainstormMessage(ctx context.Context, database *sql.DB, id string) (*BrainstormMessage, error) {
+	var m BrainstormMessage
+	err := database.QueryRowContext(ctx,
+		`SELECT id, thread_id, role, content, created_at FROM brainstorm_messages WHERE id=?`, id).
+		Scan(&m.ID, &m.ThreadID, &m.Role, &m.Content, &m.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &m, err
+}
+
 func CreateBrainstormMessage(ctx context.Context, database *sql.DB, threadID, role, content string) (*BrainstormMessage, error) {
 	id := uuid.New().String()
 	_, err := database.ExecContext(ctx,
@@ -107,10 +118,22 @@ func CreateBrainstormMessage(ctx context.Context, database *sql.DB, threadID, ro
 	if err != nil {
 		return nil, err
 	}
-	var m BrainstormMessage
-	return &m, database.QueryRowContext(ctx,
-		`SELECT id, thread_id, role, content, created_at FROM brainstorm_messages WHERE id=?`, id).
-		Scan(&m.ID, &m.ThreadID, &m.Role, &m.Content, &m.CreatedAt)
+	return GetBrainstormMessage(ctx, database, id)
+}
+
+// UpdateBrainstormMessage rewrites a message's content. The thread is touched
+// too: editing a turn is activity, and the sidebar orders by updated_at.
+func UpdateBrainstormMessage(ctx context.Context, database *sql.DB, id, content string) (*BrainstormMessage, error) {
+	if _, err := database.ExecContext(ctx,
+		`UPDATE brainstorm_messages SET content=? WHERE id=?`, content, id); err != nil {
+		return nil, err
+	}
+	if _, err := database.ExecContext(ctx,
+		`UPDATE brainstorm_threads SET updated_at=CURRENT_TIMESTAMP
+		 WHERE id=(SELECT thread_id FROM brainstorm_messages WHERE id=?)`, id); err != nil {
+		return nil, err
+	}
+	return GetBrainstormMessage(ctx, database, id)
 }
 
 func CountBrainstormMessages(ctx context.Context, database *sql.DB, threadID string) (int, error) {

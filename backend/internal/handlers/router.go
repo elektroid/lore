@@ -456,6 +456,8 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 					r.Delete("/", brainstorm.DeleteThread)
 					r.Get("/messages", brainstorm.GetMessages)
 					r.Post("/messages", brainstorm.SendMessage)
+					r.With(requireChild(database, "threadId", "messageId", db.TableMessages, db.ColThreadID)).
+						Put("/messages/{messageId}", brainstorm.UpdateMessage)
 				})
 			})
 		})
