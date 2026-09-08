@@ -13,6 +13,7 @@ backend/smoke.db-shm
 backend/smoke.db-wal
 backend/backups/
 backend/tmp/
+/tmp/
 backend/vendor/
 backend/server
 backend/data/uploads/
