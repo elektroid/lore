@@ -291,6 +291,23 @@ function maxWidth() {
   return Math.max(MIN_WIDTH, window.innerWidth - EDGE_GAP)
 }
 
+const DOUBLE_TAP_MS = 350
+
+/**
+ * Recognises a double-click from the gap between two pointerdowns.
+ *
+ * Both resize handles preventDefault() on pointerdown, so a drag does not
+ * select the text it sweeps over — and Chromium then drops the click and
+ * dblclick events entirely, which is why onDoubleClick on a handle never
+ * fired. pointerdown carries no click counter either (detail is 0), so the
+ * interval is all there is to go on.
+ */
+function isDoubleTap(last: React.MutableRefObject<number>, e: React.PointerEvent) {
+  const doubled = e.timeStamp - last.current < DOUBLE_TAP_MS
+  last.current = doubled ? 0 : e.timeStamp
+  return doubled
+}
+
 /**
  * The drawer's width, dragged from its left edge and remembered per browser.
  *
@@ -317,8 +334,13 @@ function usePanelWidth() {
   const width = maximized ? limit : Math.min(stored, limit)
 
   const [dragging, setDragging] = useState(false)
+  const lastTap = useRef(0)
   const startDrag = useCallback((e: React.PointerEvent) => {
     e.preventDefault()
+    if (isDoubleTap(lastTap, e)) {
+      setMaximized(m => !m)
+      return
+    }
     setDragging(true)
     setMaximized(false)
     const move = (ev: PointerEvent) => {
@@ -351,6 +373,78 @@ function usePanelWidth() {
   }
 }
 
+// ── Composer height ────────────────────────────────────────────────────────────
+
+const COMPOSER_KEY = 'lore.brainstorm.composerHeight'
+/** Two lines, which is what the composer was fixed at before it could be dragged. */
+const DEFAULT_COMPOSER = 56
+const MIN_COMPOSER = 44
+/** Never let the composer swallow the conversation it is answering. */
+const COMPOSER_SHARE = 0.6
+
+function maxComposer() {
+  return Math.max(MIN_COMPOSER, Math.round(window.innerHeight * COMPOSER_SHARE))
+}
+
+/**
+ * The composer's height, dragged from the bar above it and remembered per
+ * browser — same contract as usePanelWidth, one axis over.
+ *
+ * Typing a long brief into two fixed lines meant scrolling a porthole; the
+ * maximized panel makes that worse, since the space is right there and unused.
+ */
+function useComposerHeight() {
+  const [stored, setStored] = useState(() => {
+    const n = Number(localStorage.getItem(COMPOSER_KEY))
+    return Number.isFinite(n) && n >= MIN_COMPOSER ? n : DEFAULT_COMPOSER
+  })
+  // A height saved on a tall monitor must not fill a short window entirely.
+  const [limit, setLimit] = useState(() => maxComposer())
+
+  useEffect(() => {
+    const onResize = () => setLimit(maxComposer())
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const height = Math.min(stored, limit)
+  // Read inside the drag closure, which must not capture a stale height.
+  const heightRef = useRef(height)
+  useEffect(() => { heightRef.current = height }, [height])
+
+  const [dragging, setDragging] = useState(false)
+  const lastTap = useRef(0)
+  const startDrag = useCallback((e: React.PointerEvent) => {
+    e.preventDefault()
+    if (isDoubleTap(lastTap, e)) {
+      setStored(DEFAULT_COMPOSER)
+      return
+    }
+    setDragging(true)
+    // Delta from where the drag started, rather than an absolute position:
+    // the composer sits under a banner that may or may not be there.
+    const startY = e.clientY
+    const startHeight = heightRef.current
+    const move = (ev: PointerEvent) => {
+      setStored(Math.min(Math.max(startHeight + (startY - ev.clientY), MIN_COMPOSER), maxComposer()))
+    }
+    const up = () => {
+      setDragging(false)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }, [])
+
+  // Only the settled height is persisted — see usePanelWidth.
+  useEffect(() => {
+    if (!dragging) localStorage.setItem(COMPOSER_KEY, String(stored))
+  }, [dragging, stored])
+
+  return { height, dragging, startDrag }
+}
+
 // ── Main drawer ────────────────────────────────────────────────────────────────
 
 export default function BrainstormDrawer({ scenarioId, onClose }: Props) {
@@ -364,6 +458,7 @@ export default function BrainstormDrawer({ scenarioId, onClose }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { width, dragging, startDrag, maximized, toggleMaximized, sidebar } = usePanelWidth()
+  const composer = useComposerHeight()
 
   const { data: threads = [] } = useQuery({
     queryKey: ['brainstorm-threads', scenarioId],
@@ -475,8 +570,7 @@ export default function BrainstormDrawer({ scenarioId, onClose }: Props) {
       {/* Resize handle — the drawer's own left border, widened to a grabbable strip. */}
       <div
         onPointerDown={startDrag}
-        onDoubleClick={toggleMaximized}
-        title="Glissez pour redimensionner"
+        title="Glissez pour redimensionner — double-clic pour agrandir"
         className={`absolute left-0 top-0 h-full w-1.5 -ml-0.5 cursor-col-resize z-10 transition-colors ${
           dragging ? 'bg-primary' : 'hover:bg-primary/40'
         }`}
@@ -484,6 +578,7 @@ export default function BrainstormDrawer({ scenarioId, onClose }: Props) {
       {/* While dragging, the pointer must not select text or land on the iframe-like
           children it sweeps across. */}
       {dragging && <div className="fixed inset-0 z-50 cursor-col-resize select-none" />}
+      {composer.dragging && <div className="fixed inset-0 z-50 cursor-row-resize select-none" />}
 
       {/* Thread sidebar — only once the panel is wide enough to spare the column. */}
       {sidebar && (
@@ -554,7 +649,16 @@ export default function BrainstormDrawer({ scenarioId, onClose }: Props) {
       </div>
 
       {/* Input */}
-      <div className="border-t px-3 py-3 shrink-0">
+      <div className="relative border-t px-3 py-3 shrink-0">
+        {/* Drag the divider to give a long brief room to breathe; double-click
+            to put it back to two lines. */}
+        <div
+          onPointerDown={composer.startDrag}
+          title="Glissez pour agrandir la zone de saisie — double-clic pour revenir à deux lignes"
+          className={`absolute left-0 right-0 top-0 h-1.5 -mt-0.5 cursor-row-resize z-10 transition-colors ${
+            composer.dragging ? 'bg-primary' : 'hover:bg-primary/40'
+          }`}
+        />
         {contextWarning && (
           <div className="mx-auto w-full max-w-3xl mb-2 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-500" />
@@ -578,8 +682,8 @@ export default function BrainstormDrawer({ scenarioId, onClose }: Props) {
             }}
             placeholder={activeThreadId ? 'Écrivez votre idée… (Entrée pour envoyer)' : 'Sélectionnez une conversation'}
             disabled={!activeThreadId || sendMessage.isPending}
-            rows={2}
-            className="flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+            style={{ height: composer.height }}
+            className="flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm leading-relaxed placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
           />
           <Button
             size="sm"
