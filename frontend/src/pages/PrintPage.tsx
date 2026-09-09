@@ -1,219 +1,199 @@
-import { useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { Scenario } from '@/types/scenario'
-import type { Campaign } from '@/types/campaign'
-import type { Synopsis, SynopsisNPC, Scene } from '@/types/synopsis'
-import { stripMentions } from '@/lib/mentions'
-import { parseRichText, type InlineRun } from '@/lib/richtext'
-
-function renderRun(run: InlineRun, key: number) {
-  if (run.type === 'bold') return <strong key={key}>{run.text}</strong>
-  if (run.type === 'italic') return <em key={key}>{run.text}</em>
-  // Mentions were already flattened to `@Name` before parsing — see printProse.
-  return <span key={key}>{run.type === 'text' ? run.text : run.storedName}</span>
-}
+import { useDocTitle } from '@/hooks/useDocTitle'
+import PrintProse from '@/print/PrintProse'
+import { buildMentionNames, firstImage, waitForPaint } from '@/print/helpers'
+import { Entry, Field, Scenes, Section } from '@/print/blocks'
+import type { CampaignPrintDoc } from '@/print/types'
+import '@/print/print.css'
 
 /**
- * Fields authored through MentionEditor may carry `**bold**` / `- list`
- * markers (see lib/richtext.ts) alongside mentions. A print sheet has no
- * entity list to resolve mentions against, so flatten those to `@Name` first,
- * same as before, then render the formatting on top.
+ * One scenario, printed — what a meneur takes to the table tonight.
+ *
+ * It reads the campaign document and narrows it to a single scenario, rather
+ * than keeping a second set of queries and a second layout in step with the
+ * first. That is also how it gained pictures: the cast pages here are the
+ * campaign's entities, filtered to the ones this scenario actually uses.
+ *
+ * See docs/print.md.
  */
-function PrintProse({ text, className, label }: { text: string; className?: string; label?: string }) {
-  const blocks = parseRichText(stripMentions(text))
-  return (
-    <div className={className}>
-      {blocks.map((block, bi) => block.type === 'list' ? (
-        <ul key={bi} className="list-disc pl-5 mb-1 last:mb-0">
-          {/* A label only ever precedes prose, so a leading list gets its own line. */}
-          {bi === 0 && label && <strong>{label}</strong>}
-          {block.items.map((runs, li) => <li key={li}>{runs.map(renderRun)}</li>)}
-        </ul>
-      ) : (
-        <p key={bi} className="mb-1 last:mb-0">
-          {bi === 0 && label && <strong>{label}</strong>}
-          {block.lines.map((runs, li) => (
-            <span key={li}>{li > 0 && <br />}{runs.map(renderRun)}</span>
-          ))}
-        </p>
-      ))}
-    </div>
-  )
-}
-
-function firstImage(imagesJson: string): string | null {
-  try {
-    const arr: { url: string }[] = JSON.parse(imagesJson || '[]')
-    return arr[0]?.url ?? null
-  } catch { return null }
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  idea: 'Idée',
-  optional_step: 'Étape optionnelle',
-  key_event: 'Événement clé',
-}
-
-const STATUS_CLASS: Record<string, string> = {
-  idea:          'print-badge--idea',
-  optional_step: 'print-badge--optional',
-  key_event:     'print-badge--key',
-}
-
 export default function PrintPage() {
   const { id } = useParams<{ id: string }>()
   const scenarioId = id!
+  const [params] = useSearchParams()
+  const autoPrint = params.get('auto') !== '0'
 
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [ready, setReady] = useState(false)
+
+  // The scenario knows its campaign; the campaign document has everything else.
   const { data: scenario } = useQuery({
     queryKey: ['scenario', scenarioId],
-    queryFn: () => api.get<Scenario>(`/scenarios/${scenarioId}`),
+    queryFn: () => api.get<{ campaign_id: string }>(`/scenarios/${scenarioId}`),
   })
 
-  const { data: campaign } = useQuery({
-    queryKey: ['campaign', scenario?.campaign_id],
-    queryFn: () => api.get<Campaign>(`/campaigns/${scenario!.campaign_id}`),
+  const { data, isError, error } = useQuery({
+    queryKey: ['campaign-print', scenario?.campaign_id],
+    queryFn: () => api.get<CampaignPrintDoc>(`/campaigns/${scenario!.campaign_id}/print`),
     enabled: !!scenario?.campaign_id,
   })
 
-  const { data: synopsis } = useQuery({
-    queryKey: ['synopsis', scenarioId],
-    queryFn: () => api.get<Synopsis>(`/scenarios/${scenarioId}/synopsis`),
-  })
+  const chapter = data?.scenarios.find(s => s.scenario.id === scenarioId)
 
-  const { data: npcs = [] } = useQuery({
-    queryKey: ['synopsis-npcs', scenarioId],
-    queryFn: () => api.get<SynopsisNPC[]>(`/scenarios/${scenarioId}/synopsis/npcs`),
-  })
-
-  const { data: scenes = [] } = useQuery({
-    queryKey: ['scenes', scenarioId],
-    queryFn: () => api.get<Scene[]>(`/scenarios/${scenarioId}/synopsis/scenes`),
-  })
-
-  const allLoaded = !!(scenario && campaign && synopsis)
+  useDocTitle(chapter ? `lore : ${chapter.scenario.name}` : 'lore')
 
   useEffect(() => {
-    if (allLoaded) {
-      const t = setTimeout(() => window.print(), 400)
-      return () => clearTimeout(t)
-    }
-  }, [allLoaded])
+    if (!chapter || !rootRef.current) return
+    let cancelled = false
+    waitForPaint(rootRef.current).then(() => {
+      if (cancelled) return
+      setReady(true)
+      if (autoPrint) window.print()
+    })
+    return () => { cancelled = true }
+  }, [chapter, autoPrint])
 
-  if (!allLoaded) {
-    return (
-      <div className="flex items-center justify-center h-screen text-sm text-gray-500">
-        Préparation du document…
-      </div>
-    )
+  if (isError) {
+    return <Centered>{(error as Error)?.message ?? 'Scénario introuvable.'}</Centered>
+  }
+  if (!data || !chapter) {
+    return <Centered>Préparation du document…</Centered>
   }
 
-  let hookContent = ''
-  try { hookContent = JSON.parse(synopsis.hook)?.content ?? '' } catch {}
+  const { campaign } = data
+  const names = buildMentionNames(data)
+  const hook = parseHook(chapter.synopsis?.hook)
 
-  const visibleScenes = scenes.filter(s => s.type === 'scene')
+  // Only the entities this scenario uses — a one-evening sheet with the whole
+  // campaign's gazetteer stapled to it is a worse document, not a fuller one.
+  const usedNpcIds = new Set([
+    ...chapter.synopsis_npcs.map(n => n.id),
+    ...chapter.scenes.flatMap(s => s.npcs.map(n => n.id)),
+  ])
+  const usedArtefactIds = new Set(chapter.scenes.flatMap(s => s.artefacts.map(a => a.id)))
+  const usedLocationIds = new Set(chapter.scenes.map(s => s.location_id).filter(Boolean))
+  const usedFactionIds = new Set(chapter.synopsis_factions.map(f => f.id))
+
+  const npcs = data.npcs.filter(n => usedNpcIds.has(n.id))
+  const artefacts = data.artefacts.filter(a => usedArtefactIds.has(a.id))
+  const locations = data.locations.filter(l => usedLocationIds.has(l.id))
+  const factions = data.factions.filter(f => usedFactionIds.has(f.id))
+
+  const sceneCount = chapter.scenes.filter(s => s.type === 'scene').length
 
   return (
-    <div className="print-page">
-      {/* Header */}
-      <header className="print-header">
-        <div className="print-campaign">{campaign.name}</div>
-        <h1 className="print-title">{scenario.name}</h1>
-        <div className="print-date">
-          Exporté le {new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+    <>
+      <div className="lore-doc__toolbar">
+        <button onClick={() => window.print()}>Imprimer</button>
+        <span>{ready ? 'Document prêt' : 'Chargement des images…'}</span>
+      </div>
+
+      <div className="lore-doc" ref={rootRef} lang="fr">
+        <div className="doc-eyebrow">{campaign.name}</div>
+        <h1 className="doc-h1">{chapter.scenario.name || 'Scénario sans titre'}</h1>
+        <div className="doc-cover__meta" style={{ border: 0, paddingTop: '2mm' }}>
+          <span><b>{sceneCount}</b> scène{sceneCount > 1 ? 's' : ''}</span>
+          {npcs.length > 0 && <span><b>{npcs.length}</b> PNJ</span>}
+          {campaign.game_name && <span>{campaign.game_name}</span>}
+          <span style={{ marginLeft: 'auto' }}>
+            {new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+          </span>
         </div>
-      </header>
+        <hr className="doc-h1-rule" />
 
-      <hr className="print-rule" />
+        {hook && (
+          <Section title="Synopsis">
+            <PrintProse text={hook} names={names} />
+          </Section>
+        )}
 
-      {/* Overview */}
-      {synopsis.overview_cache && (
-        <section className="print-section">
-          <h2 className="print-section-title">Vue d'ensemble</h2>
-          <p className="print-prose">{synopsis.overview_cache}</p>
-        </section>
-      )}
+        {chapter.synopsis?.overview_cache && (
+          <Section title="Vue d'ensemble">
+            <p className="doc-prose">{chapter.synopsis.overview_cache}</p>
+          </Section>
+        )}
 
-      {/* Synopsis */}
-      {hookContent && (
-        <section className="print-section">
-          <h2 className="print-section-title">Synopsis</h2>
-          <PrintProse text={hookContent} className="print-prose" />
-        </section>
-      )}
+        <Section title="Déroulé">
+          <Scenes scenes={chapter.scenes} names={names} />
+        </Section>
 
-      {/* NPCs */}
-      {npcs.length > 0 && (
-        <section className="print-section">
-          <h2 className="print-section-title">Personnages non-joueurs</h2>
-          <div className="print-npc-grid">
-            {npcs.map(npc => {
-              const img = firstImage(npc.images)
-              return (
-                <div key={npc.id} className="print-npc-card">
-                  {img && (
-                    <img src={img} alt={npc.name} className="print-npc-img" />
-                  )}
-                  <div className="print-npc-body">
-                    <div className="print-npc-name">{npc.name}</div>
-                    {npc.role && <div className="print-npc-role">{npc.role}</div>}
-                    {npc.description && <PrintProse text={npc.description} className="print-npc-desc" />}
-                    {npc.motivation && <p className="print-npc-motivation"><em>Motivation : </em>{npc.motivation}</p>}
-                    {npc.quote && <p className="print-npc-quote">« {npc.quote} »</p>}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-      )}
+        {npcs.length > 0 && (
+          <Section title="Distribution">
+            <div className="doc-entries">
+              {npcs.map(n => (
+                <Entry key={n.id} name={n.name} role={n.role} image={firstImage(n.images)}>
+                  <PrintProse text={n.description} names={names} className="doc-entry__desc" />
+                  <Field label="Motivation" text={n.motivation} names={names} />
+                  {n.quote.trim() && <p className="doc-entry__quote">« {n.quote} »</p>}
+                </Entry>
+              ))}
+            </div>
+          </Section>
+        )}
 
-      {/* Scenes */}
-      {visibleScenes.length > 0 && (
-        <section className="print-section">
-          <h2 className="print-section-title">Scènes</h2>
-          <div className="print-scenes">
-            {visibleScenes.map((scene, idx) => (
-              <div key={scene.id} className="print-scene">
-                <div className="print-scene-header">
-                  <span className="print-scene-num">{idx + 1}</span>
-                  <span className="print-scene-title">{scene.title}</span>
-                  <span className={`print-badge ${STATUS_CLASS[scene.status] ?? ''}`}>
-                    {STATUS_LABEL[scene.status] ?? scene.status}
-                  </span>
-                  {scene.location_name && (
-                    <span className="print-scene-location">📍 {scene.location_name}</span>
-                  )}
-                </div>
-                {scene.description && <PrintProse text={scene.description} className="print-prose mt-1" />}
-                {scene.outcome && (
-                  <PrintProse text={scene.outcome} label="Dénouement : " className="print-outcome" />
-                )}
-                {scene.notes && (
-                  <PrintProse text={scene.notes} label="Notes MJ : " className="print-notes" />
-                )}
-                {scene.npcs.length > 0 && (
-                  <div className="print-scene-npcs">
-                    <strong>PNJs : </strong>
-                    {scene.npcs.map((n, i) => (
-                      <span key={n.id}>{n.name}{i < scene.npcs.length - 1 ? ', ' : ''}</span>
-                    ))}
-                  </div>
-                )}
-                {scene.artefacts.length > 0 && (
-                  <div className="print-scene-artefacts">
-                    <strong>Artefacts : </strong>
-                    {scene.artefacts.map((a, i) => (
-                      <span key={a.id}>{a.name}{i < scene.artefacts.length - 1 ? ', ' : ''}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+        {locations.length > 0 && (
+          <Section title="Lieux">
+            <div className="doc-entries">
+              {locations.map(l => (
+                <Entry
+                  key={l.id}
+                  name={l.name}
+                  role={[l.district, l.city].filter(Boolean).join(', ')}
+                  image={firstImage(l.images)}
+                  wideImage
+                >
+                  {l.atmosphere && <Field label="Ambiance" text={l.atmosphere} names={names} />}
+                  <PrintProse text={l.description} names={names} className="doc-entry__desc" />
+                </Entry>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {factions.length > 0 && (
+          <Section title="Factions">
+            <div className="doc-entries doc-entries--two-up">
+              {factions.map(f => (
+                <Entry key={f.id} name={f.name} role={f.type} image={firstImage(f.images)} wideImage>
+                  <PrintProse text={f.description} names={names} className="doc-entry__desc" />
+                  <Field label="Motivation" text={f.motivation} names={names} />
+                </Entry>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {artefacts.length > 0 && (
+          <Section title="Artefacts">
+            <div className="doc-entries doc-entries--two-up">
+              {artefacts.map(a => (
+                <Entry key={a.id} name={a.name} image={firstImage(a.images)} wideImage>
+                  <PrintProse text={a.description} names={names} className="doc-entry__desc" />
+                </Entry>
+              ))}
+            </div>
+          </Section>
+        )}
+      </div>
+    </>
+  )
+}
+
+function parseHook(hook: string | undefined): string {
+  if (!hook) return ''
+  try {
+    const v = JSON.parse(hook)
+    const obj = typeof v === 'string' ? JSON.parse(v) : v
+    return typeof obj?.content === 'string' ? obj.content : ''
+  } catch { return '' }
+}
+
+function Centered({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-center h-screen text-sm text-gray-500">
+      {children}
     </div>
   )
 }

@@ -19,6 +19,7 @@ import DoodleEditPage from '@/pages/DoodleEditPage'
 import DoodlePublicPage from '@/pages/DoodlePublicPage'
 import SynopsisPage from '@/pages/SynopsisPage'
 import PrintPage from '@/pages/PrintPage'
+import CampaignPrintPage from '@/pages/CampaignPrintPage'
 import PlayPage from '@/pages/PlayPage'
 import TablePage from '@/pages/TablePage'
 import PlayerSeatPage from '@/pages/PlayerSeatPage'
@@ -199,6 +200,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <SynopsisPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/campaigns/:id/print"
+            element={
+              <ProtectedRoute>
+                <CampaignPrintPage />
               </ProtectedRoute>
             }
           />

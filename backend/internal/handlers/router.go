@@ -244,8 +244,14 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 				// co-authorship. See docs/adr/0001-runs-separate-story-from-play.md.
 				r.Group(func(r chi.Router) {
 					owner := requireCampaignOwner(database)
+					printer := &PrintHandler{db: database}
 					r.Use(requireCampaignAccess(database))
 					r.Get("/search", entities.Search)
+
+					// The whole campaign as one printable document — see
+					// campaign_print.go and docs/print.md. Access, not owner:
+					// a delegated Meneur prints it to run it.
+					r.Get("/print", printer.Campaign)
 
 					// Groups playing this campaign, and their parties. Any
 					// delegated account manages runs freely — that is what

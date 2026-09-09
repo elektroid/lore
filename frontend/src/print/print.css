@@ -1,0 +1,511 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   The printed book.
+   Used by CampaignPrintPage (the whole campaign) and PrintPage (one scenario).
+
+   Designed for black and white first. Chrome's print dialog ships with
+   "Background graphics" OFF, and `print-color-adjust: exact` does not survive
+   the user unticking it — so anything built out of filled blocks prints as a
+   white rectangle for most people, most of the time. Everything structural
+   here is therefore a rule, a border or a typographic weight, and every image
+   is a real <img> rather than a CSS background. Colour is a bonus when it
+   survives, never load-bearing.
+
+   Units are pt for type and mm for the page, because that is what the output
+   is measured in. px appears only for image boxes, where the source pixels
+   are what matters.
+   ────────────────────────────────────────────────────────────────────────── */
+
+@page {
+  size: A4;
+  margin: 20mm 18mm 18mm;
+}
+
+.lore-doc {
+  /* A print sheet is paper. It does not follow the reader's dark mode. */
+  color-scheme: light;
+  background: #fff;
+  color: #14110f;
+
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-size: 10.5pt;
+  line-height: 1.55;
+  hyphens: auto;
+  text-rendering: optimizeLegibility;
+  font-kerning: normal;
+  font-variant-numeric: oldstyle-num;
+}
+
+.lore-doc :where(p, ul, ol) {
+  orphans: 3;
+  widows: 3;
+}
+
+/* ── Screen preview ───────────────────────────────────────────────────────
+   On screen the document is shown as sheets of paper, so what you scroll is
+   recognisably what will come out of the printer. */
+@media screen {
+  body { background: #6b6a68; }
+  .lore-doc {
+    width: 210mm;
+    margin: 0 auto;
+    padding: 20mm 18mm;
+    box-sizing: border-box;
+  }
+  .lore-doc__toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .75rem;
+    padding: .6rem;
+    background: #14110f;
+    color: #fff;
+    font-family: system-ui, sans-serif;
+    font-size: 12px;
+  }
+  .lore-doc__toolbar button {
+    font: inherit;
+    font-weight: 600;
+    padding: .35rem .9rem;
+    border-radius: 4px;
+    border: 1px solid #fff6;
+    background: #fff;
+    color: #14110f;
+    cursor: pointer;
+  }
+  .lore-doc__toolbar span { opacity: .7; }
+}
+
+@media print {
+  body { background: #fff !important; margin: 0; }
+  .lore-doc { width: auto; padding: 0; margin: 0; }
+  .lore-doc__toolbar { display: none !important; }
+  /* Anything the app parked outside the document — toasts, portals, dialogs. */
+  body > *:not(#root) { display: none !important; }
+}
+
+/* No running header or footer, deliberately.
+   Chrome does not implement `@page` margin boxes, and the widely-repeated
+   trick of a `position: fixed` element repeating per printed page does not
+   work: tested against Chrome's own print path, it rendered once, at the top
+   of an arbitrary page, overprinting the chapter title. A footer that lands
+   in the middle of the text is far worse than no footer. The browser's own
+   print dialog can add page numbers, and that is the reliable place for them.
+
+───────────────────────────────   ── Page rhythm ─────────────────────────────────────────────────────── */
+
+.doc-break { break-before: page; }
+.doc-keep { break-inside: avoid; }
+
+/* ── Cover ────────────────────────────────────────────────────────────────── */
+
+.doc-cover {
+  break-after: page;
+  display: flex;
+  flex-direction: column;
+  min-height: 235mm;               /* the text block of one A4 page */
+  padding-top: 24mm;
+}
+.doc-cover__eyebrow {
+  font-family: system-ui, 'Helvetica Neue', sans-serif;
+  font-size: 8.5pt;
+  font-weight: 600;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: #6b6560;
+}
+.doc-cover__title {
+  font-size: 34pt;
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: -.015em;
+  margin: 5mm 0 0;
+  /* A long campaign name must not hyphenate on the title page. */
+  hyphens: manual;
+}
+.doc-cover__genre {
+  font-size: 12pt;
+  font-style: italic;
+  color: #4a443f;
+  margin-top: 3mm;
+}
+.doc-cover__rule {
+  border: 0;
+  border-top: 1.5pt solid #14110f;
+  width: 28mm;
+  margin: 8mm 0;
+}
+.doc-cover__pitch {
+  font-size: 12.5pt;
+  line-height: 1.6;
+  max-width: 125mm;
+}
+/* The air sits between the title block and the blurb, so the foot of the page
+   reads as a composed band rather than as the place the content ran out. */
+.doc-cover__spacer { flex: 1; min-height: 10mm; }
+
+/* The cast strip: a row of portraits along the foot of the title page. It is
+   the fastest way to say "this is who is in the book", and it is the one place
+   a picture earns a whole band of the page. */
+.doc-cover__cast {
+  display: flex;
+  gap: 3mm;
+  margin-top: 10mm;
+}
+.doc-cover__cast img {
+  width: 26mm;
+  height: 32mm;
+  object-fit: cover;
+  filter: grayscale(100%) contrast(1.05);
+  border: .75pt solid #14110f;
+}
+
+.doc-cover__meta {
+  border-top: .75pt solid #b9b2ab;
+  padding-top: 3mm;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6mm;
+  font-family: system-ui, 'Helvetica Neue', sans-serif;
+  font-size: 8.5pt;
+  color: #6b6560;
+}
+.doc-cover__meta b {
+  color: #14110f;
+  font-weight: 600;
+}
+
+/* ── Section headings ─────────────────────────────────────────────────────── */
+
+.doc-h1 {
+  font-size: 20pt;
+  font-weight: 700;
+  line-height: 1.15;
+  margin: 0 0 1mm;
+  letter-spacing: -.01em;
+}
+.doc-eyebrow {
+  font-family: system-ui, 'Helvetica Neue', sans-serif;
+  font-size: 8pt;
+  font-weight: 600;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: #6b6560;
+  margin-bottom: 1.5mm;
+}
+.doc-h1 + .doc-lede {
+  font-size: 11pt;
+  font-style: italic;
+  color: #4a443f;
+  margin: 2mm 0 0;
+}
+.doc-h1-rule {
+  border: 0;
+  border-top: 1.5pt solid #14110f;
+  margin: 4mm 0 6mm;
+}
+
+.doc-h2 {
+  font-family: system-ui, 'Helvetica Neue', sans-serif;
+  font-size: 9pt;
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: #14110f;
+  border-bottom: .75pt solid #14110f;
+  padding-bottom: 1.5mm;
+  margin: 8mm 0 4mm;
+  break-after: avoid;
+}
+.doc-section:first-child > .doc-h2 { margin-top: 0; }
+
+/* ── Prose ────────────────────────────────────────────────────────────────── */
+
+.doc-prose p { margin: 0 0 2.2mm; }
+.doc-prose p:last-child { margin-bottom: 0; }
+.doc-prose ul {
+  margin: 0 0 2.2mm;
+  padding-left: 5mm;
+  list-style: disc;
+}
+.doc-prose li { margin: 0; }
+
+/* A mention prints as the entity's current name in small caps: the reader gets
+   a visible cross-reference to the cast pages without a stray "@" that reads
+   like a social handle in a book. */
+.doc-mention {
+  font-variant: small-caps;
+  letter-spacing: .03em;
+}
+
+.doc-note {
+  border-left: 1.5pt solid #b9b2ab;
+  padding-left: 3mm;
+  margin-top: 2.5mm;
+  font-size: 9.5pt;
+  color: #4a443f;
+}
+.doc-note__label {
+  font-family: system-ui, sans-serif;
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #6b6560;
+  display: block;
+}
+
+/* ── Table of contents ────────────────────────────────────────────────────── */
+
+.doc-toc { margin-top: 2mm; }
+.doc-toc__item {
+  display: flex;
+  align-items: baseline;
+  gap: 2mm;
+  padding: 1.6mm 0;
+  border-bottom: .5pt dotted #b9b2ab;
+}
+.doc-toc__num {
+  font-family: system-ui, sans-serif;
+  font-size: 8.5pt;
+  font-weight: 700;
+  color: #6b6560;
+  min-width: 7mm;
+}
+.doc-toc__label { flex: 1; font-size: 11pt; }
+.doc-toc__count {
+  font-family: system-ui, sans-serif;
+  font-size: 8.5pt;
+  color: #6b6560;
+  white-space: nowrap;
+}
+/* One line of what each scenario is about. A contents page that only lists
+   titles makes the reader open every chapter to find the one they meant. */
+.doc-toc__blurb {
+  margin: 0 0 1.5mm 9mm;
+  font-size: 9.5pt;
+  font-style: italic;
+  color: #4a443f;
+}
+
+/* ── Scenes ───────────────────────────────────────────────────────────────── */
+
+.doc-scenes { counter-reset: scene; }
+
+/* A scene may run across a page turn. Forcing whole scenes onto one page
+   pushes a long one over entirely and leaves half a page of white behind it —
+   which is how the first draft of this sheet wasted a page in three. What must
+   not happen is a scene heading stranded at the foot of a page, so the header
+   is what carries `break-after: avoid`. */
+.doc-scene {
+  padding: 3.5mm 0;
+  border-top: .5pt solid #ddd7d0;
+}
+.doc-scene:first-child { border-top: 0; padding-top: 1mm; }
+
+.doc-scene__head {
+  display: flex;
+  align-items: baseline;
+  gap: 2.5mm;
+  margin-bottom: 1.5mm;
+  break-after: avoid;
+  break-inside: avoid;
+}
+.doc-scene__num::before {
+  counter-increment: scene;
+  content: counter(scene, decimal-leading-zero);
+  font-family: system-ui, sans-serif;
+  font-size: 9pt;
+  font-weight: 700;
+  color: #6b6560;
+}
+.doc-scene__title {
+  flex: 1;
+  font-size: 12.5pt;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.doc-scene__where {
+  break-after: avoid;
+  font-size: 9pt;
+  font-style: italic;
+  color: #4a443f;
+  white-space: nowrap;
+}
+
+/* An act break the author put in the scene list. It is structure, so it prints
+   as structure rather than being filtered out. */
+.doc-act {
+  break-inside: avoid;
+  break-after: avoid;
+  margin: 7mm 0 3mm;
+  text-align: center;
+  font-family: system-ui, sans-serif;
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: #6b6560;
+}
+.doc-act::before,
+.doc-act::after {
+  content: '';
+  display: inline-block;
+  width: 12mm;
+  vertical-align: middle;
+  border-top: .5pt solid #b9b2ab;
+  margin: 0 3mm;
+}
+
+/* Outlined, never filled — see the note at the top of this file. */
+.doc-badge {
+  font-family: system-ui, sans-serif;
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: .4mm 1.6mm;
+  border: .75pt solid currentColor;
+  border-radius: 1mm;
+  white-space: nowrap;
+}
+.doc-badge--idea { color: #6b6560; }
+.doc-badge--optional { color: #8a6d1f; }
+.doc-badge--key { color: #a3341f; }
+.doc-badge--start,
+.doc-badge--end {
+  color: #14110f;
+  border-style: dashed;
+}
+
+.doc-scene__tags {
+  margin-top: 2mm;
+  font-family: system-ui, sans-serif;
+  font-size: 8.5pt;
+  color: #4a443f;
+}
+.doc-scene__tags b {
+  font-weight: 600;
+  color: #14110f;
+}
+
+/* ── Entity entries ───────────────────────────────────────────────────────── */
+
+.doc-entries { margin-top: 1mm; }
+
+.doc-entry {
+  break-inside: avoid;
+  display: flex;
+  gap: 4mm;
+  padding: 3.5mm 0;
+  border-top: .5pt solid #ddd7d0;
+}
+.doc-entry:first-child { border-top: 0; padding-top: 0; }
+
+.doc-entry__figure {
+  flex: none;
+  width: 26mm;
+}
+.doc-entry__figure img {
+  width: 26mm;
+  height: 32mm;
+  object-fit: cover;
+  border: .5pt solid #b9b2ab;
+  display: block;
+}
+.doc-entry__figure--wide { width: 36mm; }
+.doc-entry__figure--wide img { width: 36mm; height: 24mm; }
+/* No picture: a ruled placeholder holds the column so the text block of every
+   entry starts on the same vertical line down the page. */
+.doc-entry__figure--empty {
+  height: 32mm;
+  border: .5pt dashed #ddd7d0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: system-ui, sans-serif;
+  font-size: 16pt;
+  font-weight: 300;
+  color: #c9c2ba;
+}
+
+.doc-entry__body { flex: 1; min-width: 0; }
+.doc-entry__name {
+  font-size: 12pt;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.doc-entry__role {
+  font-size: 9.5pt;
+  font-style: italic;
+  color: #4a443f;
+  margin-bottom: 1.5mm;
+}
+.doc-entry__desc { font-size: 10pt; }
+.doc-entry__quote {
+  margin-top: 2mm;
+  padding-left: 3mm;
+  border-left: 1.5pt solid #b9b2ab;
+  font-style: italic;
+  font-size: 9.5pt;
+  color: #4a443f;
+}
+.doc-entry__field {
+  margin-top: 1.5mm;
+  font-size: 9.5pt;
+}
+.doc-entry__field b {
+  font-family: system-ui, sans-serif;
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #6b6560;
+  margin-right: 1.5mm;
+}
+/* Inline, so a one-clause motivation costs one line rather than two. */
+.doc-entry__field .doc-prose,
+.doc-entry__field .doc-prose p { display: inline; }
+
+/* Where to go and look. Chrome cannot resolve page numbers at print time, and a
+   scene reference survives re-pagination on a different paper size anyway. */
+.doc-entry__refs {
+  margin-top: 2mm;
+  font-family: system-ui, sans-serif;
+  font-size: 7.5pt;
+  letter-spacing: .06em;
+  color: #6b6560;
+}
+
+/* Two columns for the short appendices. A rulebook's props list reads better
+   as a column than as a page of very wide, very short lines. */
+.doc-entries--two-up {
+  columns: 2;
+  column-gap: 8mm;
+  column-rule: .5pt solid #ddd7d0;
+}
+.doc-entries--two-up .doc-entry {
+  break-inside: avoid;
+  display: block;
+  border-top: 0;
+  padding: 0 0 4mm;
+}
+.doc-entries--two-up .doc-entry__figure {
+  width: 100%;
+  margin-bottom: 1.5mm;
+}
+.doc-entries--two-up .doc-entry__figure img {
+  width: 100%;
+  height: 24mm;
+}
+.doc-entries--two-up .doc-entry__figure--empty { display: none; }
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+
+.doc-empty {
+  font-style: italic;
+  color: #6b6560;
+  font-size: 10pt;
+}

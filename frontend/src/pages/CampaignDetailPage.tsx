@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard'
-import { BookOpen, Download, Plus, Users, Trash2, UserPlus, Wand2, ChevronDown, ChevronRight, GripVertical, Swords } from 'lucide-react'
+import { BookOpen, Download, Plus, Users, Trash2, UserPlus, Wand2, ChevronDown, ChevronRight, GripVertical, Swords, Printer } from 'lucide-react'
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor,
   useSensor, useSensors, type DragEndEvent,
@@ -552,6 +552,17 @@ function ScenarioList({ campaignId, readOnly = false }: { campaignId: string; re
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-sm font-medium">Scénarios</p>
         <div className="flex gap-2 flex-wrap">
+          {/* target=_blank, so a pending autosave on this page is never torn
+              down by a document navigation — see DESIGN.md. */}
+          <a
+            href={`/campaigns/${campaignId}/print`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs h-8 px-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          >
+            <Printer className="h-3.5 w-3.5" />
+            Imprimer la campagne
+          </a>
           <a
             href={`/api/campaigns/${campaignId}/export`}
             className="inline-flex items-center gap-1 text-xs h-8 px-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"

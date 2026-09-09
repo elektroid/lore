@@ -186,6 +186,15 @@ Everything under `e2e/tests/` is a regression that reached production — see
 that has never broken. Pure text-format questions belong in
 `frontend/src/lib/*.test.ts` instead, which run in milliseconds.
 
+## Printing
+
+Two documents, one layout: `/campaigns/:id/print` (the whole book) and
+`/scenarios/:id/print` (one evening). Both are `window.print()` over a dedicated
+page — no server-side PDF. The layout is **black-and-white first**, because
+Chrome ships "Background graphics" unchecked and `print-color-adjust: exact`
+does not survive it: structure is rules and type, never filled blocks. See
+[docs/print.md](docs/print.md) before touching `frontend/src/print/`.
+
 ## Recovering a lost edit
 
 The **Écritures** tab in `/admin` holds every accepted write with the record as
