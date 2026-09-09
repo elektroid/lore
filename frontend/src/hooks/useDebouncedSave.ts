@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { registerDirtyCheck, registerPendingWrite } from '@/lib/pendingWrites'
 
 /**
  * Debounced field saving for the "type into a form, PUT the whole record"
  * pattern used by the entity editors.
  *
  * The pending draft is never dropped: it is flushed when the component
- * unmounts, when the edited record changes, and before any immediate write.
+ * unmounts, when the edited record changes, before any immediate write, and —
+ * via lib/pendingWrites.ts — when the document itself is torn down by a reload,
+ * a tab close or a full-page navigation, which React never gets to see.
  * The save callback is captured at schedule time, so a draft flushed after the
  * editor switched records still writes to the record it was typed into.
  */
@@ -47,6 +50,8 @@ export function useDebouncedSave<P extends object>(delay = 800) {
   }, [cancelTimer])
 
   useEffect(() => () => flush(), [flush])
+  useEffect(() => registerPendingWrite(flush), [flush])
+  useEffect(() => registerDirtyCheck(() => pending.current !== null), [])
 
   // Stable identity — callers list it in effect dependencies.
   return useMemo(() => ({ schedule, saveNow, flush }), [schedule, saveNow, flush])

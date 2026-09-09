@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Play, Flag, CheckCircle2, XCircle, Circle, MapPin, Users,
@@ -757,12 +757,12 @@ export default function PlayPage() {
                 ))}
               </select>
             ) : (
-              <a
-                href={`/campaigns/${scenario?.campaign_id ?? ''}`}
+              <Link
+                to={`/campaigns/${scenario?.campaign_id ?? ''}`}
                 className="text-sm text-muted-foreground hover:text-foreground underline"
               >
                 Aucun groupe — en créer un
-              </a>
+              </Link>
             )}
           </div>
 
@@ -860,11 +860,11 @@ export default function PlayPage() {
           )}
 
           <div className="ml-auto">
-            <a href={`/scenarios/${scenarioId}/synopsis`}
+            <Link to={`/scenarios/${scenarioId}/synopsis`}
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="h-3.5 w-3.5" />
               Mode édition
-            </a>
+            </Link>
           </div>
         </div>
 

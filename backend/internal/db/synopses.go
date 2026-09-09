@@ -58,6 +58,43 @@ func UpdateSynopsis(ctx context.Context, database *sql.DB, p UpdateSynopsisParam
 	return GetSynopsisByScenario(ctx, database, p.ScenarioID)
 }
 
+// UpdateSynopsisHook writes the authored hook and nothing else.
+//
+// Every column it does not name is a column it cannot lose: `npcs` is a legacy
+// blob whose real home is the synopsis_npcs junction table, and
+// `overview_cache` is model output that only GenerateOverview has any business
+// writing. A save of the hook that also rewrote those two turned every
+// autosave into a chance to undo something the author never touched.
+func UpdateSynopsisHook(ctx context.Context, database *sql.DB, scenarioID, hook string) (*Synopsis, error) {
+	_, err := database.ExecContext(ctx,
+		`UPDATE synopses
+		 SET hook=?, updated_at=CURRENT_TIMESTAMP
+		 WHERE scenario_id=?`,
+		hook, scenarioID)
+	if err != nil {
+		return nil, err
+	}
+	return GetSynopsisByScenario(ctx, database, scenarioID)
+}
+
+// UpdateSynopsisOverview writes only the generated overview.
+//
+// The overview is derived text: generating one says nothing about the hook, and
+// an LLM call takes tens of seconds, during which the author is very likely
+// still typing. Writing the hook back here would silently undo every keystroke
+// made since the call started — which is exactly what it used to do.
+func UpdateSynopsisOverview(ctx context.Context, database *sql.DB, scenarioID, overview string) (*Synopsis, error) {
+	_, err := database.ExecContext(ctx,
+		`UPDATE synopses
+		 SET overview_cache=?, updated_at=CURRENT_TIMESTAMP
+		 WHERE scenario_id=?`,
+		overview, scenarioID)
+	if err != nil {
+		return nil, err
+	}
+	return GetSynopsisByScenario(ctx, database, scenarioID)
+}
+
 // SynopsisToSnapshotData serialises content fields into a snapshot data blob.
 func SynopsisToSnapshotData(s *Synopsis) string {
 	data, _ := json.Marshal(map[string]json.RawMessage{

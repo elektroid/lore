@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard'
@@ -21,6 +21,7 @@ import MentionEditor from '@/components/MentionEditor'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import { useSyncMode } from '@/hooks/useSyncMode'
 import { api } from '@/api/client'
+import { registerDirtyCheck, registerPendingWrite } from '@/lib/pendingWrites'
 import { useUser } from '@/stores/auth'
 import type { Scenario } from '@/types/scenario'
 import type { Campaign } from '@/types/campaign'
@@ -516,6 +517,24 @@ function ScenarioList({ campaignId, readOnly = false }: { campaignId: string; re
     onSuccess: (data) => queryClient.setQueryData(['scenarios', campaignId], data),
   })
 
+  // The order the debounce is sitting on, so it can be sent from a flush.
+  const pendingOrder = useRef<string[] | null>(null)
+  const reorderRef = useRef(reorder.mutate)
+  useEffect(() => { reorderRef.current = reorder.mutate }, [reorder.mutate])
+
+  const flushReorder = useCallback(() => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+    const ids = pendingOrder.current
+    pendingOrder.current = null
+    if (ids) reorderRef.current(ids)
+  }, [])
+
+  // Drag, then leave before the 400 ms is up, and the new order only ever
+  // existed in the query cache. Send it instead of dropping it.
+  useEffect(() => () => flushReorder(), [flushReorder])
+  useEffect(() => registerPendingWrite(flushReorder), [flushReorder])
+  useEffect(() => registerDirtyCheck(() => pendingOrder.current !== null), [])
+
   function onDragEnd(event: DragEndEvent) {
     const { active: draggedItem, over } = event
     if (!over || draggedItem.id === over.id) return
@@ -523,8 +542,9 @@ function ScenarioList({ campaignId, readOnly = false }: { campaignId: string; re
     const newIndex = active.findIndex(s => s.id === over.id)
     const reordered = arrayMove(active, oldIndex, newIndex)
     queryClient.setQueryData(['scenarios', campaignId], [...reordered, ...archived])
+    pendingOrder.current = reordered.map(s => s.id)
     if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => reorder.mutate(reordered.map(s => s.id)), 400)
+    timerRef.current = setTimeout(flushReorder, 400)
   }
 
   return (

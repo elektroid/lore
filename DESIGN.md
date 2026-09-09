@@ -110,6 +110,56 @@ pick — otherwise the debounced text change could overwrite it afterward.
 
 ---
 
+---
+
+### The other half of the rule — a debounce must always be flushable
+
+A debounce that is only ever *cancelled* is a data-loss bug waiting for the
+user to walk away at the wrong moment. Every timer above must have a `flush()`
+that can send the pending draft from outside the timer's own closure, and that
+flush must run in all four departure paths:
+
+| Departure | What runs | Covered by |
+|---|---|---|
+| The edited record changes (next scene, next PNJ) | effect keyed on the id | the call site |
+| Client-side navigation (`<Link>`, `navigate()`) | unmount cleanup | `useEffect(() => () => flush(), [flush])` |
+| Reload, tab close, `<a href>` to an in-app route | `pagehide` / `visibilitychange` | `registerPendingWrite(flush)` — [`lib/pendingWrites.ts`](frontend/src/lib/pendingWrites.ts) |
+| The tab being killed while backgrounded | `visibilitychange` → hidden | same |
+
+The third row is why the registry exists at all: React never sees a real
+document navigation, so nothing it can schedule will save for you. Writes
+issued during teardown go out with `keepalive` (see `api/client.ts`).
+
+Two rules follow, and both were broken once:
+
+- **Never use a raw `<a href>` for an in-app route.** It is a full page load:
+  it kills every pending timer and every in-flight request. Use `<Link to>`.
+  Raw anchors are for `/api/…` downloads and external URLs only.
+- **Never make the debounce the only copy of the draft.** Keep it in a ref the
+  flush can read (`draftRef` / `pending`), not captured inside `setTimeout`.
+
+---
+
+### Server-side writes must be as narrow as the action
+
+A handler writes the columns its action is *about*, and no others. A full-row
+`UPDATE` built from a row read at the top of the handler silently reverts
+anything that changed in between — and when the handler makes an LLM call, "in
+between" is thirty seconds of the author typing.
+
+- `GenerateOverview` writes `overview_cache` only. It used to write the hook
+  back too, from a copy read before the model call, which reverted the author's
+  paragraph — and wrote it back with `@[name](ref)` mentions already flattened
+  to plain text for the prompt, permanently losing the links.
+- `PUT /synopsis` writes `hook` only. The client has no business dictating
+  `overview_cache` or the legacy `npcs` blob, so it no longer can.
+
+If a prompt needs authored text transformed (mentions resolved, markdown
+stripped), transform a copy. What goes to the model must never be what goes
+back to the database.
+
+---
+
 ### Checklist before adding a new auto-saving input
 
 - [ ] Text `<input>` / `<textarea>` goes through Pattern A, B, or C
@@ -117,3 +167,6 @@ pick — otherwise the debounced text change could overwrite it afterward.
 - [ ] If the component sits behind `onChangeImmediate`, it has its own `timerRef` + `draftRef`
 - [ ] Single-action events (click, drop, pick) call `onUpdate` / `mutate` directly — no debounce
 - [ ] `localRef` is used instead of `local` state inside `setTimeout` closures
+- [ ] The pending draft lives in a ref, and `flush()` can send it
+- [ ] `flush()` runs on unmount **and** is passed to `registerPendingWrite`
+- [ ] Every in-app link on the page is a `<Link>`, not an `<a href>`

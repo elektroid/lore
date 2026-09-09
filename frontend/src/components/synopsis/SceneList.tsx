@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Plus, GripVertical, Trash2, Sparkles, SeparatorHorizontal, Play, Flag,
   CheckCircle2, CircleSlash,
@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { useSynopsisLLM } from '@/hooks/useSynopsisLLM'
 import type { Scene, SceneStatus } from '@/types/synopsis'
 import { api } from '@/api/client'
+import { registerDirtyCheck, registerPendingWrite } from '@/lib/pendingWrites'
 
 interface Props {
   scenarioId: string
@@ -249,6 +250,24 @@ export default function SceneList({ scenarioId, selectedId, onSelect, sceneState
     onSuccess: (data) => qc.setQueryData(['scenes', scenarioId], data),
   })
 
+  // The order the debounce is sitting on, so it can be sent from a flush.
+  const pendingOrder = useRef<string[] | null>(null)
+  const reorderRef = useRef(reorder.mutate)
+  useEffect(() => { reorderRef.current = reorder.mutate }, [reorder.mutate])
+
+  const flushReorder = useCallback(() => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+    const ids = pendingOrder.current
+    pendingOrder.current = null
+    if (ids) reorderRef.current(ids)
+  }, [])
+
+  // Drag, then leave before the 400 ms is up, and the new order only ever
+  // existed in the query cache. Send it instead of dropping it.
+  useEffect(() => () => flushReorder(), [flushReorder])
+  useEffect(() => registerPendingWrite(flushReorder), [flushReorder])
+  useEffect(() => registerDirtyCheck(() => pendingOrder.current !== null), [])
+
   function onDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
@@ -256,8 +275,9 @@ export default function SceneList({ scenarioId, selectedId, onSelect, sceneState
     const newIndex = scenes.findIndex(s => s.id === over.id)
     const reordered = arrayMove(scenes, oldIndex, newIndex)
     qc.setQueryData(['scenes', scenarioId], reordered)
+    pendingOrder.current = reordered.map(s => s.id)
     if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => reorder.mutate(reordered.map(s => s.id)), 400)
+    timerRef.current = setTimeout(flushReorder, 400)
   }
 
   const [showAdd, setShowAdd] = useState(false)

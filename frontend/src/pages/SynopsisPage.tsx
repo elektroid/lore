@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, X, Sparkles, Printer, BookOpen, FolderOpen, Users } from 'lucide-react'
 import AppShell from '@/components/AppShell'
@@ -197,13 +197,16 @@ export default function SynopsisPage() {
               Imprimer
             </a>
             {scenario?.campaign_id && (
-              <a
-                href={`/campaigns/${scenario.campaign_id}/entities`}
+              // A <Link>, not an <a href>: a real document navigation kills the
+              // debounced synopsis autosave before it can fire, and this button
+              // sits right next to the field it would silently discard.
+              <Link
+                to={`/campaigns/${scenario.campaign_id}/entities`}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               >
                 <Users className="h-3.5 w-3.5" />
                 Entités
-              </a>
+              </Link>
             )}
             {campaign?.game_id && (
               <button

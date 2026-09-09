@@ -147,15 +147,16 @@ func (h *SynopsisHandler) snapshotBefore(ctx context.Context, synopsis *db.Synop
 	_ = db.DeleteOldestSnapshotsIfNeeded(ctx, h.db, synopsis.ID, 20)
 }
 
-// commitSynopsis persists hook. NPCs live in synopsis_npcs; scenes in synopsis_scenes.
-func (h *SynopsisHandler) commitSynopsis(r *http.Request, scenarioID string, sc synopsisCtx, overviewCache string) (*db.Synopsis, error) {
-	hookJSON, _ := json.Marshal(sc.Hook)
-	return db.UpdateSynopsis(r.Context(), h.db, db.UpdateSynopsisParams{
-		ScenarioID:    scenarioID,
-		Hook:          string(hookJSON),
-		NPCs:          "[]",
-		OverviewCache: overviewCache,
-	})
+// commitHook persists a hook the model just wrote. NPCs live in synopsis_npcs,
+// scenes in synopsis_scenes, so neither is touched here.
+//
+// It takes the hook explicitly rather than reading it off the synopsisCtx: that
+// context is built for the *prompt*, with every `@[name](ref)` already resolved
+// to a plain name (see llmContext). Writing it back would flatten the author's
+// mentions into dead text — which it used to do on every LLM action.
+func (h *SynopsisHandler) commitHook(r *http.Request, scenarioID string, hook hookData) (*db.Synopsis, error) {
+	hookJSON, _ := json.Marshal(hook)
+	return db.UpdateSynopsisHook(r.Context(), h.db, scenarioID, string(hookJSON))
 }
 
 func marshalCtx(sc synopsisCtx) string {
@@ -203,8 +204,8 @@ func (h *SynopsisHandler) CompleteHook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sc.Hook.Content = result.Content
-	updated, err := h.commitSynopsis(r, scenarioID, sc, synopsis.OverviewCache)
+	updated, err := h.commitHook(r, scenarioID,
+		hookData{Content: result.Content, Status: sc.Hook.Status})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -503,7 +504,9 @@ func (h *SynopsisHandler) GenerateOverview(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	updated, err := h.commitSynopsis(r, scenarioID, sc, result.Overview)
+	// Only the overview. The hook read at the top of this handler is tens of
+	// seconds stale by now — the author has very likely kept typing.
+	updated, err := db.UpdateSynopsisOverview(r.Context(), h.db, scenarioID, result.Overview)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

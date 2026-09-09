@@ -42,12 +42,12 @@ func (h *SynopsisHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	synopsis, err := db.UpdateSynopsis(r.Context(), h.db, db.UpdateSynopsisParams{
-		ScenarioID:    scenarioID,
-		Hook:          rawOrDefault(body.Hook, "{}"),
-		NPCs:          rawOrDefault(body.NPCs, "[]"),
-		OverviewCache: body.OverviewCache,
-	})
+	// Only the hook. `npcs` and `overview_cache` are still accepted in the body
+	// for compatibility with older clients, but are no longer written: the cast
+	// lives in synopsis_npcs, and the overview is model output that this route
+	// has no opinion about. An autosave firing while an overview generates used
+	// to write the pre-generation overview straight back over it.
+	synopsis, err := db.UpdateSynopsisHook(r.Context(), h.db, scenarioID, rawOrDefault(body.Hook, "{}"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

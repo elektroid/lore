@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Users, Calendar, Radio, NotebookPen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import AppShell from '@/components/AppShell'
 import { api } from '@/api/client'
+import { registerDirtyCheck, registerPendingWrite } from '@/lib/pendingWrites'
 import { useDocTitle } from '@/hooks/useDocTitle'
 import { useSyncMode } from '@/hooks/useSyncMode'
 import { RUN_STATUS_LABELS } from '@/types/run'
@@ -145,15 +146,34 @@ function NotesPanel({ runId }: { runId: string }) {
     mutationFn: (b: string) => api.put<RunNote>(`/me/runs/${runId}/notes`, { body: b }),
     onSettled: () => setSaving(false),
   })
+  const saveRef = useRef(save.mutate)
+  useEffect(() => { saveRef.current = save.mutate }, [save.mutate])
+
+  // What the timer is waiting on, so flush() can send it from outside the
+  // timer's own closure.
+  const draftRef = useRef<string | null>(null)
+
+  const flush = useCallback(() => {
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
+    const draft = draftRef.current
+    draftRef.current = null
+    if (draft !== null) saveRef.current(draft)
+  }, [])
 
   function handleChange(v: string) {
     setBody(v)
     setSaving(true)
+    draftRef.current = v
     if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => save.mutate(v), NOTE_SAVE_DEBOUNCE_MS)
+    saveTimer.current = setTimeout(flush, NOTE_SAVE_DEBOUNCE_MS)
   }
 
-  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current) }, [])
+  // Leaving the page used to just cancel the timer — the last thing the player
+  // typed was dropped on the floor. Send it instead, whether React sees the
+  // departure (unmount) or not (reload, tab close, full-page navigation).
+  useEffect(() => () => flush(), [flush])
+  useEffect(() => registerPendingWrite(flush), [flush])
+  useEffect(() => registerDirtyCheck(() => draftRef.current !== null), [])
 
   return (
     <div className="space-y-3 pt-6 border-t">

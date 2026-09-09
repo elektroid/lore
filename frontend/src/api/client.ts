@@ -1,3 +1,5 @@
+import { isUnloading } from '@/lib/pendingWrites'
+
 const BASE = '/api'
 
 function getCsrfToken(): string {
@@ -17,7 +19,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (csrf) headers['X-CSRF-Token'] = csrf
   }
 
-  const res = await fetch(`${BASE}${path}`, { ...init, headers })
+  // A write issued while the document is unloading is cancelled with the page
+  // unless it is marked `keepalive` — which is exactly when a flushed autosave
+  // draft is sent (see lib/pendingWrites.ts). The 64 KB cap the spec puts on
+  // keepalive bodies is far above any prose field, but a body over it would
+  // throw rather than send, so fall back to a normal request in that case: a
+  // request that might be cancelled beats one that is refused outright.
+  const body = init?.body
+  const keepalive = isUnloading()
+    && typeof body === 'string'
+    && new Blob([body]).size < 60_000
+
+  const res = await fetch(`${BASE}${path}`, { ...init, headers, keepalive })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))
     const errField = (err as { error: unknown }).error
