@@ -76,13 +76,28 @@ function blockToText(node: JSONContent): string {
   return inlineToText(node.content ?? [])
 }
 
+/**
+ * The separator to write between two adjacent top-level nodes.
+ *
+ * It has to be the exact separator `parseRichText` would read back, or the
+ * text grows or shrinks a little on every load/edit/save cycle. Two rules,
+ * matching how the editor is actually used:
+ *
+ * - A bullet list directly under its intro line is one line down (`\n`) — that
+ *   is how it was typed, and how markdown reads it.
+ * - Everything else between two top-level nodes is a paragraph break
+ *   (`\n\n`). Pressing Enter in TipTap makes a *new paragraph*, and pasting
+ *   several paragraphs makes several; joining those with a single `\n` fused
+ *   them all back into one on the next load.
+ */
+function separatorBefore(prev: JSONContent, node: JSONContent): string {
+  return node.type === 'bulletList' && prev.type === 'paragraph' ? '\n' : '\n\n'
+}
+
 /** A TipTap document -> the plain-text value that gets saved. */
 export function docToText(doc: JSONContent): string {
-  // parseRichText only starts a new block when a line's list-item-ness
-  // flips (see richtext.ts) — consecutive lines of the same kind always
-  // stay in one block, blank lines included (as hardBreaks). So adjacent
-  // blocks are always exactly one line boundary apart in the source text;
-  // joining with '\n\n' here invented a blank line that was never there,
-  // compounding by one extra line on every load/edit/save cycle.
-  return (doc.content ?? []).map(blockToText).join('\n')
+  const nodes = doc.content ?? []
+  return nodes
+    .map((node, i) => (i === 0 ? '' : separatorBefore(nodes[i - 1], node)) + blockToText(node))
+    .join('')
 }

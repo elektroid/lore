@@ -1,4 +1,4 @@
-.PHONY: dev dev-backend dev-frontend build clean-embed generate install-tools check-config check install-hooks
+.PHONY: dev dev-backend dev-frontend build clean-embed generate install-tools check-config check check-e2e install-hooks
 
 BINARY = lore-engine
 AIR    = $(shell go env GOPATH)/bin/air
@@ -57,6 +57,8 @@ clean-embed:
 check:
 	@echo "→ backend : build, vet, test"
 	@cd backend && go build ./... && go vet ./... && go test ./...
+	@echo "→ frontend : tests unitaires"
+	@cd frontend && npm run test --silent
 	@echo "→ frontend : typecheck + build"
 	@test -d frontend/node_modules || { echo "✗ frontend/node_modules absent — lancez : cd frontend && npm install"; exit 1; }
 	@cd frontend && log=$$(mktemp); \
@@ -70,6 +72,15 @@ check:
 		grep -E "problems?" "$$log" | tail -1 || echo "  aucun problème"; \
 		rm -f "$$log"
 	@echo "✓ check OK"
+
+# End-to-end suite: builds the production binary, boots a throwaway instance on
+# its own port with its own database (never backend/lore.db), drives it with a
+# real browser, tears it down. Not in `check` because it is slow — one spec
+# deliberately waits out the 30 s staleTime to reproduce the alt-tab refetch.
+check-e2e:
+	@test -d e2e/node_modules || { echo "→ e2e : npm install"; cd e2e && npm install; }
+	@cd e2e && npx playwright install chromium >/dev/null 2>&1 || true
+	cd e2e && npm test
 
 # Installs the tracked hooks in .githooks/. Reversible with:
 #   git config --unset core.hooksPath

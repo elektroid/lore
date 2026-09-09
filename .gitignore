@@ -32,3 +32,5 @@ frontend/dist/
 # Only the placeholder is tracked, so a source checkout still compiles.
 backend/internal/web/dist/*
 !backend/internal/web/dist/.gitkeep
+e2e/node_modules/
+e2e/test-results/

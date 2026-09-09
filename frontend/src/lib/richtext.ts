@@ -16,9 +16,20 @@ export type InlineRun =
   | { type: 'italic'; text: string }
   | { type: 'mention'; kind: MentionKind; id: string; storedName: string }
 
+/**
+ * How this block is separated from the one before it in the stored text.
+ *
+ * `'\n\n'` is a paragraph break, `'\n'` a plain line break — the difference
+ * between two paragraphs and a bullet list sitting directly under its intro
+ * line. Carrying it on the block is what lets serialization put back exactly
+ * the separator that was parsed, instead of guessing one per block type and
+ * growing or shrinking the text a little on every save.
+ */
+export type BlockSep = '\n' | '\n\n'
+
 export type Block =
-  | { type: 'text'; lines: InlineRun[][] }
-  | { type: 'list'; items: InlineRun[][] }
+  | { type: 'text'; lines: InlineRun[][]; sep: BlockSep }
+  | { type: 'list'; items: InlineRun[][]; sep: BlockSep }
 
 const INLINE_RE = /@\[([^\]]+)\]\(([^)]+)\)|\*\*([^*\n]+)\*\*|\*([^*\n]+)\*/g
 const LIST_ITEM_RE = /^\s*[-*]\s+(.*)$/
@@ -45,34 +56,50 @@ export function parseInline(text: string): InlineRun[] {
 }
 
 /**
- * Group lines into text runs and bullet lists. A run of consecutive
- * `- item` / `* item` lines becomes one list block; everything else stays a
- * flowing text block, same as before this existed.
+ * Group the stored text into paragraphs and bullet lists.
+ *
+ * A blank line is a paragraph break — so the text splits on `\n\n` first, and
+ * each paragraph is then scanned for runs of `- item` / `* item` lines, which
+ * become list blocks. A single `\n` inside a paragraph stays a line break.
+ *
+ * Splitting on the blank line is what makes the round trip exact. Before it,
+ * every paragraph the author typed (or pasted) collapsed into the previous one
+ * on the next load: the parser merged all consecutive non-list lines into one
+ * block, so three pasted paragraphs came back as one with line breaks in it.
  */
 export function parseRichText(text: string): Block[] {
-  const lines = text.split('\n')
   const blocks: Block[] = []
-  let i = 0
-  while (i < lines.length) {
-    const m = lines[i].match(LIST_ITEM_RE)
-    if (m) {
-      const items: InlineRun[][] = []
-      while (i < lines.length) {
-        const mm = lines[i].match(LIST_ITEM_RE)
-        if (!mm) break
-        items.push(parseInline(mm[1]))
-        i++
+
+  text.split('\n\n').forEach((paragraph, pi) => {
+    const lines = paragraph.split('\n')
+    let i = 0
+    let first = true
+    while (i < lines.length) {
+      // The first block of a paragraph is preceded by the blank line that
+      // started it; anything after it in the same paragraph is one line down.
+      const sep: BlockSep = first && pi > 0 ? '\n\n' : '\n'
+      first = false
+
+      if (lines[i].match(LIST_ITEM_RE)) {
+        const items: InlineRun[][] = []
+        while (i < lines.length) {
+          const mm = lines[i].match(LIST_ITEM_RE)
+          if (!mm) break
+          items.push(parseInline(mm[1]))
+          i++
+        }
+        blocks.push({ type: 'list', items, sep })
+      } else {
+        const textLines: InlineRun[][] = []
+        while (i < lines.length && !lines[i].match(LIST_ITEM_RE)) {
+          textLines.push(parseInline(lines[i]))
+          i++
+        }
+        blocks.push({ type: 'text', lines: textLines, sep })
       }
-      blocks.push({ type: 'list', items })
-    } else {
-      const textLines: InlineRun[][] = []
-      while (i < lines.length && !lines[i].match(LIST_ITEM_RE)) {
-        textLines.push(parseInline(lines[i]))
-        i++
-      }
-      blocks.push({ type: 'text', lines: textLines })
     }
-  }
+  })
+
   return blocks
 }
 
