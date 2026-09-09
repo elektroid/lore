@@ -4,6 +4,7 @@ import { Navigate } from 'react-router-dom'
 import { Shield, ShieldOff, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import WriteJournalTab from '@/components/admin/WriteJournalTab'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -341,19 +342,23 @@ export default function AdminPage() {
 
   return (
     <AppShell crumbs={[{ label: 'Administration' }]}>
-      <main className="max-w-2xl mx-auto px-6 py-10">
+      <main className="max-w-4xl mx-auto px-6 py-10">
         <h1 className="text-2xl font-bold mb-8">Administration</h1>
 
         <Tabs defaultValue="users">
           <TabsList className="mb-6">
             <TabsTrigger value="users">Utilisateurs</TabsTrigger>
-            <TabsTrigger value="audit-log">Journal</TabsTrigger>
+            <TabsTrigger value="audit-log">Actions</TabsTrigger>
+            <TabsTrigger value="write-journal">Écritures</TabsTrigger>
           </TabsList>
           <TabsContent value="users">
             <UsersTab currentUserId={currentUser?.id ?? ''} />
           </TabsContent>
           <TabsContent value="audit-log">
             <AuditLogTab />
+          </TabsContent>
+          <TabsContent value="write-journal">
+            <WriteJournalTab />
           </TabsContent>
         </Tabs>
       </main>

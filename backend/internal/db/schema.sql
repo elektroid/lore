@@ -473,6 +473,38 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
 
+-- Write journal: one append-only row per mutating request the API accepted,
+-- with the record as it stood *before* the write. See
+-- docs/adr/0002-write-journal-for-recovery.md.
+--
+-- The `before` column is the whole point, and the reason this is not merely
+-- request logging: a write that reverts a paragraph leaves that paragraph
+-- sitting in the next row's `before`, so a lost edit is recoverable rather
+-- than merely explicable.
+--
+-- No foreign keys, deliberately. A journal that can fail to write is worse
+-- than useless, and a cascade delete that erased the record of a deletion
+-- would be absurd. The author's email is denormalised for the same reason.
+-- `at` carries milliseconds, and listings order by rowid rather than by it:
+-- CURRENT_TIMESTAMP is second-granular, so a burst of autosaves within one
+-- second had no defined order — and "which write came last" is the first
+-- question anyone asks this table.
+CREATE TABLE IF NOT EXISTS write_journal (
+    id          TEXT PRIMARY KEY,
+    at          DATETIME DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
+    user_id     TEXT NOT NULL DEFAULT '',
+    user_email  TEXT NOT NULL DEFAULT '',
+    method      TEXT NOT NULL,
+    path        TEXT NOT NULL,
+    entity      TEXT NOT NULL DEFAULT '',
+    entity_id   TEXT NOT NULL DEFAULT '',
+    before      TEXT NOT NULL DEFAULT '',
+    payload     TEXT NOT NULL DEFAULT '',
+    status      INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_write_journal_at ON write_journal(at DESC);
+CREATE INDEX IF NOT EXISTS idx_write_journal_entity ON write_journal(entity, entity_id, at DESC);
+
 -- Campaign members: tracks which users have access to which campaigns
 CREATE TABLE IF NOT EXISTS campaign_members (
     id          TEXT PRIMARY KEY,

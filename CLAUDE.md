@@ -171,6 +171,28 @@ Each row ends with a `shrink-0` button group:
 
 The pencil button is redundant with the clickable name but kept for discoverability. Both must trigger the same edit action.
 
+## Tests
+
+`make check` — backend build/vet/test, frontend unit tests, typecheck, build.
+Fast, always safe, run it before pushing.
+
+`make check-e2e` — builds the production binary, boots a throwaway instance on
+its own port against a database under `/tmp`, drives it with Chromium, tears it
+down. Never touches `backend/lore.db`. Slower (one spec waits out the 30 s
+`staleTime` on purpose), so it is separate from `check`.
+
+Everything under `e2e/tests/` is a regression that reached production — see
+[e2e/README.md](e2e/README.md). Add a spec when a bug escapes, not to cover code
+that has never broken. Pure text-format questions belong in
+`frontend/src/lib/*.test.ts` instead, which run in milliseconds.
+
+## Recovering a lost edit
+
+The **Écritures** tab in `/admin` holds every accepted write with the record as
+it stood *before* it, and restores any of them. Reach for it before
+reconstructing what happened from the access log — that is what it is for. See
+[docs/adr/0002-write-journal-for-recovery.md](docs/adr/0002-write-journal-for-recovery.md).
+
 ## Agent skills
 
 ### Issue tracker

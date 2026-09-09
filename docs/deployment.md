@@ -130,6 +130,33 @@ Deux pièges :
 - **La limitation de débit lit `X-Forwarded-For`.** Correct derrière un proxy,
   usurpable sans. N'exposez pas le port du binaire directement.
 
+## 5 bis. Journal d'écritures
+
+```toml
+[journal]
+enabled   = true
+retain    = "30d"
+max_bytes = "500MB"
+```
+
+Une ligne par requête d'écriture acceptée, avec **l'état du contenu juste avant
+elle** — visible dans l'onglet « Écritures » de `/admin`, avec un diff champ par
+champ et un bouton « Restaurer cette version ». C'est de quoi comprendre, et
+annuler, une modification qui en a effacé une autre.
+
+Activé par défaut, parce qu'il existe précisément pour la période où l'on ne
+fait pas encore confiance à l'application. Deux conséquences à connaître :
+
+- **La base grossit.** Bornée par les deux réglages ci-dessus (purge horaire par
+  âge, puis par taille). La taille courante est affichée en haut de l'onglet.
+- **Il contient le texte intégral de tout ce que chacun écrit**, y compris les
+  notes privées des joueurs. Lisible par les superutilisateurs uniquement, et
+  les champs qui ressemblent à un identifiant (`password`, `api_key`, `secret`,
+  `token`) sont remplacés avant écriture. Le désactiver est une vraie décision —
+  d'où le réglage.
+
+Voir [adr/0002-write-journal-for-recovery.md](adr/0002-write-journal-for-recovery.md).
+
 ## 6. Sauvegardes
 
 Tout l'état tient dans trois endroits :

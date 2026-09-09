@@ -1,3 +1,4 @@
+import { expect } from '@playwright/test'
 import { CREDENTIALS } from './instance.mjs'
 
 /** Log in through the real form, so the session cookies are the real ones. */
@@ -23,11 +24,21 @@ export function proseField(page, label) {
     .first()
 }
 
-/** Replace a prose field's whole content by typing it. */
+/**
+ * Replace a prose field's whole content by typing it, and wait until the editor
+ * really holds it.
+ *
+ * The wait is a precondition, not a sleep: what the autosave specs assert is
+ * that *leaving the page saves what the editor had*. Reloading before TipTap
+ * has committed the last keystroke would test something else entirely, and
+ * fail for a reason that has nothing to do with autosave — which is exactly how
+ * this flaked once in a full run.
+ */
 export async function typeInto(field, page, text) {
   await field.click()
   await page.keyboard.press('Control+A')
   await page.keyboard.type(text, { delay: 10 })
+  await expect(field).toContainText(text.slice(0, 40), { timeout: 10_000 })
 }
 
 /**

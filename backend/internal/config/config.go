@@ -22,6 +22,60 @@ type Config struct {
 	Crypto           CryptoConfig           `toml:"crypto"`
 	Auth             AuthConfig             `toml:"auth"`
 	SMTP             SMTPConfig             `toml:"smtp"`
+	Journal          JournalConfig          `toml:"journal"`
+}
+
+// JournalConfig controls the write journal — the append-only record of every
+// mutating request, with the row as it stood before it. See
+// docs/adr/0002-write-journal-for-recovery.md.
+//
+// On by default, because it exists precisely for the period when the app is
+// not yet trusted not to lose an author's prose. It holds the full text of
+// everything anyone writes, so turning it off is a real decision — and this
+// makes it a one-liner.
+type JournalConfig struct {
+	Enabled  *bool  `toml:"enabled"`
+	Retain   string `toml:"retain"`    // e.g. "30d"; empty means 30 days
+	MaxBytes string `toml:"max_bytes"` // e.g. "500MB"; empty means 500 MB
+}
+
+func (c JournalConfig) On() bool { return c.Enabled == nil || *c.Enabled }
+
+// RetainDays parses Retain, falling back to 30 days. Anything unparseable is
+// the default rather than an error: a typo in a debug facility's retention
+// must not stop the server booting.
+func (c JournalConfig) RetainDays() int {
+	v := strings.TrimSpace(strings.ToLower(c.Retain))
+	if v == "" {
+		return 30
+	}
+	n, err := strconv.Atoi(strings.TrimSuffix(v, "d"))
+	if err != nil || n <= 0 {
+		return 30
+	}
+	return n
+}
+
+// MaxBytesValue parses MaxBytes ("500MB", "2GB", "1048576"), default 500 MB.
+func (c JournalConfig) MaxBytesValue() int64 {
+	v := strings.TrimSpace(strings.ToUpper(c.MaxBytes))
+	if v == "" {
+		return 500 << 20
+	}
+	mult := int64(1)
+	switch {
+	case strings.HasSuffix(v, "GB"):
+		mult, v = 1<<30, strings.TrimSuffix(v, "GB")
+	case strings.HasSuffix(v, "MB"):
+		mult, v = 1<<20, strings.TrimSuffix(v, "MB")
+	case strings.HasSuffix(v, "KB"):
+		mult, v = 1<<10, strings.TrimSuffix(v, "KB")
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+	if err != nil || n <= 0 {
+		return 500 << 20
+	}
+	return n * mult
 }
 
 // SMTPConfig holds outbound mail relay settings. Empty Host means mail

@@ -85,8 +85,19 @@ function apiClient(baseURL) {
     return res.status === 204 ? undefined : res.json()
   }
 
+  // Multipart, for the upload endpoints — the one body shape the journal
+  // deliberately does not read.
+  async function upload(path, form) {
+    const headers = { cookie }
+    if (csrf) headers['X-CSRF-Token'] = csrf
+    const res = await fetch(`${baseURL}/api${path}`, { method: 'POST', headers, body: form })
+    if (!res.ok) throw new Error(`POST ${path} → ${res.status} ${await res.text()}`)
+    return res.json()
+  }
+
   return {
     get: p => call('GET', p),
+    upload,
     post: (p, b) => call('POST', p, b),
     put: (p, b) => call('PUT', p, b),
     del: p => call('DELETE', p),

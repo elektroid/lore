@@ -42,6 +42,17 @@ max_tokens = 0
 # les clés d'API enregistrées illisibles. Générer avec : openssl rand -hex 32
 # key = "..."
 
+[journal]
+# Journal d'écritures : une ligne par requête d'écriture acceptée, avec l'état
+# du contenu juste avant elle (onglet « Écritures » dans /admin). Sert à
+# comprendre — et à annuler — une modification qui en a effacé une autre.
+# Activé par défaut : il existe précisément pour la période où l'on ne fait pas
+# encore confiance à l'application. Il contient le texte intégral de tout ce que
+# chacun écrit, donc le désactiver est une vraie décision.
+# enabled   = true
+# retain    = "30d"
+# max_bytes = "500MB"
+
 [auth]
 # "open"   : n'importe qui peut créer un compte (défaut)
 # "closed" : seuls le compte bootstrap et ceux créés par un administrateur

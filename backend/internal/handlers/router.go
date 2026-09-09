@@ -31,6 +31,9 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 	// The middleware will skip public endpoints internally
 	r.Use(auth.AuthMiddleware(tokenService, database))
 	r.Use(auth.CSRFMiddleware(tokenService))
+	// After auth, so the journal knows who wrote; before the routes, so it sees
+	// every one of them. See docs/adr/0002-write-journal-for-recovery.md.
+	r.Use(JournalMiddleware(database, cfg.Journal))
 
 	// Serve uploaded files
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadsDir))))
@@ -125,6 +128,15 @@ func NewRouter(database *sql.DB, uploadsDir, externalMaterialDir string, tokenSe
 		// config. See audit_log in schema.sql and docs/users-admin.md.
 		audit := &AuditHandler{db: database}
 		r.With(requireSuperuser).Get("/audit-log", audit.List)
+
+		// Write journal: every accepted write, with the record as it stood
+		// before it. Deliberately separate from the audit log above — that one
+		// is a narrow record of sensitive administrator actions, and burying it
+		// under every autosave PUT would destroy the thing it is good at.
+		// See docs/adr/0002-write-journal-for-recovery.md.
+		journal := &JournalHandler{db: database}
+		r.With(requireSuperuser).Get("/journal", journal.List)
+		r.With(requireSuperuser).Post("/journal/{entryId}/restore", journal.Restore)
 
 		games := &GameHandler{db: database, externalMaterialDir: externalMaterialDir}
 		gameLLM := &GameLLMHandler{db: database, encKey: cfg.EncryptionKey()}

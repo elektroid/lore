@@ -1,7 +1,10 @@
 # ADR-0002 — A write journal, so a lost edit is recoverable rather than gone
 
-**Status:** proposed
+**Status:** accepted
 **Date:** 2026-09-09
+**Implemented:** 2026-09-09 — `write_journal` in schema.sql, `internal/db/journal.go`,
+`internal/handlers/journal.go`, the **Écritures** tab in `/admin`, and
+`e2e/tests/journal.spec.mjs`.
 
 ## Context
 
@@ -41,7 +44,7 @@ entries, and stores no author, no time-of-edit and no diff.
 
 Add a **write journal**: an append-only record of every mutating request the
 server accepts, storing the row as it was *before* the write and the payload
-that changed it. Expose it read-only to superusers as a **Journal** panel in
+that changed it. Expose it read-only to superusers as an **Écritures** tab in
 `/admin`, with a diff view and a one-click restore of any prior version.
 
 It is a debug facility with a retention window, not a version-control feature
@@ -65,8 +68,7 @@ CREATE TABLE write_journal (
   entity_id   TEXT NOT NULL,
   before      TEXT NOT NULL,          -- JSON: the row as it was, "" on create
   payload     TEXT NOT NULL,          -- JSON: the request body, redacted
-  status      INTEGER NOT NULL,       -- what we answered
-  request_id  TEXT NOT NULL           -- correlates with the access log
+  status      INTEGER NOT NULL        -- what we answered
 );
 CREATE INDEX idx_write_journal_entity ON write_journal (entity, entity_id, at DESC);
 CREATE INDEX idx_write_journal_at     ON write_journal (at DESC);
@@ -90,17 +92,25 @@ holes in it. The middleware:
 
 1. Skips `GET`/`HEAD`, and skips paths on a small deny-list (`/auth/*`,
    `/settings/llm`, `/settings/image`, anything carrying a credential).
-2. Derives `entity`/`entity_id` from the route pattern, so it needs no handler
-   cooperation: chi exposes the matched pattern and its URL params.
+2. Derives `entity`/`entity_id` by matching the path's *shape* against a small
+   table (`journalTargets`). The original plan was to read chi's matched route
+   pattern, which turned out not to work: a middleware registered with `r.Use()`
+   runs before chi has routed, so `RoutePattern()` is still empty there.
+   Segment matching needs cooperation from neither the router nor the handlers.
 3. Reads the current row *before* calling the handler, via a per-entity
-   `snapshot(ctx, db, id) (string, error)` registered in one table in the
-   journal package. An entity with no snapshotter journals the request without a
-   `before` rather than not journalling at all.
+   `snapshot(ctx, db, id) (string, error)` registered in that same table. An
+   entity with no snapshotter journals the request without a `before` rather
+   than not journalling at all. Registered today: scene, synopsis, scenario,
+   campaign, npc, location, artefact, faction — the records that hold prose.
 4. Calls the handler, capturing the status.
 5. Writes the journal row **after** responding, on a buffered channel drained by
    one goroutine — the author must never wait on the journal, and a full buffer
    drops journal rows, never requests.
-6. Redacts: any payload field named `password`, `api_key`, `secret`, `token`.
+6. Redacts any payload field named `password`, `api_key`, `secret`, `token`
+   (and friends) at any depth, elides bodies over 256 KB rather than spending
+   the whole retention budget on one base64 image, and skips requests that were
+   rejected — a 4xx changed nothing, and keeping those would bury the writes
+   that did.
 
 ### Retention
 
@@ -120,22 +130,26 @@ disk the live database sits on.
 
 ### What the UI offers
 
-In `/admin`, a **Journal** tab beside the existing audit log (they stay
-separate: [[project_admin_audit_log]] is a deliberately narrow record of
-sensitive *admin* actions, and drowning it in every keystroke-batch PUT would
-destroy the thing it is good at):
+In `/admin`, an **Écritures** tab beside the existing audit log, which is
+renamed **Actions**. They stay separate: the audit log is a deliberately narrow
+record of sensitive *admin* actions, and drowning it in every keystroke-batch
+PUT would destroy the thing it is good at.
 
-- A filterable list — by author, entity, time range, path.
-- A row expands to a **field-level diff** of `before` against `payload`,
-  rendered with the same prose renderer as everywhere else, so a mention or a
-  bold run reads as a mention or a bold run.
-- **Restaurer cette version** on any row: writes `before` back through the
-  normal handler, and is itself journalled. Restoring is a write like any other.
+- A filterable list — by entity type and entity id, paginated, with the journal's
+  current size shown at the top so it is not left to grow unwatched.
+- Each row names the fields that write actually changed, which is the
+  diagnostic question: *which field did this move, and what was there before?*
+- A row opens a **field-level diff** of `before` against `payload`, showing only
+  the fields that differ — a full-record PUT sends every column, so listing all
+  of them would bury the one that matters. Values are shown verbatim rather than
+  rendered as prose: this is a recovery tool, and what is stored is the point.
+- **Restaurer cette version** writes `before` back through the normal update
+  path, and is itself journalled. Restoring is a write like any other.
 
-And, for the author rather than the admin, the smaller half of the feature: on
-the Synopsis page, a discreet **Historique** affordance listing that scenario's
-own journal rows with the same diff and restore. The person who lost the
-paragraph should not have to ask a superuser to get it back.
+**Not built yet:** the author-facing half — a discreet **Historique** on the
+Synopsis page listing that scenario's own journal rows, so the person who lost
+the paragraph need not ask a superuser to get it back. Worth adding the next
+time someone has to.
 
 ### What this is not
 
